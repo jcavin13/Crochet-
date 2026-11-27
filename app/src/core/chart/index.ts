@@ -20,3 +20,4 @@ export type { WedgeView, WedgeLabel, WedgeOptions } from './wedge';
 export type { ChartColors, SvgOptions } from './svg';
 export { buildHitIndex, hitTest, roundAt } from './hit';
 export type { HitIndex } from './hit';
+export { symbolRoom } from './room';

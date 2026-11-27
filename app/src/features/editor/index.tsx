@@ -19,6 +19,7 @@ import { useStitchParams } from '@/app';
 import type { ParamSet } from '@/core/params';
 import { SymmetryPanel, useSymmetry } from '@/features/symmetry/SymmetryPanel';
 import { NewPatternDialog } from './NewPatternDialog';
+import { YarnPanel } from '@/features/yarn/YarnPanel';
 import './editor.css';
 
 export default function EditorPage() {
@@ -242,6 +243,11 @@ function EditorView({ cur, onNew, newDialog }: { cur: ReturnType<typeof useCurre
                       undoLabel={undo[undo.length - 1]?.label}
                       onJump={(line) => jump({ line, col: 1 })}
                     />
+                  </Card>
+                )}
+                {cur.pattern && (
+                  <Card className="ed-yarn">
+                    <YarnPanel pattern={cur.pattern} params={params} compact />
                   </Card>
                 )}
               </div>

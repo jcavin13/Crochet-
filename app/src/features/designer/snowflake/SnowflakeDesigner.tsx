@@ -332,7 +332,7 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
       {view === 'chart' && (
         <Card flush className="dz-chart">
           {res.pattern ? <ChartView pattern={res.pattern} params={params} showFlatness={false} /> : <p className="dz-pad">The generated text did not compile.</p>}
-          <p className="small muted dz-pad">Symbol chart — arms are drawn at true length, so zoom in to read the stitches.</p>
+          <p className="small muted dz-pad">Symbol chart — on a narrow screen one arm is shown enlarged; work it ×{res.spec.points}. Switch to Whole to see the full snowflake.</p>
         </Card>
       )}
       {view === '3d' && res.pattern && (

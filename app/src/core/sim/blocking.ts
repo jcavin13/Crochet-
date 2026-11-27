@@ -10,7 +10,7 @@
  * excluded), plus a plain-language verdict.
  */
 import { simConfig as defaultConfig, type SimConfig } from '../params';
-import { hyp, Lbfgs, springEnergy, type SpringSet } from './lbfgs';
+import { hyp, Lbfgs, now as clock, springEnergy, type LbfgsStatus, type SpringSet } from './lbfgs';
 import { eigSym3, shapeMetric } from './metrics';
 import { COURSE, WALE, type Network } from './network';
 
@@ -67,9 +67,55 @@ export interface BlockResult {
 export const BLOCK_EASY_MEAN_STRAIN = 0.06;
 export const BLOCK_IMPOSSIBLE_FRACTION = 0.1;
 
+/** The minimiser of a blocked solve: one L-BFGS run, or a staged one (pin continuation). */
+export interface BlockOptimizer {
+  readonly x: Float64Array;
+  readonly f: number;
+  readonly status: LbfgsStatus;
+  readonly iter: number;
+  run(deadline?: number): LbfgsStatus;
+  /** Fraction of the solve done (stages), 0…1. */
+  progress(): number;
+}
+
 export interface BlockSetup {
-  opt: Lbfgs;
+  opt: BlockOptimizer;
   finish: () => BlockResult;
+}
+
+/**
+ * Stages of the pinned solve (pin continuation). The pins move from where their nodes lie in the
+ * unblocked piece to the template in PIN_STAGES equal steps, each solve warm-started from the last
+ * (intermediate stages to a looser tolerance). Snapping the pins to the template in one go let
+ * the solver settle into folded minima — e.g. a pair of branch picots pulled through the spine so
+ * they point inwards, the arm sliding 4 mm outwards (seed 6 × 6) — which the continuation avoids.
+ */
+export const PIN_STAGES = 4;
+const STAGE_GTOL = 1e-3;
+
+class StagedOptimizer implements BlockOptimizer {
+  private k = 0;
+  private cur: Lbfgs;
+  private iters = 0;
+  constructor(private readonly make: (k: number, x0: Float64Array | null) => Lbfgs, private readonly K: number) {
+    this.cur = make(0, null);
+  }
+  get x() { return this.cur.x; }
+  get f() { return this.cur.f; }
+  get iter() { return this.iters + this.cur.iter; }
+  get status(): LbfgsStatus { return this.k < this.K - 1 && this.cur.status !== 'running' ? 'running' : this.cur.status; }
+  progress() { return Math.min(1, (this.k + (this.cur.status === 'running' ? 0.5 : 1)) / this.K); }
+  run(deadline = Infinity): LbfgsStatus {
+    for (;;) {
+      const st = this.cur.run(deadline);
+      if (st === 'running') return 'running';
+      if (this.k >= this.K - 1) return st;
+      this.iters += this.cur.iter;
+      this.k++;
+      this.cur = this.make(this.k, this.cur.x);
+      if (deadline !== Infinity && clock() >= deadline) return 'running';
+    }
+  }
 }
 
 /** Least-variance direction (PCA normal) and centroid of the placed node particles. */
@@ -141,10 +187,21 @@ export function setupBlock(net: Network, X: Float64Array, config: SimConfig = de
     }
   }
   let aligned: { node: number; x: number; y: number }[] | undefined;
+  // pin continuation: start (relaxed, projected) and end (template) positions of the pinned nodes
+  let pinFrom: Float64Array | null = null;
   if (usePins) {
     aligned = alignPins(pinList, (i) => [P[2 * i], P[2 * i + 1]]);
+    pinFrom = new Float64Array(2 * aligned.length);
+    aligned.forEach((a, q) => { pinFrom![2 * q] = P[2 * a.node]; pinFrom![2 * q + 1] = P[2 * a.node + 1]; });
     for (const a of aligned) { P[2 * a.node] = a.x; P[2 * a.node + 1] = a.y; }
   }
+  const pinStage = (t: number) => {
+    if (!aligned || !pinFrom) return;
+    aligned.forEach((a, q) => {
+      P[2 * a.node] = pinFrom![2 * q] + t * (a.x - pinFrom![2 * q]);
+      P[2 * a.node + 1] = pinFrom![2 * q + 1] + t * (a.y - pinFrom![2 * q + 1]);
+    });
+  };
   // springs between placed particles (all particles, pinned ones fixed)
   const sel: number[] = [];
   for (let q = 0; q < net.m; q++) if (placed[net.I[q]] && placed[net.J[q]]) sel.push(q);
@@ -169,7 +226,17 @@ export function setupBlock(net: Network, X: Float64Array, config: SimConfig = de
   };
   const x0 = new Float64Array(2 * free.length);
   free.forEach((p, q) => { x0[2 * q] = P[2 * p]; x0[2 * q + 1] = P[2 * p + 1]; });
-  const opt = new Lbfgs(fg, x0, { gtol, maxIter: 50000 });
+  let opt: BlockOptimizer;
+  if (usePins) {
+    const K = PIN_STAGES;
+    opt = new StagedOptimizer((k, xPrev) => {
+      pinStage((k + 1) / K);
+      return new Lbfgs(fg, xPrev ?? x0, { gtol: k === K - 1 ? gtol : Math.max(gtol, STAGE_GTOL), maxIter: 50000 });
+    }, K);
+  } else {
+    const l = new Lbfgs(fg, x0, { gtol, maxIter: 50000 });
+    opt = Object.assign(l, { progress: () => (l.status === 'running' ? 0.5 : 1) });
+  }
 
   const finish = (): BlockResult => {
     load(opt.x);

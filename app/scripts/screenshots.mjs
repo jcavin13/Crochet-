@@ -237,18 +237,36 @@ export const ROUTES = [
   })(),
   // the standalone Chart page of a saved snowflake: arms laid out as radial spines (core/chart pointed rounds)
   ...(() => {
-    const openChart = (preset, points) => async (page) => {
-      await page.getByRole('button', { name: preset, exact: true }).click();
-      if (points) await page.locator('button.dz-toggle', { hasText: new RegExp(`^${points}$`) }).click();
+    // view: 'arm' / 'all' switches the chart's Whole / One arm buttons (the page's default otherwise)
+    const openChart = (preset, points, view) => async (page) => {
+      const tab = async (name) => { const t = page.getByRole('tab', { name }); if (await t.isVisible().catch(() => false)) await t.click(); };
+      await tab('Design');
+      await page.getByRole('button', { name: preset, exact: true }).first().click();
+      if (points) await page.locator('button.dz-toggle', { hasText: new RegExp(`^${points}$`) }).first().click();
       await page.waitForTimeout(600);
+      await tab('Snowflake');
       await page.getByRole('button', { name: 'Open in…' }).first().click();
       await page.getByRole('menuitem', { name: 'Chart' }).click();
       await page.waitForSelector('.ch-page .ch-svg');
       await page.waitForTimeout(400);
+      if (view) {
+        const b = page.locator('.ch-viewbar button').nth(view === 'arm' ? 1 : 0);
+        if ((await b.getAttribute('aria-pressed')) !== 'true') await b.click();
+        await page.waitForTimeout(400);
+        await page.locator('.ch-stage').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - (window.innerWidth < 900 ? 64 : 8)));
+        await page.waitForTimeout(300);
+      }
     };
+    const d = '/designer?kind=snowflake';
     return [
-      { name: 'chart-snowflake-fern', path: '/designer?kind=snowflake', wait: '.sf-layers', only: 'desktop', prepare: openChart('Fern') },
-      { name: 'chart-snowflake-12', path: '/designer?kind=snowflake', wait: '.sf-layers', only: 'desktop', prepare: openChart('Double-pointed', 12) },
+      { name: 'chart-snowflake-fern', path: d, wait: '.sf-layers', only: 'desktop', prepare: openChart('Fern') },
+      { name: 'chart-snowflake-12', path: d, wait: '.sf-layers', only: 'desktop', prepare: openChart('Double-pointed', 12) },
+      // one arm of six, enlarged ("work it ×6"): the default on a phone
+      { name: 'chart-snowflake-arm', path: d, wait: '.sf-layers', prepare: openChart('Fern', 0, 'arm') },
+      // five points with valley anchors (bridges pinned to a sc in each valley)
+      { name: 'chart-snowflake-5pt', path: d, wait: '.sf-layers', only: 'desktop', prepare: openChart('Trefoil points', 5, 'all') },
+      // bobble (cluster) tips on sc spines, eight points: one arm
+      { name: 'chart-snowflake-bobble', path: d, wait: '.sf-layers', only: 'desktop', prepare: openChart('Bold eight-point star', 0, 'arm') },
     ];
   })(),
   // counter: fresh start, mid-round (Rnd 5), the end-of-round check, landing, tally, dark
@@ -289,6 +307,88 @@ export const ROUTES = [
   { name: 'amigurumi-pattern', path: '/amigurumi', wait: '.ami-editor', only: 'phone', prepare: async (page) => { await page.getByRole('tab', { name: /^Pattern/ }).click(); await page.waitForTimeout(300); } },
   { name: 'gauge', path: '/amigurumi?tab=gauge', wait: '.ami-gauge' },
   { name: 'about', path: '/about', wait: 'main h1' },
+  // yarn estimates: editor card (expanded), calibration dialog, counter "yarn left" + ball heads-up, my yarns, amigurumi
+  ...(() => {
+    const checkTab = async (page) => { const t = page.getByRole('tab', { name: /Check/ }); if (await t.isVisible().catch(() => false)) await t.click(); };
+    const openYarn = async (page) => {
+      await checkTab(page);
+      await page.locator('.ed-yarn .yn-line').click();
+      await page.waitForSelector('.ed-yarn .yn-body');
+      await page.locator('.ed-yarn').evaluate((el) => {
+        el.scrollIntoView({ block: 'start' });
+        if (window.innerWidth >= 900) window.scrollTo(0, document.querySelector('.ui-split').getBoundingClientRect().top + window.scrollY - 8);
+        else window.scrollBy(0, -72);
+      });
+      await page.waitForTimeout(300);
+    };
+    const dlg = (page) => page.locator('dialog[open]');
+    return [
+      { name: 'yarn-editor', path: '/editor/corpus%3Aspiderweb-doily-10', wait: '.ed-box', prepare: openYarn },
+      {
+        name: 'yarn-calibrate', path: '/editor/fixture%3Asc_sphere', wait: '.ed-box', only: 'desktop',
+        prepare: async (page) => {
+          await openYarn(page);
+          await page.locator('.ed-yarn').getByRole('button', { name: 'Calibrate with a swatch' }).click();
+          const d = dlg(page);
+          await d.getByLabel('Weight, tails trimmed').fill('10.4');
+          await d.getByRole('button', { name: 'Add a swatch in another stitch' }).click();
+          await d.getByLabel('Weight, tails trimmed').nth(1).fill('10.9');
+          await d.getByLabel('Ball band').fill('180');
+          await d.getByLabel('Name').fill('Merino worsted, teal');
+          await page.waitForTimeout(300);
+        },
+      },
+      {
+        name: 'yarn-counter', path: '/editor/fixture%3Asc_sphere', wait: '.ed-box', only: 'phone',
+        prepare: async (page) => {
+          // a 5 g leftover ball, so the counter's "ball runs out" heads-up shows mid-piece
+          await openYarn(page);
+          await page.locator('.ed-yarn').getByLabel('Ball size').fill('5');
+          await page.waitForTimeout(400);
+          await page.goto(page.url().replace(/#.*$/, '#/counter/fixture%3Asc_sphere'));
+          await page.waitForSelector('.ctr-tap');
+          await page.click('.ctr-roundbtn');
+          await page.locator('.ctr-rounds__btn', { hasText: 'Rnd 8' }).click();
+          await page.waitForTimeout(3600);
+          for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowRight');
+          await page.waitForTimeout(300);
+        },
+      },
+      {
+        name: 'yarn-settings', path: '/about', wait: 'main h1', only: 'desktop',
+        prepare: async (page) => {
+          await page.getByRole('button', { name: 'Add a yarn' }).first().click();
+          let d = dlg(page);
+          await d.getByLabel('Name').fill('Cotton no. 10, white');
+          await d.getByLabel('Weight').selectOption('thread-10');
+          await d.getByLabel('Ball band').fill('564');
+          await d.getByLabel('Ball size').fill('50');
+          await d.getByRole('button', { name: 'Save' }).click();
+          await page.waitForTimeout(300);
+          await page.getByRole('button', { name: 'Calibrate a new yarn' }).click();
+          d = dlg(page);
+          await d.getByLabel('Weight, tails trimmed').fill('10.4');
+          await d.getByLabel('Ball band').fill('180');
+          await d.getByLabel('Name').fill('Merino worsted, teal');
+          await d.getByLabel('Ball size').fill('100');
+          await d.getByRole('button', { name: 'Save calibration' }).click();
+          await page.waitForTimeout(3600);
+          await page.locator('#yarns').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 80));
+          await page.waitForTimeout(300);
+        },
+      },
+      {
+        name: 'yarn-amigurumi', path: '/amigurumi', wait: '.ami-editor', only: 'phone',
+        prepare: async (page) => {
+          await page.getByRole('tab', { name: /^Pattern/ }).click();
+          await page.waitForTimeout(800);
+          await page.locator('.ami-yarn .yn-line').click();
+          await page.locator('.ami-yarn').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 72));
+          await page.waitForTimeout(300);
+        },
+      },
+    ];
+  })(),
 ];
 
 const VIEWPORTS = {

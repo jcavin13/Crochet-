@@ -7,7 +7,7 @@
  */
 import type { Diagnostic, DiagnosticCode, Severity, Terms } from '../graph/types';
 import type {
-  BaseType, ChainItem, CountAnn, CountPart, CountUnit, CountsAs, GroupItem, HeaderAst, Item,
+  BaseType, ChainItem, CountAnn, CountPart, CountUnit, CountsAs, Extent, GroupItem, HeaderAst, Item,
   LoopModAst, PatternAst, Place, RepeatItem, RoundAst, RoundLabel, Span, StitchItem, StitchSpec,
   Target, Times, Unit,
 } from './ast';
@@ -51,6 +51,7 @@ export function parse(text: string): ParseResult {
         kind: label.kind, word: label.word, from: label.from, to: label.to, range: label.range,
         span: { line: lineNo, col: label.start + 1, endLine: lineNo, endCol: label.labelEnd + 1 },
       };
+      if (label.parity) labelAst.parity = label.parity;
       cur = { label: labelAst, tokens: tokenize(line.slice(label.end), lineNo, label.end + 1), firstLine: lineNo, lastLine: lineNo };
       chunks.push(cur);
       return;
@@ -458,12 +459,39 @@ class RoundParser {
             return { kind: 'fasten', span: this.spanFrom(start) };
           }
           break;
+        case 'working':
+          return this.parseOtherSide();
         case 'counts':
         case 'does':
           break;
       }
     }
     return this.parseStitch(ctx);
+  }
+
+  /**
+   * "working along the other side of the chain" / "working along opposite side of foundation ch" /
+   * "working in unused loops of foundation ch" (articles are already dropped by the lexer).
+   */
+  private parseOtherSide(): Item {
+    const start = this.i;
+    this.i++; // working
+    const expected = '"along the other side of the chain" (or "in the unused loops of the foundation chain") after "working"';
+    if (!this.isWord(this.peek(), 'along', 'across', 'in', 'into', 'on')) this.fail(expected);
+    this.i++;
+    if (this.isWord(this.peek(), 'unused', 'free') && this.isWord(this.peek(1), 'loops', 'loop', 'lps')) {
+      this.i += 2;
+    } else {
+      if (this.isWord(this.peek(), 'opposite', 'other', 'back', 'underside', 'bottom')) this.i++;
+      if (!this.isWord(this.peek(), 'side')) this.fail(expected);
+      this.i++;
+    }
+    if (!this.isWord(this.peek(), 'of')) this.fail('"of the chain" to say which side');
+    this.i++;
+    if (this.isWord(this.peek(), 'foundation', 'beginning', 'starting')) this.i++;
+    if (!this.isWord(this.peek(), 'ch', 'chain', 'chs', 'chains')) this.fail('"chain" (the side of which chain)');
+    this.i++;
+    return { kind: 'otherSide', span: this.spanFrom(start) };
   }
 
   private isSpaceWord(t: Token | undefined): boolean {
@@ -947,11 +975,27 @@ class RoundParser {
     return undefined;
   }
 
-  private tryExtent(): 'around' | 'across' | 'end' | undefined {
+  /** around | across | to end | [across] to [next] corner (notation.md 3.9) */
+  private tryExtent(): Extent | undefined {
     if (this.isWord(this.peek(), 'around')) { this.i++; return 'around'; }
-    if (this.isWord(this.peek(), 'across')) { this.i++; return 'across'; }
+    if (this.isWord(this.peek(), 'across')) {
+      this.i++;
+      const k = this.toCornerLength();
+      if (k) { this.i += k; return 'corner'; }
+      return 'across';
+    }
+    const k = this.toCornerLength();
+    if (k) { this.i += k; return 'corner'; }
     if (this.isWord(this.peek(), 'to') && this.isWord(this.peek(1), 'end')) { this.i += 2; return 'end'; }
     return undefined;
+  }
+
+  /** "to corner" / "to next corner": number of tokens, or 0. */
+  private toCornerLength(): number {
+    if (!this.isWord(this.peek(), 'to')) return 0;
+    if (this.isWord(this.peek(1), 'corner')) return 2;
+    if (this.isWord(this.peek(1), 'next') && this.isWord(this.peek(2), 'corner')) return 3;
+    return 0;
   }
 
   /** Read a unit if one is at the cursor (consumes it), else undefined (consumes nothing). */
@@ -961,6 +1005,17 @@ class RoundParser {
     const w = t.low;
     if (ST_WORDS.has(w)) { this.i++; return { kind: 'st' }; }
     if (w === 'place' || w === 'places') { this.i++; return { kind: 'any' }; }
+    // row end / row ends / row-end / end of row / ends of rows (notation.md 3.9)
+    if (w === 'row' || w === 'rows') {
+      if (this.isWord(this.peek(1), 'end', 'ends')) { this.i += 2; return { kind: 'rowEnd' }; }
+      if (this.isPunct(this.peek(1), '-') && this.isWord(this.peek(2), 'end', 'ends')) { this.i += 3; return { kind: 'rowEnd' }; }
+      return undefined;
+    }
+    if ((w === 'end' || w === 'ends') && this.isWord(this.peek(1), 'of') && this.isWord(this.peek(2), 'row', 'rows')) {
+      this.i += 3;
+      return { kind: 'rowEnd' };
+    }
+    if (w === 'corner' || w === 'corners') { this.i++; return { kind: 'corner' }; }
     if (SPACE_WORDS.has(w)) { this.i++; return { kind: 'space', word: w.startsWith('l') ? 'loop' : 'sp' }; }
     if (CH_WORDS.has(w)) {
       const t1 = this.peek(1);
@@ -1108,7 +1163,7 @@ class RoundParser {
         this.i += 2;
       } else {
         const ext = this.tryExtent();
-        if (!ext) this.fail('"N more times", "N times", "around", "across" or "to end" after "rep from *"');
+        if (!ext) this.fail('"N more times", "N times", "around", "across", "to end" or "to corner" after "rep from *"');
         times = { kind: ext! };
       }
     } else {

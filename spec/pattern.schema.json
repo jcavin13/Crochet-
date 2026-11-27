@@ -42,9 +42,12 @@
   "$defs": {
     "stitchType": {"enum": ["ch", "slst", "sc", "hdc", "dc", "tr", "dtr", "puff", "popcorn", "picot"]},
     "anchor": {
-      "description": "What one leg of a stitch is worked into: exactly one of node (a stitch top or an individual chain) or space (chain space / ring).",
+      "description": "What one leg of a stitch is worked into: exactly one of node (a stitch top or an individual chain; optionally a row end or the unused loops of a chain, see part) or space (chain space / ring).",
       "oneOf": [
-        {"type": "object", "required": ["node"], "additionalProperties": false, "properties": {"node": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "required": ["node"], "additionalProperties": false, "properties": {
+          "node": {"type": "integer", "minimum": 0},
+          "part": {"enum": ["side", "base"], "description": "Optional (notation.md 3.9). side: the end of the row whose edge stitch is `node`, worked from the side by a border round (row end). base: the unused bottom loops of chain `node` (the other side of a foundation chain). Omitted: the top of the stitch / the chain itself."}
+        }},
         {"type": "object", "required": ["space"], "additionalProperties": false, "properties": {"space": {"type": "integer", "minimum": 0}}}
       ]
     },

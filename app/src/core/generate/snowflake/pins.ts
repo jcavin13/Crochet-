@@ -4,20 +4,39 @@
  * (mm, centre at the origin, first point straight up, y down); the solver aligns them to the piece.
  *
  * Arm-round stitches are matched to `shape.anchorPins` in working order:
- *  * an arm is `sc, <arm>, sc` worked into one place; its tip is the middle chain of the spine's tip
- *    loop (or the last stem chain when it has none; the picot of a pointed loop or a minor picot);
- *    trefoil side picots are the two picots straight after the tip; branch picots follow in pairs;
- *    within a pair the first picot worked lies on the side the round is worked towards, which is
- *    the template's "+" side (spine.ts places it there too);
+ *  * an arm is `sc, <arm>, sc` worked into one place; its tip is the chain of the spine's tip loop
+ *    that reaches furthest out in the spine's reference layout (`armPinNodes`; the last stem chain
+ *    when it has none; the picot of a pointed loop or a minor picot); trefoil side picots are the two
+ *    picots straight after the tip; branch picots follow, in working order. The template computes
+ *    every one of these points from the same reference layout (geometry.ts), node for node;
  *  * a valley anchor is a lone sc;
  *  * each valley bridge (`ch k` space of the arm round) is pinned at its middle chain.
  * An element whose stitches do not match the template's (count mismatch) is left unpinned.
  */
 import { paramsFor } from '../../params';
-import { findSpines } from '../../sim/spine';
+import type { Graph } from '../../graph';
+import { findSpines, type Spine } from '../../sim/spine';
 import type { SnowflakeResult } from './types';
 
 export interface SnowPin { node: number; x: number; y: number; kind: 'tip' | 'branch' | 'valley' | 'minor' }
+
+/**
+ * The pinned nodes of a spine: the tip (the tip-loop chain furthest out along the spine in its
+ * reference layout — where a pin pulls the loop to a point — else the last stem chain), the
+ * trefoil side picots (straight after the stitch closing the tip loop) and the branch picots, both
+ * in working order.
+ */
+export function armPinNodes(g: Graph, sp: Spine): { tip: number; sides: number[]; branches: number[] } {
+  let tip = sp.stem[sp.stem.length - 1];
+  let best = -Infinity;
+  for (const c of sp.tip) { const s = sp.pos.get(c)![0]; if (s > best + 1e-9) { best = s; tip = c; } }
+  const r1 = sp.tip.length ? sp.tip[sp.tip.length - 1] + 1 : -1;
+  const closes = r1 >= 0 && sp.ret.includes(r1);
+  const sides = closes ? sp.picots.filter((p) => p === r1 + 1 || p === r1 + 2) : [];
+  const branches = sp.picots.filter((p) => !sides.includes(p));
+  void g;
+  return { tip, sides, branches };
+}
 
 export function snowflakePins(res: Pick<SnowflakeResult, 'pattern' | 'shape'>): SnowPin[] {
   const pat = res.pattern;
@@ -65,18 +84,13 @@ export function snowflakePins(res: Pick<SnowflakeResult, 'pattern' | 'shape'>): 
       if (pic !== undefined) push(pic, el.tip, tipKind);
       return;
     }
-    const tipNode = sp.tip.length ? sp.tip[Math.floor(sp.tip.length / 2)] : sp.stem[sp.stem.length - 1];
-    push(tipNode, el.tip, tipKind);
-    const r1 = sp.tip.length ? sp.tip[sp.tip.length - 1] + 1 : -1;
-    const sides = sp.picots.filter((p) => p === r1 + 1 || p === r1 + 2);
-    const branches = sp.picots.filter((p) => !sides.includes(p));
-    const pair = (nodes: number[], pts: { x: number; y: number }[], kind: SnowPin['kind']) => {
-      if (nodes.length !== pts.length) return;
-      // template pairs are [−, +]; the first picot worked of a pair is on the + side
-      for (let i = 0; i + 1 < nodes.length; i += 2) { push(nodes[i], pts[i + 1], kind); push(nodes[i + 1], pts[i], kind); }
+    const { tip, sides, branches } = armPinNodes(g, sp);
+    push(tip, el.tip, tipKind);
+    const each = (nodes: number[], pts: { x: number; y: number }[], kind: SnowPin['kind']) => {
+      if (nodes.length === pts.length) nodes.forEach((v, i) => push(v, pts[i], kind));
     };
-    if (el.sides.length) pair(sides, el.sides, el.kind === 'minor' ? 'minor' : 'branch');
-    pair(branches, el.branches, 'branch');
+    if (el.sides.length) each(sides, el.sides, el.kind === 'minor' ? 'minor' : 'branch');
+    each(branches, el.branches, 'branch');
   });
   const inArm = new Set<number>();
   for (const gr of groups) for (const i of gr.interior) inArm.add(i);

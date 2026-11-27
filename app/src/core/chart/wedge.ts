@@ -28,7 +28,7 @@ export interface WedgeView {
   rotate: number;
   /** The layout rotated (same node ids and order); `bounds` = the wedge's bounds. */
   layout: ChartLayout;
-  /** Per node id: 1 = part of the wedge (drawn), 0 = outside (ghosted or hidden). */
+  /** Per node id: 2 = the repeat (drawn in full), 1 = its neighbours inside the wedge (half-tone), 0 = outside (ghosted or hidden). */
   inside: Uint8Array;
   /** Tight bounds of the wedge's symbols in the rotated layout (padded). */
   bounds: Bounds;
@@ -52,6 +52,10 @@ export function wedgeView(layout: ChartLayout, order: number, o: WedgeOptions = 
   const n = Math.round(order);
   const half = Math.PI / n;
   const pointed = [...layout.rounds].reverse().find((r) => r.pointed && r.arms && r.arms.length >= n);
+  // rounds' starts (turning chains, joins): the wedge shown avoids them when it can — they are not
+  // what the other repeats look like
+  const seams = layout.rounds.filter((r) => r.first >= 0).map((r) => r.s0);
+  const seamsNear = (a: number) => seams.filter((s0) => Math.abs(wrap(s0 - a)) < half + 0.05).length;
   let axis = o.axis ?? Math.PI / 2;
   let kind: WedgeView['kind'] = 'repeat';
   let chosen = -1;
@@ -63,54 +67,85 @@ export function wedgeView(layout: ChartLayout, order: number, o: WedgeOptions = 
     let best = Infinity;
     arms.forEach((a, i) => {
       if (len(a) < longest * 0.9) return;
-      const d = Math.abs(wrap(a.s - Math.PI / 2));
+      // (not the arm at the rounds' start, when there is another: its turning chains and joins are
+      // not what the other repeats look like)
+      const d = Math.abs(wrap(a.s - Math.PI / 2)) + 10 * seamsNear(a.s);
       if (d < best - 1e-9) { best = d; chosen = i; }
     });
     axis = arms[chosen].s;
     kind = 'arm';
   } else {
     // the copy of the given axis nearest 12 o'clock
+    // (the copy nearest 12 o'clock that is not the rounds' start, as for arms)
     const step = TAU / n;
-    const q = Math.round(wrap(Math.PI / 2 - axis) / step);
-    axis = wrap(axis + q * step);
+    let best = Infinity, pick = axis;
+    for (let q = 0; q < n; q++) {
+      const a = wrap(axis + q * step);
+      const d = Math.abs(wrap(a - Math.PI / 2)) + 10 * seamsNear(a);
+      if (d < best - 1e-9) { best = d; pick = a; }
+    }
+    axis = pick;
   }
   const tol = 0.03;
+  // 2 = the repeat itself (full ink), 1 = its neighbours inside the wedge (half-tone: stitches on
+  // the wedge's edges belong to the next repeat), 0 = the rest
   const N = layout.nodes.length;
   const inside = new Uint8Array(N);
   const angleOf = (m: ChartNode) => Math.atan2(-m.cy, m.cx);
-  const inWedge = (m: ChartNode) => Math.hypot(m.cx, m.cy) < 0.7 || Math.abs(wrap(angleOf(m) - axis)) <= half + tol;
-  for (const m of layout.nodes) if (inWedge(m)) inside[m.id] = 1;
   for (const r of layout.rounds) {
-    if (!r.pointed || !r.arms || r.first < 0) continue;
-    // arms: whole or not at all
-    const armOf = new Int32Array(r.last - r.first + 1).fill(-1);
-    r.arms.forEach((a, i) => {
-      const keep = Math.abs(wrap(a.s - axis)) <= half + tol;
-      for (let id = a.first; id <= a.last; id++) { inside[id] = keep ? 1 : 0; armOf[id - r.first] = i; }
+    if (r.first < 0) continue;
+    for (let id = r.first; id <= r.last; id++) {
+      const m = layout.nodes[id];
+      if (Math.hypot(m.cx, m.cy) < 0.7) { inside[id] = 2; continue; }
+      const rel = r.dir * wrap(angleOf(m) - axis);
+      inside[id] = rel >= -half - tol && rel < half - tol ? 2 : Math.abs(rel) <= half + tol ? 1 : 0;
+    }
+  }
+  for (const r of layout.rounds) {
+    if (!r.pointed || !r.arms || r.first < 0 || !r.arms.length) continue;
+    const arms = r.arms;
+    const ci = arms.findIndex((a) => Math.abs(wrap(a.s - axis)) <= tol + 1e-9) >= 0
+      ? arms.findIndex((a) => Math.abs(wrap(a.s - axis)) <= tol + 1e-9)
+      : arms.reduce((bi, a, i) => (Math.abs(wrap(a.s - axis)) < Math.abs(wrap(arms[bi].s - axis)) ? i : bi), 0);
+    const len = r.last - r.first + 1;
+    const ids = (from: number, count: number) => Array.from({ length: Math.max(0, count) }, (_, q) => r.first + (((from - r.first + q) % len) + len) % len);
+    const alen = (a: (typeof arms)[number]) => a.r1 - a.r0;
+    const longest = Math.max(...arms.map(alen));
+    const major = (i: number) => alen(arms[i]) >= longest * 0.9;
+    const A = arms.length;
+    // the repeat's arms: the chosen arm and the minor arms after it, up to the next main arm
+    const group: number[] = [ci];
+    for (let i = (ci + 1) % A; i !== ci && !major(i); i = (i + 1) % A) group.push(i);
+    let prevI = (ci - 1 + A) % A;
+    arms.forEach((a, i) => { for (let id = a.first; id <= a.last; id++) inside[id] = group.includes(i) ? 2 : 0; });
+    const stretch = (i: number) => {
+      const a = arms[i], b = arms[(i + 1) % A];
+      const from = a.last + 1;
+      const count = ((b.first - from) % len + len) % len;
+      return ids(from, count);
+    };
+    const isSeam = (x: number) => { const m = layout.nodes[x]; return m.role === 'travel' || m.role === 'join' || m.kind === 'tch'; };
+    const stitches = (xs: number[]) => xs.filter((x) => layout.nodes[x].kind === 'stitch');
+    // after each arm of the repeat (working order): closing stitch, bridge, valley anchor; the
+    // last one stops before the next main arm's opening stitch
+    group.forEach((gi, q) => {
+      const after = stretch(gi);
+      const nextOpen = q === group.length - 1 ? stitches(after).pop() : undefined;
+      // (the round's seam — travelling sl sts, the join, a loose turning chain — is not part of the repeat)
+      for (const x of after) inside[x] = x === nextOpen || isSeam(x) ? 0 : 2;
     });
-    // the bridges either side of a kept arm: whole (with a valley anchor in them)
-    let id = r.first;
-    while (id <= r.last) {
-      if (armOf[id - r.first] >= 0) { id++; continue; }
-      let e = id;
-      while (e + 1 <= r.last && armOf[e + 1 - r.first] < 0) e++;
-      // a stretch between two arms: its chains and anchors, not the arm-base stitches next to
-      // a dropped arm
-      const any = (() => { for (let x = id; x <= e; x++) if (inside[x] && layout.nodes[x].kind === 'chain') return true; return false; })();
-      if (any) {
-        for (let x = id; x <= e; x++) {
-          const m = layout.nodes[x];
-          if (m.kind === 'chain' || m.kind === 'slst' || m.kind === 'tch') inside[x] = 1;
-          else if (m.kind === 'stitch') {
-            // a stitch beside an arm belongs with that arm
-            const prevArm = x - 1 >= r.first ? armOf[x - 1 - r.first] : -1;
-            const nextArm = x + 1 <= r.last ? armOf[x + 1 - r.first] : -1;
-            const besideArm = prevArm >= 0 ? prevArm : nextArm;
-            inside[x] = besideArm >= 0 ? (Math.abs(wrap(r.arms[besideArm].s - axis)) <= half + tol ? 1 : 0) : 1;
-          }
-        }
-      }
-      id = e + 1;
+    // before the arm: the previous repeat's bridge (and a minor arm there), shown as context
+    if (!group.includes(prevI)) {
+      const before = stretch(prevI);
+      const st = stitches(before);
+      const prevClose = st[0], open = st[st.length - 1];
+      for (const x of before) inside[x] = x === open ? 2 : (x === prevClose && major(prevI)) || isSeam(x) ? 0 : 1;
+      if (!major(prevI)) for (let id = arms[prevI].first; id <= arms[prevI].last; id++) inside[id] = 1;
+    } else prevI = -1;
+    // other stretches (far from the wedge) are out
+    for (let i = 0; i < A; i++) {
+      if (group.includes(i) || i === prevI) continue;
+      for (const x of stretch(i)) inside[x] = 0;
     }
   }
   const rotate = Math.PI / 2 - axis;

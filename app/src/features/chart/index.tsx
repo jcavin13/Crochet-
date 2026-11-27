@@ -8,7 +8,7 @@ import { usePersistentState, useSettings } from '@/store';
 import {
   Badge, Button, Card, EmptyState, Icon, Page, PageHeader, SegmentedControl, ShapeBadge, Slider, Toggle, buttonClass, toast,
 } from '@/ui';
-import { ChartView, useChartLayout } from './ChartView';
+import { ChartView, useChartLayout, useChartWedge, type ChartViewMode } from './ChartView';
 import { ChartLegend } from './Legend';
 import { downloadChartPng, downloadChartSvg } from './export';
 import { SymmetryPanel, useSymmetry } from '@/features/symmetry/SymmetryPanel';
@@ -68,11 +68,17 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
   const sym = useSymmetry(pattern);
   const [emphasis, setEmphasis] = useState<number[]>([]);
   useEffect(() => { setEmphasis([]); }, [pattern]);
-  const showSym = prefs.symmetry && !prefs.print && layout.mode === 'radial' && !!sym?.applicable;
+  // whole piece or one repeat wedge (one arm of a snowflake): starts on one arm for pointed pieces on narrow screens
+  const wedge = useChartWedge(pattern, layout);
+  const pointedPiece = layout.rounds.some((r) => r.pointed);
+  const [view, setView] = useState<ChartViewMode>(() => (pointedPiece && typeof window !== 'undefined' && window.innerWidth < 600 ? 'arm' : 'all'));
+  const armView = view === 'arm' && !!wedge;
+  const showSym = prefs.symmetry && !prefs.print && layout.mode === 'radial' && !!sym?.applicable && !armView;
   const svgOpts = {
     symbols: { set: prefs.set, sc: prefs.sc }, showFlatness: showFlat, showLabels: prefs.labels, uptoRound: upto,
-    title, terms, mono: prefs.print,
+    title, terms, mono: prefs.print, wedge: armView ? wedge : null,
   };
+  const armWord = wedge?.kind === 'arm' ? 'one arm' : 'one repeat';
 
   const exportSvg = () => { downloadChartSvg(layout, svgOpts, title); toast('Chart downloaded as SVG'); };
   const exportPng = () => {
@@ -139,6 +145,8 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
                 terms={terms}
                 symmetryOverlay={showSym ? sym : null}
                 emphasisNodes={prefs.print ? undefined : emphasis}
+                view={view}
+                onViewChange={setView}
               />
             </Card>
             <p className="muted small" style={{ margin: 'var(--s-2) 0 0' }}>
@@ -161,6 +169,12 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
               <Toggle label="Flatness band" checked={prefs.flatness} onChange={(v) => set({ flatness: v })} disabled={layout.mode !== 'radial' || prefs.print} />
               <Toggle label="Round numbers" checked={prefs.labels} onChange={(v) => set({ labels: v })} />
               <Toggle label="Symmetry" checked={prefs.symmetry} onChange={(v) => set({ symmetry: v })} disabled={layout.mode !== 'radial' || prefs.print || !sym?.applicable} />
+              <Toggle
+                label={wedge?.kind === 'arm' ? `One arm (×${wedge.order})` : wedge ? `One repeat (×${wedge.order})` : 'One repeat'}
+                checked={armView}
+                onChange={(v) => setView(v ? 'arm' : 'all')}
+                disabled={!wedge}
+              />
               <Toggle label="Print-friendly" checked={prefs.print} onChange={(v) => set({ print: v })} />
             </div>
             <div className="ch-segs">
@@ -234,7 +248,7 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
                           : r.class === 'n/a' ? <Badge tone="outline">n/a</Badge>
                           : r.slackOnly ? <ShapeBadge shape="flat">flat (loose loops)</ShapeBadge>
                           : <ShapeBadge shape={r.class} />}
-                        <span>{pointed.has(r.round) ? `${r.label}: pointed round — judged by blocking (its arms are pinned out, not laid on a circle).` : r.message}</span>
+                        <span>{pointed.has(r.round) ? `${r.label}: pointed round — judged by blocking: its arms are stiffened and pinned out to the dashed star (tips and valleys), not laid on a circle.` : r.message}</span>
                       </button>
                     </li>
                   ))}
@@ -253,7 +267,10 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
               <Button size="sm" onClick={print}>Print…</Button>
             </div>
             <p className="muted small" style={{ margin: 'var(--s-2) 0 0' }}>
-              Exports the chart as shown (up to {rounds[upto]?.label}), with its legend. Symbols after the Craft Yarn Council chart conventions.
+              {armView
+                ? <>Exports {armWord} of {wedge!.order} enlarged (“work it ×{wedge!.order}”), with its legend. Switch to Whole to export the whole piece.</>
+                : <>Exports the chart as shown (up to {rounds[upto]?.label}), with its legend{wedge ? <> — switch on {armWord} to export it enlarged</> : null}.</>}
+              {' '}Symbols after the Craft Yarn Council chart conventions.
             </p>
           </Card>
         </aside>

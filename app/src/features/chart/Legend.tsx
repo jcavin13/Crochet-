@@ -26,6 +26,13 @@ export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet 
           );
         })}
       </ul>
+      {pointed && (
+        <p className="ch-shapekey" aria-label="Pointed round">
+          <span title="The arms stand off the circle (chain spines, pointed loops): such a round is stiffened and pinned out, so it is judged by how it blocks, not by the circle rule.">
+            <i className="ch-swatch ch-swatch--pointed" aria-hidden="true" />pointed round: pin the arm tips and the valleys out to the dashed star — judged by blocking
+          </span>
+        </p>
+      )}
       {showFlatness && layout.mode === 'radial' && (
         <div className="ch-shapekey" aria-label="Flatness band">
           <span><i className="ch-swatch ch-swatch--flat" aria-hidden="true" />lies flat</span>
@@ -36,11 +43,6 @@ export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet 
           )}
           <span><i className="ch-swatch ch-swatch--cup" aria-hidden="true" />cups (too few sts)</span>
           <span><i className="ch-swatch ch-swatch--ruffle" aria-hidden="true" />ruffles (too many)</span>
-          {pointed && (
-            <span title="The arms stand off the circle (chain spines, pointed loops): such a round is stiffened and pinned out, so it is judged by how it blocks, not by the circle rule.">
-              <i className="ch-swatch ch-swatch--pointed" aria-hidden="true" />pointed round — judged by blocking
-            </span>
-          )}
         </div>
       )}
     </div>

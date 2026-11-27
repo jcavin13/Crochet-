@@ -217,6 +217,8 @@ export class Placer {
     }
     // P7 spines: radially outward from their base, in their reference layout
     this.placeSpines(r);
+    // P8 pointed loops: likewise, a narrow outward loop with the picot at its apex
+    this.placePointedLoops(r);
     // P4' chain-space loops on an outward arc
     this.placeLoops(r, ids);
     // P6 perturbation
@@ -249,11 +251,35 @@ export class Placer {
     }
   }
 
+  /**
+   * P8 (crolab.sim._place_pointed_loops): every pointed loop (N6) of round r whose base and close
+   * are placed is laid out like a spine (P7): x = x_base + s u + σ t v, with u, v as in P7 and
+   * σ = −1 when the close node lies on the −v side of the base ((x_close − x_base)·v < 0), else +1.
+   */
+  private placePointedLoops(r: number) {
+    const { net, g, X } = this;
+    for (const pl of net.pointedLoops) {
+      if (g.nodes[pl.base].round !== r || !isPlaced(X, pl.base) || !isPlaced(X, pl.close)) continue;
+      const o = get(X, pl.base);
+      let [u, nu] = unit(sub(o, this.roundCentroid));
+      if (nu < 1e-9) u = [1, 0, 0];
+      let [t, nt] = unit(cross(Z, u));
+      if (nt < 1e-9) [t] = unit(cross(u, [1, 0, 0]));
+      const sg = dot3(sub(get(X, pl.close), o), t) < 0 ? -1 : 1;
+      for (const v of pl.nodes) {
+        const [s_, t_] = pl.pos.get(v)!;
+        set(X, v, add(add(o, scale(u, s_)), scale(t, sg * t_)));
+      }
+    }
+  }
+
   private placeLoops(r: number, ids: number[]) {
     const { net, g, X } = this;
     const idset = new Set(ids);
+    const inLoop = new Set<number>();
+    for (const pl of net.pointedLoops) for (const v of pl.nodes) inLoop.add(v);
     for (const sp of g.spaces) {
-      if (sp.kind !== 'chsp' || sp.round !== r || !sp.chains.length) continue;
+      if (sp.kind !== 'chsp' || sp.round !== r || !sp.chains.length || inLoop.has(sp.chains[0])) continue;
       const ch = sp.chains;
       const a = ch[0] - 1, b = ch[ch.length - 1] + 1;
       if (!idset.has(a) || !idset.has(b) || !isPlaced(X, a) || !isPlaced(X, b)) continue;

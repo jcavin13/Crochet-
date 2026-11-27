@@ -8,3 +8,5 @@ export { extractTitle, forkTitle, readHeaders, declaredCounts, setTitleInText } 
 export { kv, setKVBackends, memoryKV, idbKV } from './kv';
 export type { KV } from './kv';
 export type { PatternRecord, PatternOrigin } from './types';
+export { useMyYarns, useYarnChoice, addYarn, updateYarn, removeYarn, newYarnId, yarnStore, MY_YARNS_KEY, choiceKey } from './yarns';
+export type { MyYarn, YarnCalibration, YarnChoice, YarnSwatchRecord } from './yarns';

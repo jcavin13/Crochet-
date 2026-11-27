@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { compilePattern } from '../notation';
 import { paramSetById, paramsFor, stitchParam } from '../params';
 import { generateSnowflake, randomSnowflake, SNOWFLAKE_PRESETS, type SnowflakeResult, type SnowflakeSpec } from '../generate/snowflake';
-import { buildHitIndex, chartToSvg, hitTest, layoutChart, POINTED_NOTE, roundAt } from './index';
+import { analyzeSymmetry } from '../symmetry';
+import { buildHitIndex, chartToSvg, hitTest, layoutChart, POINTED_NOTE, roundAt, wedgeView } from './index';
 import type { ChartLayout, ChartNode, ChartRound } from './types';
 
 const THREAD = paramSetById('thread-10_1.5mm')!;
@@ -78,10 +79,15 @@ function checkSnowflake(r: SnowflakeResult, where: string): number {
     const x = m.cx * cs + m.cy * sn, y = -m.cx * sn + m.cy * cs;
     let best = Infinity;
     for (const q of ns) if (q.symbol.key === m.symbol.key) best = Math.min(best, Math.hypot(q.cx - x, q.cy - y));
-    // tolerance: 0.25 units plus ~0.6° of arc (the body rounds' own small seam effects, carried out along the arms)
-    worst = Math.max(worst, best - 0.01 * Math.hypot(m.cx, m.cy));
+    // closed rounds of an n-fold piece are laid out exactly n-fold (seam tucked in), so the arms are too
+    worst = Math.max(worst, best);
   }
-  expect(worst, `${where} ${n}-fold symmetry`).toBeLessThan(0.25);
+  expect(worst, `${where} ${n}-fold symmetry`).toBeLessThan(0.02);
+  // the arms themselves: exactly 2π/n apart
+  const step = (2 * Math.PI) / n, per = arms.length / n;
+  for (let i = 0; i + per < arms.length; i++) {
+    expect(Math.abs(wrap(arms[i + per].s - arms[i].s - R.dir * step)), `${where} arm angle ${i}`).toBeLessThan(1e-6);
+  }
 
   // neighbouring arms keep clear of each other (for designs that block crisply)
   let pairs = 0;
@@ -191,4 +197,102 @@ describe('chart layout of snowflakes (pointed rounds)', () => {
     for (const c of lp.spine) expect(Math.hypot(L.nodes[c].x, L.nodes[c].y)).toBeLessThan(Math.hypot(pic.cx, pic.cy));
     expect(lp.r1 - lp.r0).toBeGreaterThan(6 * PITCH * 0.8);
   });
+
+  it('paired fronds are mirror images about the spine, rooted beside it (not on a chain)', () => {
+    const r = generateSnowflake(SNOWFLAKE_PRESETS.find((p) => p.id === 'fern')!.spec, THREAD);
+    const g = r.pattern!.graph;
+    const L = layoutChart(g, THREAD);
+    const a = pointedRound(L).arms![0];
+    const u = { x: Math.cos(a.s), y: -Math.sin(a.s) }, v = { x: -u.y, y: u.x };
+    const along = (m: ChartNode) => m.x * u.x + m.y * u.y, across = (m: ChartNode) => m.x * v.x + m.y * v.y;
+    for (let id = a.first; id < a.last; id++) {
+      if (g.nodes[id].type !== 'picot' || g.nodes[id + 1].type !== 'picot') continue;
+      const p = L.nodes[id], q = L.nodes[id + 1];
+      expect(Math.abs(along(p) - along(q))).toBeLessThan(1e-6);
+      expect(Math.abs(across(p) + across(q))).toBeLessThan(1e-6);
+      expect(Math.abs(across(p))).toBeGreaterThan(0.03);
+      // the root sits between two spine chains, not on one
+      for (const c of a.spine) expect(Math.abs(along(L.nodes[c]) - along(p))).toBeGreaterThan(0.2);
+      id++;
+    }
+  });
+
+  it('a cluster tip stands on the spine end, pointing out, its turning chain stacked beside it in line', () => {
+    const r = generateSnowflake(SNOWFLAKE_PRESETS.find((p) => p.id === 'bold-star')!.spec, THREAD);
+    const L = layoutChart(r.pattern!.graph, THREAD);
+    const a = pointedRound(L).arms![0];
+    const u = { x: Math.cos(a.s), y: -Math.sin(a.s) }, v = { x: -u.y, y: u.x };
+    const cl = L.nodes.slice(a.first, a.last + 1).find((m) => m.symbol.cluster)!;
+    expect(cl.arm).toBe('tip');
+    expect(Math.abs(wrap(cl.rot - Math.atan2(u.y, u.x)))).toBeLessThan(1e-6);
+    const tip = a.tip.map((id) => L.nodes[id]);
+    expect(tip.length).toBe(3);
+    const across = (m: { x: number; y: number }) => m.x * v.x + m.y * v.y, along = (m: { x: number; y: number }) => m.x * u.x + m.y * u.y;
+    for (const c of tip) expect(Math.abs(across(c) - across(tip[0]))).toBeLessThan(1e-6);
+    for (let i = 1; i < tip.length; i++) expect(along(tip[i])).toBeGreaterThan(along(tip[i - 1]));
+    // beside the cluster, on the other side of the spine line
+    expect(Math.sign(across(tip[0]) - across(L.nodes[a.spine[0]]))).toBe(-Math.sign(across(cl.legs[0]) - across(L.nodes[a.spine[0]])));
+  });
+
+  it('valley bridges: evenly spaced chains, clear of the arm-base stitches; the outline runs through tips and bridge pins', () => {
+    for (const id of ['fern', 'trefoil', 'simple-star']) {
+      const r = generateSnowflake(SNOWFLAKE_PRESETS.find((p) => p.id === id)!.spec, THREAD);
+      const g = r.pattern!.graph;
+      const L = layoutChart(g, THREAD);
+      const R = pointedRound(L);
+      const inArm = new Set<number>();
+      for (const a of R.arms!) for (let x = a.first; x <= a.last; x++) inArm.add(x);
+      // runs of bridge chains
+      let x = R.first;
+      while (x <= R.last) {
+        if (inArm.has(x) || L.nodes[x].kind !== 'chain') { x++; continue; }
+        const run: ChartNode[] = [];
+        while (x <= R.last && !inArm.has(x) && L.nodes[x].kind === 'chain') run.push(L.nodes[x++]);
+        const d = run.slice(1).map((m, i) => Math.hypot(m.x - run[i].x, m.y - run[i].y));
+        const mean = d.reduce((a, b) => a + b, 0) / Math.max(1, d.length);
+        for (const di of d) expect(Math.abs(di - mean) / mean, `${id} bridge spacing`).toBeLessThan(0.12);
+        for (const nb of [L.nodes[run[0].id - 1], L.nodes[run[run.length - 1].id + 1]]) {
+          if (!nb || nb.kind !== 'stitch') continue;
+          for (const m of run) expect(Math.hypot(m.x - nb.x, m.y - nb.y), `${id} bridge clear of ${nb.id}`).toBeGreaterThan(0.3);
+        }
+      }
+      const h = R.hull!;
+      expect(h.length).toBeGreaterThanOrEqual(2 * R.arms!.length);
+      for (const a of R.arms!) expect(h.some((p) => Math.abs(Math.hypot(p.x, p.y) - (a.r1 + 0.2)) < 1e-2)).toBe(true);
+    }
+  });
+
+  it('one-arm view: the arm points up, one repeat in full ink, n repeats make the round', () => {
+    for (const p of SNOWFLAKE_PRESETS) {
+      const r = generateSnowflake(p.spec, THREAD);
+      const g = r.pattern!.graph;
+      const L = layoutChart(g, THREAD);
+      const n = analyzeSymmetry(g).order;
+      expect(n, p.id).toBe(p.spec.points);
+      const W = wedgeView(L, n)!;
+      expect(W.kind).toBe('arm');
+      expect(W.order).toBe(n);
+      const R = W.layout.rounds.find((x) => x.pointed)!;
+      const arm = R.arms!.find((a) => Math.abs(wrap(a.s - Math.PI / 2)) < 1e-9)!;
+      expect(arm, p.id).toBeDefined();
+      if (arm.kind === 'spine') for (const c of arm.spine) expect(Math.abs(W.layout.nodes[c].x), p.id).toBeLessThan(1e-6);
+      else for (const c of arm.tip) expect(Math.abs(W.layout.nodes[c].x), p.id).toBeLessThan(0.3);
+      // the pointed round: the repeat (level 2) times n covers the round, seam aside
+      const seam = (m: ChartNode) => m.role === 'travel' || m.role === 'join' || m.kind === 'tch';
+      let rep = 0, all = 0;
+      for (let id = R.first; id <= R.last; id++) { if (seam(W.layout.nodes[id])) continue; all++; if (W.inside[id] === 2) rep++; }
+      expect(rep * n, p.id).toBe(all);
+      // much smaller than the whole chart
+      expect((W.bounds.maxX - W.bounds.minX) * (W.bounds.maxY - W.bounds.minY)).toBeLessThan(0.5 * (L.bounds.maxX - L.bounds.minX) * (L.bounds.maxY - L.bounds.minY));
+      const svg = chartToSvg(L, { wedge: W, title: p.id });
+      expect(svg).toContain(`data-wedge="${n}"`);
+      expect(svg).toContain(`×${n}`);
+    }
+  });
+
+  it('no symmetry, no wedge', () => {
+    const r = generateSnowflake(SNOWFLAKE_PRESETS[0].spec, THREAD);
+    expect(wedgeView(layoutChart(r.pattern!.graph, THREAD), 1)).toBeNull();
+  });
 });
+

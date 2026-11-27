@@ -63,7 +63,7 @@ export function printRound(r: RoundAst, label: string, terms: Terms): string {
 const anchorKey = (n: Node, i = 0): string | undefined => {
   const a = n.into[i];
   if (!a) return undefined;
-  return 'space' in a ? `s${a.space}` : `n${a.node}`;
+  return 'space' in a ? `s${a.space}` : a.part ? `n${a.node}:${a.part}` : `n${a.node}`;
 };
 
 function anchorPhrase(graph: Graph, n: Node, terms: Terms, used: Set<string>): string {
@@ -76,6 +76,8 @@ function anchorPhrase(graph: Graph, n: Node, terms: Terms, used: Set<string>): s
     return `${nextOrSame} ch-${a.space.chains.length} sp`;
   }
   const t = a.node;
+  if (a.part === 'side') return `${nextOrSame} row end`;
+  if (a.part === 'base') return `${nextOrSame} ch (other side of the chain)`;
   if (t.type === 'ch') {
     if (t.countsAs) return t.round === n.round ? 'top of beg ch' : 'top of tch';
     return `${nextOrSame} ch`;

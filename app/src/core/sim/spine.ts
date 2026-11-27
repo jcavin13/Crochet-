@@ -72,6 +72,115 @@ export function findSpines(g: Graph, w: ArrayLike<number>, h: ArrayLike<number>,
   return out;
 }
 
+/**
+ * Pointed loops (SPEC_NOTES N6): `ch ≥ 4, picot(s), ch ≥ 4` worked off one stitch — the two chain
+ * runs are whole chain spaces of the same round (the picot splits them), nothing is worked into
+ * either space or into their chains by any node, and the loop closes on the next node of the round
+ * (`(sc, ch 10, ch-4 picot, ch 10, sc) in next sp`). `base` is the node before the first run,
+ * `close` the node after the second.
+ */
+export interface PointedLoop {
+  base: number;
+  close: number;
+  a: number[];
+  picots: number[];
+  b: number[];
+  /** node → [s, t] reference position (base at the origin, +t towards `close`); includes base and close. */
+  pos: Map<number, [number, number]>;
+  /** a, picots, b in increasing id (base and close excluded). */
+  nodes: number[];
+}
+
+/** Shortest chain run on either side of the picot of a pointed loop (the chart's LOOP_MIN). */
+export const POINTED_LOOP_MIN = 4;
+
+export function findPointedLoops(g: Graph, w: ArrayLike<number>): PointedLoop[] {
+  const n = g.nodes.length;
+  const spaceOf = new Map<number, number>();
+  for (const s of g.spaces) if (s.kind === 'chsp') for (const c of s.chains) spaceOf.set(c, s.id);
+  const used = new Set<number>();   // chains worked into, and spaces with members
+  for (const nd of g.nodes) {
+    for (const a of nd.into) {
+      if ('node' in a) used.add(a.node);
+      else used.add(-1 - a.space);
+    }
+  }
+  const free = (s: number) => {
+    const sp = g.spaces[s];
+    return !used.has(-1 - s) && sp.chains.every((c) => !used.has(c) && g.nodes[c].role !== 'tch');
+  };
+  const out: PointedLoop[] = [];
+  for (const s1 of g.spaces) {
+    if (s1.kind !== 'chsp' || s1.chains.length < POINTED_LOOP_MIN || !free(s1.id)) continue;
+    const a = s1.chains;
+    const base = a[0] - 1;
+    let p = a[a.length - 1] + 1;
+    const picots: number[] = [];
+    while (p < n && g.nodes[p].type === 'picot' && g.nodes[p].round === s1.round) picots.push(p++);
+    if (!picots.length || p >= n || base < 0) continue;
+    const s2 = spaceOf.get(p);
+    if (s2 === undefined || g.spaces[s2].chains[0] !== p || g.spaces[s2].round !== s1.round) continue;
+    const b = g.spaces[s2].chains;
+    if (b.length < POINTED_LOOP_MIN || !free(s2)) continue;
+    const close = b[b.length - 1] + 1;
+    if (close >= n || g.nodes[close].round !== s1.round || g.nodes[base].round !== s1.round || g.nodes[base].type === 'ch' || g.nodes[close].type === 'ch') continue;
+    out.push(pointedLoop(base, [...a], picots, [...b], close, w));
+  }
+  return out;
+}
+
+/**
+ * N6 layout: the feet `base` (0, 0) and `close` (0, d), d = (w_base + w_close)/2 (two stitches
+ * side by side); the path base → a → picots → b → close (course rest lengths, total S) folded into
+ * an isosceles triangle with legs S/2: a node at path length l lies on the first leg at l/(S/2) of
+ * the way to the apex (H, d/2), H = sqrt((S/2)² − (d/2)²), beyond S/2 on the second leg.
+ */
+export function pointedLoop(base: number, a: number[], picots: number[], b: number[], close: number, w: ArrayLike<number>): PointedLoop {
+  const pl: PointedLoop = { base, close, a, picots, b, pos: new Map(), nodes: [...a, ...picots, ...b] };
+  loopLayout(pl, w);
+  return pl;
+}
+
+function loopLayout(pl: PointedLoop, w: ArrayLike<number>) {
+  const path = [pl.base, ...pl.nodes, pl.close];
+  const cum = [0];
+  for (let k = 1; k < path.length; k++) cum.push(cum[k - 1] + 0.5 * (w[path[k - 1]] + w[path[k]]));
+  const S = cum[cum.length - 1];
+  const d = 0.5 * (w[pl.base] + w[pl.close]);
+  const half = S / 2;
+  const H = Math.sqrt(Math.max(0, half * half - 0.25 * d * d));
+  path.forEach((v, k) => {
+    const l = cum[k];
+    if (l <= half) { const f = half > 0 ? l / half : 0; pl.pos.set(v, [f * H, f * 0.5 * d]); }
+    else { const f = (S - l) / half; pl.pos.set(v, [f * H, d - f * 0.5 * d]); }
+  });
+}
+
+/**
+ * Bases of arms, from the graph alone: the node before a spine's first chain (N5: a run of free
+ * chains with a return stitch) and the base of every pointed loop (N6). Used by the seam rule N7.
+ */
+export function armBases(g: Graph, loops: PointedLoop[]): Set<number> {
+  const n = g.nodes.length;
+  const inSpace = new Set<number>();
+  for (const s of g.spaces) for (const c of s.chains) inSpace.add(c);
+  const free = (i: number) => { const nd = g.nodes[i]; return nd.type === 'ch' && nd.role !== 'tch' && !nd.countsAs && !inSpace.has(i); };
+  const out = new Set<number>(loops.map((l) => l.base));
+  const back = new Set<number>();
+  for (const nd of g.nodes) for (const a of nd.into) if ('node' in a && a.node < nd.id && free(a.node) && g.nodes[a.node].round === nd.round) back.add(a.node);
+  let i = 0;
+  while (i < n) {
+    if (!free(i)) { i++; continue; }
+    let j = i;
+    while (j + 1 < n && free(j + 1) && g.nodes[j + 1].round === g.nodes[i].round) j++;
+    let got = false;
+    for (let c = i; c <= j; c++) if (back.has(c)) got = true;
+    if (got && i >= 1) out.add(i - 1);
+    i = j + 1;
+  }
+  return out;
+}
+
 function layout(g: Graph, sp: Spine, h: ArrayLike<number>, wCh: number, Lc: (a: number, b: number) => number) {
   const pos = sp.pos;
   let s = 0;

@@ -13,7 +13,7 @@ import { analyzeFlatness } from '../flatness';
 import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../params';
 import { hyp, sq } from './lbfgs';
 import { dsin, npMean } from './detmath';
-import { findSpines, type Spine } from './spine';
+import { armBases, findPointedLoops, findSpines, type PointedLoop, type Spine } from './spine';
 
 export const COURSE = 0, WALE = 1, SHEAR = 2, BEND_COURSE = 3, BEND_WALE = 4;
 export type SpringKind = 0 | 1 | 2 | 3 | 4;
@@ -46,6 +46,8 @@ export interface Network {
   params: ParamSet;
   /** Spines (chains with stitches worked back along them), SPEC_NOTES N5. */
   spines: Spine[];
+  /** Pointed loops (`ch ≥ 4, picot, ch ≥ 4` off one stitch, nothing worked into them), SPEC_NOTES N6. */
+  pointedLoops: PointedLoop[];
 }
 
 /** Plain-object view of the springs (for tests and debugging). */
@@ -89,11 +91,37 @@ function param(set: ParamSet, t: string, key: 'width' | 'height' | 'stiffness'):
   return p[key];
 }
 
-export function resolveAnchorParticles(g: Graph, spaceParticle: Map<number, number>): number[][] {
+/**
+ * Seam slip stitches of arm spaces (SPEC_NOTES N7): a chain space that carries an arm (a member is
+ * the base of a spine or of a pointed loop) and whose first member is a slip stitch that starts its
+ * round (only slip stitches before it in the round: `sl st in next ch-2 sp, ch 1, (sc, <arm>, sc) in
+ * same sp`). Returns that slip stitch per space. In such a space the slip stitch takes no share of
+ * the chains: it attaches to the first chain (where the hook enters the space) and the other members
+ * are distributed as if it were not there.
+ */
+export function seamSlipStitches(g: Graph, bases: Set<number>): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const s of g.spaces) {
+    if (s.kind !== 'chsp') continue;
+    const mem = nodesInSpace(g, s.id);
+    if (mem.length < 2 || !mem.some((v) => bases.has(v))) continue;
+    const f = mem[0], nd = g.nodes[f];
+    if (nd.type !== 'slst') continue;
+    const rd = g.rounds[nd.round];
+    let lead = true;
+    for (let i = rd.first; i < f; i++) if (g.nodes[i].type !== 'slst') lead = false;
+    if (lead) out.set(s.id, f);
+  }
+  return out;
+}
+
+export function resolveAnchorParticles(g: Graph, spaceParticle: Map<number, number>, seam: Map<number, number> = new Map()): number[][] {
   const orderInSpace = new Map<number, Map<number, number>>();
   for (const s of g.spaces) {
     const m = new Map<number, number>();
-    nodesInSpace(g, s.id).forEach((nid, idx) => m.set(nid, idx + 1));
+    // N7: a seam slip stitch of an arm space takes no share (it attaches to the first chain)
+    const sl = seam.get(s.id);
+    nodesInSpace(g, s.id).filter((v) => v !== sl).forEach((nid, idx) => m.set(nid, idx + 1));
     orderInSpace.set(s.id, m);
   }
   const out: number[][] = [];
@@ -108,8 +136,9 @@ export function resolveAnchorParticles(g: Graph, spaceParticle: Map<number, numb
         const chains = sp.chains;
         const ord = orderInSpace.get(s)!;
         const m = ord.size;
-        const jj = ord.get(nd.id)!;
-        if (sp.kind === 'ring' && chains.length === 0) p = spaceParticle.get(s)!;
+        const jj = ord.get(nd.id) ?? 1;
+        if (seam.get(s) === nd.id) p = chains[0];
+        else if (sp.kind === 'ring' && chains.length === 0) p = spaceParticle.get(s)!;
         else if (sp.kind === 'ring') {
           const n = chains.length;
           const q = Math.floor(((jj - 1) * n) / m) + 1;
@@ -342,7 +371,8 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
     prounds.push(s.round);
   }
   const nParticles = n + spaceParticle.size;
-  const anchors = resolveAnchorParticles(g, spaceParticle);
+  const pointedLoops = findPointedLoops(g, w);
+  const anchors = resolveAnchorParticles(g, spaceParticle, (globalThis as { __NO_N7?: boolean }).__NO_N7 ? new Map() : seamSlipStitches(g, armBases(g, pointedLoops)));
 
   const ringLen = new Map<number, number>();
   for (const [s, p] of spaceParticle) {
@@ -433,6 +463,25 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
     }
   }
 
+  // N6: pointed loops are starched open loops: every spring between two nodes of one loop (its feet
+  // included) takes its rest length from the loop's flat layout and is two-sided; course bends along
+  // the loop get course stiffness
+  const loopOwner = new Map<number, number>();
+  if (pointedLoops.length) {
+    pointedLoops.forEach((pl, li) => { for (const v of pl.pos.keys()) loopOwner.set(v, li); });
+    for (let idx = 0; idx < gi.length; idx++) {
+      const a = gi[idx], b = gj[idx];
+      const la = loopOwner.get(a), lb = loopOwner.get(b);
+      if (la === undefined || la !== lb) continue;
+      const pa = pointedLoops[la].pos.get(a)!, pb = pointedLoops[la].pos.get(b)!;
+      gL[idx] = hyp(pa[0] - pb[0], pa[1] - pb[1]);
+      if (gt[idx] === BEND_COURSE) {
+        const lo = Math.min(a, b);
+        gk[idx] = kc * Math.min(sCourse[lo], sCourse[lo + 1], sCourse[lo + 2]);
+      }
+    }
+  }
+
   // C4: duplicates keep the largest k; on a tie the first generated
   const best = new Map<number, number>();
   for (let idx = 0; idx < gi.length; idx++) {
@@ -449,7 +498,8 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
   keep.forEach((idx, s) => {
     const a = Math.min(gi[idx], gj[idx]), b = Math.max(gi[idx], gj[idx]);
     I[s] = a; J[s] = b; L[s] = gL[idx]; K[s] = gk[idx]; kind[s] = gt[idx];
-    if (gt[idx] === COURSE || gt[idx] === BEND_COURSE) {
+    const lo = loopOwner.get(a);
+    if ((gt[idx] === COURSE || gt[idx] === BEND_COURSE) && !(lo !== undefined && lo === loopOwner.get(b))) {
       for (let q = a; q <= b && q < n; q++) if (chspChain[q]) { slack[s] = 1; break; }
     }
   });
@@ -458,6 +508,6 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
   return {
     nNodes: n, nParticles, m, I, J, L, k: K, kind, slack, springs,
     particleRound: Int32Array.from(prounds), virtualSpace, spaceParticle, anchors,
-    width: w, height: h, graph: g, params, spines,
+    width: w, height: h, graph: g, params, spines, pointedLoops,
   };
 }

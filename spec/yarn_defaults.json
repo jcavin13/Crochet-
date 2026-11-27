@@ -1,0 +1,47 @@
+{
+  "$comment": "Yarn requirement model v0.1 — see spec/yarn.md. Read by app/src/core/yarn and lab/src/crolab/yarn.py. Every number here is a NOMINAL default, unvalidated against measured yarn: the structural coefficients are derived from how each stitch is built (spec/yarn.md §2), the category table holds typical retail values. A weighed swatch (calibration) replaces the guesswork for one yarn and one crocheter.",
+  "version": "0.1",
+  "status": "nominal",
+  "units": {"length": "mm", "mass": "g"},
+  "model": "L(node) = post · [ k_w · (a·w + π·e·d) + k_h · (b·h) ]",
+  "wrap_per_event": 3.141592653589793,
+  "stitches": {
+    "ch":   {"a": 2, "b": 0,   "events": 1, "why": "one loop pulled through the loop on the hook: two strands the length of the chain, one 180° turn round the old loop"},
+    "slst": {"a": 2, "b": 2,   "events": 2, "why": "loop pulled through the base and straight through the loop on the hook: a (short) post of two strands, the top loop, two turns (round the base, round the hook)"},
+    "sc":   {"a": 2, "b": 2,   "events": 3, "why": "insert, yo + pull up (two strands up the post), yo + pull through 2 (top loop, two strands across): three turns"},
+    "hdc":  {"a": 2, "b": 3,   "events": 4, "why": "as sc plus one yarn-over wrapped round the post (2 strands over about half the height) and one more turn"},
+    "dc":   {"a": 2, "b": 3,   "events": 5, "why": "post in two stages: working loop 2 strands over the full height, the wrap 2 strands over half; yo, insert, pull up, 2 × pull through 2"},
+    "tr":   {"a": 2, "b": 3.3333333333333335, "events": 7, "why": "k = 2 wraps: b = 2 + 2k/(k+1); events = 3 + 2k"},
+    "dtr":  {"a": 2, "b": 3.5, "events": 9, "why": "k = 3 wraps: b = 2 + 2k/(k+1); events = 3 + 2k"},
+    "puff": {"a": 2, "b_per": 3, "events": 1, "events_per": 3, "per": "loops", "per_default": 3,
+             "why": "per loop: yo, insert, pull up (an hdc leg without its finishing pull-through: 3 height strands, 3 turns); then one closing pull-through and the top loop"},
+    "popcorn": {"compose": "dc", "per": "legs", "per_default": 5, "a": 1, "b": 0, "events": 1,
+             "why": "N complete dc (with the dc's own size) + closing: the dropped loop pulled across the popcorn's width once, one turn"},
+    "picot": {"compose": "ch", "per": "chains", "per_default": 3, "then": "slst",
+             "why": "its chains (ch's size) + the slip stitch that closes it"}
+  },
+  "tog": {"why": "decrease or cluster with N legs of base stitch X: each leg is X without its final pull-through, then one closing pull-through and one top loop", "a": "a_X", "b": "N·b_X", "events": "N·(e_X − 1) + 1"},
+  "post_factor": {"fp": 1.2, "bp": 1.2, "flo": 1.0, "blo": 1.0,
+                  "why": "front/back post: the pulled-up loop goes round the whole post of the stitch below instead of under its two top loops (girth ≈ the post's width instead of ≈ 2 strands). +20 % is a guess, not measured."},
+  "band": {
+    "nominal":          {"low": 0.80, "high": 1.20, "why": "±20 %: gauge spread between crocheters on the same yarn and hook (CYC gauge ranges ≈ ±12 % in stitch size; yarn per stitch scales with loop size) combined with unvalidated coefficients"},
+    "calibrated":       {"low": 0.92, "high": 1.08, "why": "±8 %: one weighed swatch — scale resolution, tension drift over a project, a stitch mix that differs from the swatch"},
+    "calibrated_split": {"low": 0.94, "high": 1.06, "why": "±6 %: two swatches of different stitches fix the loop and height terms separately"}
+  },
+  "allowance": 0.10,
+  "categories": {
+    "lace-0":       {"label": "Lace (CYC 0)",        "m_per_100g": 800, "m_per_100g_range": [600, 1200], "wpi": [30, 40], "diameter_mm": 0.75, "ball_g": 50},
+    "superfine-1":  {"label": "Fingering (CYC 1)",   "m_per_100g": 400, "m_per_100g_range": [330, 460],  "wpi": [14, 30], "diameter_mm": 1.3,  "ball_g": 50},
+    "fine-2":       {"label": "Sport (CYC 2)",       "m_per_100g": 300, "m_per_100g_range": [250, 350],  "wpi": [12, 18], "diameter_mm": 1.7,  "ball_g": 50},
+    "light-3":      {"label": "DK (CYC 3)",          "m_per_100g": 230, "m_per_100g_range": [200, 260],  "wpi": [11, 15], "diameter_mm": 2.1,  "ball_g": 50},
+    "medium-4":     {"label": "Worsted / aran (CYC 4)", "m_per_100g": 180, "m_per_100g_range": [150, 210], "wpi": [9, 12], "diameter_mm": 2.5, "ball_g": 100},
+    "bulky-5":      {"label": "Bulky (CYC 5)",       "m_per_100g": 120, "m_per_100g_range": [90, 140],   "wpi": [6, 9],   "diameter_mm": 3.4,  "ball_g": 100},
+    "superbulky-6": {"label": "Super bulky (CYC 6)", "m_per_100g": 70,  "m_per_100g_range": [45, 90],    "wpi": [5, 6],   "diameter_mm": 5.1,  "ball_g": 100},
+    "jumbo-7":      {"label": "Jumbo (CYC 7)",       "m_per_100g": 35,  "m_per_100g_range": [20, 45],    "wpi": [1, 4],   "diameter_mm": 7.3,  "ball_g": 200},
+    "thread-10":    {"label": "Crochet cotton no. 10", "m_per_100g": 560, "m_per_100g_range": [500, 1100], "wpi": [28, 34], "diameter_mm": 0.85, "ball_g": 50},
+    "thread-20":    {"label": "Crochet cotton no. 20", "m_per_100g": 820, "m_per_100g_range": [700, 1300], "wpi": [34, 40], "diameter_mm": 0.7,  "ball_g": 50},
+    "thread-30":    {"label": "Crochet cotton no. 30", "m_per_100g": 1080, "m_per_100g_range": [900, 1500], "wpi": [40, 46], "diameter_mm": 0.6, "ball_g": 50}
+  },
+  "default_category": "medium-4",
+  "diameter_rule": "d = diameter_mm(category) · sqrt(m_per_100g(category) / m_per_100g(your yarn)) — same fibre and construction assumed (constant effective density), so a lighter yarn of the same category is proportionally thinner"
+}

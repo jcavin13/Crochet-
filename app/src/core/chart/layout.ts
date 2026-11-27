@@ -33,6 +33,14 @@
  *    a star-shaped outline (radius per angle) instead of the flatness ring; a later round attaches to
  *    the arms' real chain positions.
  *
+ * Seam and symmetry (radial): a closed round of an n-fold piece (core/symmetry, cumulative order)
+ * is laid out exactly n-fold — each solved position is averaged over its n copies; a counting
+ * turning chain takes the room of the stitch it counts as; a loose turning chain and the join take
+ * no room (tucked into the seam, the join's dot just before the stitch joined into); a stitch
+ * worked into a chain space sits at the continuous c_q position (one sc in a ch-2 sp at the arch's
+ * middle). Pointed rounds: valley bridges are drawn pinned out (a V to a pin), the round's
+ * outline (`hull`) runs through the arm tips and the bridge pins.
+ *
  * Rows (any `Row` round): the same machinery with x for the angle and height for the radius.
  */
 import { analyzeFlatness, type RoundFlatness } from '../flatness';
@@ -793,7 +801,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
           // just below it, mirror images); at the tip, beside the tip loop
           const b = atTip
             ? addV(addV(E, u, -0.1), v, side1 * 0.2)
-            : fr.pair ? addV(addV(Pj, u, -0.2), v, side1 * 0.11) : addV(addV(Pj, u, -0.06), v, side1 * 0.15);
+            : addV(addV(Pj, u, -pitch / 2), v, side1 * (fr.pair ? 0.07 : 0.09));
           place(id, b.x, b.y, angOf(w)); kind[id] = 'picot'; S[id] = s; armRole[id] = 'branch'; gScale[id] = ARM_PICOT;
           id++;
           continue;
@@ -806,7 +814,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
           // beside its chain, on the side away from the frond at that place
           const sd = jCur >= 0 ? slSide(jCur) : 1;
           const pairHere = jCur >= 0 && frondSides[jCur].size > 1;
-          const q = addV(addV(Pj, v, sd * 0.22), u, pairHere ? 0.1 : -0.02);
+          const q = addV(addV(Pj, v, sd * 0.2), u, pairHere ? 0.06 : 0);
           place(id, q.x, q.y, angOf(u)); kind[id] = 'slst';
         } else {
           const L = Math.min(1.3, Math.max(0.62, 0.62 + 0.4 * (hOf(nd) - 1)));

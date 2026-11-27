@@ -12,10 +12,10 @@ import type { Pattern, Terms } from '@/core/graph';
 import { describeNode } from '@/core/graph';
 import { paramsFor, type ParamSet } from '@/core/params';
 import {
-  bandPath, boundsUpto, buildHitIndex, edgePath, glyph, hitTest, layoutChart, magicRingGlyph, outlinePath, roundAt, POINTED_NOTE,
-  type ChartLayout, type ScGlyph, type SymbolSet,
+  bandPath, boundsUpto, buildHitIndex, edgePath, glyph, hitTest, hullPath, layoutChart, magicRingGlyph, roundAt, symbolRoom, wedgeNote, wedgeView,
+  POINTED_NOTE, type ChartLayout, type ScGlyph, type SymbolSet, type WedgeView,
 } from '@/core/chart';
-import type { SymmetryReport } from '@/core/symmetry';
+import { analyzeSymmetry, type SymmetryReport } from '@/core/symmetry';
 import { useSettings } from '@/store/settings';
 import './chart.css';
 
@@ -56,6 +56,59 @@ export interface ChartViewProps {
   symmetryOverlay?: SymmetryReport | null;
   /** Nodes to emphasise with a ring (e.g. the stitches that break a repeat). */
   emphasisNodes?: number[];
+  /**
+   * 'all': the whole piece; 'arm': one repeat wedge enlarged (one arm of a snowflake, one repeat
+   * of a doily), "×n" noted, the rest ghosted. Controlled when given; otherwise the view keeps its
+   * own state, starting on 'arm' for pointed pieces (snowflakes) on narrow screens.
+   */
+  view?: ChartViewMode;
+  onViewChange?: (v: ChartViewMode) => void;
+  /** Hide the Whole / One arm buttons. Default false. */
+  hideViewControls?: boolean;
+}
+
+export type ChartViewMode = 'all' | 'arm';
+
+/** Symbols are drawn at least this many screen pixels per chart unit (one sc wide), room permitting. */
+const MIN_PX_PER_UNIT = 22;
+/** On screens narrower than this a pointed chart opens on one arm. */
+const NARROW_PX = 600;
+
+const symCache = new WeakMap<object, SymmetryReport | null>();
+/** Memoised symmetry analysis of a pattern's graph (for the one-repeat view). */
+export function chartSymmetry(pattern: Pattern): SymmetryReport | null {
+  if (symCache.has(pattern.graph)) return symCache.get(pattern.graph)!;
+  let r: SymmetryReport | null = null;
+  try { r = analyzeSymmetry(pattern.graph); } catch { r = null; }
+  symCache.set(pattern.graph, r);
+  return r;
+}
+
+/**
+ * The one-repeat wedge of a chart: centred on an arm (pointed pieces) or on the symmetry frame's
+ * first repeat; null when the piece has no rotational symmetry (the view then stays whole).
+ */
+export function chartWedge(layout: ChartLayout, sym: SymmetryReport | null | undefined): WedgeView | null {
+  if (!sym || !sym.applicable || sym.order < 2 || layout.mode !== 'radial') return null;
+  let axis: number | undefined;
+  const f = sym.frame;
+  if (f && f.elementNodes.length && f.sectors.length >= 1) {
+    const L = f.elementNodes.length, p = L / sym.order;
+    const ang = (id: number) => { const n = layout.nodes[id]; return n ? Math.atan2(-n.cy, n.cx) : 0; };
+    const at = (x: number) => {
+      const i0 = Math.floor(x), i1 = Math.ceil(x);
+      const a = ang(f.elementNodes[((i0 % L) + L) % L]);
+      if (i0 === i1) return a;
+      const b = ang(f.elementNodes[((i1 % L) + L) % L]);
+      return Math.atan2(Math.sin(a) + Math.sin(b), Math.cos(a) + Math.cos(b));
+    };
+    axis = at(f.sectors[0] + p / 2);
+  }
+  return wedgeView(layout, sym.order, { axis });
+}
+
+export function useChartWedge(pattern: Pattern, layout: ChartLayout): WedgeView | null {
+  return useMemo(() => chartWedge(layout, chartSymmetry(pattern)), [pattern, layout]);
 }
 
 const CHUNK = 120;
@@ -81,14 +134,30 @@ type View = { k: number; x: number; y: number };
 export function ChartView(props: ChartViewProps) {
   const {
     pattern, showFlatness = true, uptoRound, highlightNode, dimAfter, onNodeClick, className, style,
-    showLabels = true, symbolSet = 'cyc', scGlyph = 'x', onRoundClick, symmetryOverlay, emphasisNodes,
+    showLabels = true, symbolSet = 'cyc', scGlyph = 'x', onRoundClick, symmetryOverlay, emphasisNodes, hideViewControls,
   } = props;
   const settingsTerms = useSettings((s) => s.terms);
   const terms = props.terms ?? settingsTerms;
   const params = props.params ?? paramsFor(pattern);
   const computed = useChartLayout(pattern, params);
-  const layout = props.layout ?? computed;
+  const full = props.layout ?? computed;
   const graph = pattern.graph;
+  const pointedPiece = useMemo(() => full.rounds.some((r) => r.pointed), [full]);
+  const wedge = useChartWedge(pattern, full);
+
+  // ---- whole / one-arm view (controlled or own state)
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [ownView, setOwnView] = useState<ChartViewMode | null>(null);
+  useLayoutEffect(() => {
+    if (ownView !== null) return;
+    const w = typeof window !== 'undefined' ? window.innerWidth : 1000;
+    setOwnView(pointedPiece && w > 0 && w < NARROW_PX && highlightNode === undefined ? 'arm' : 'all');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pointedPiece]);
+  const mode: ChartViewMode = (props.view ?? ownView ?? 'all') === 'arm' && wedge ? 'arm' : 'all';
+  const setMode = (v: ChartViewMode) => { if (props.view === undefined) setOwnView(v); props.onViewChange?.(v); };
+  const W8 = mode === 'arm' ? wedge : null;
+  const layout = W8 ? W8.layout : full;
   const lastRound = layout.rounds.length - 1;
   const upto = uptoRound === undefined ? lastRound : Math.max(0, Math.min(lastRound, uptoRound));
   const lastNode = useMemo(() => {
@@ -96,14 +165,39 @@ export function ChartView(props: ChartViewProps) {
     return -1;
   }, [layout, upto]);
 
+  // ---- symbol size: marks grow when the chart is shown small (screen px per chart unit at the
+  // current zoom), never past the room the layout leaves between symbols
+  const room = useMemo(() => symbolRoom(layout, W8 ? W8.inside : undefined), [layout, W8]);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setBox((b) => (Math.abs(b.w - el.clientWidth) < 2 && Math.abs(b.h - el.clientHeight) < 2 ? b : { w: el.clientWidth, h: el.clientHeight })));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const [zoomQ, setZoomQ] = useState(1);
+  // (a strip below the chart for the view buttons)
+  const barStrip = !hideViewControls && !!wedge;
+  const vb0 = useMemo(() => {
+    const b = W8 ? { ...W8.bounds } : boundsUpto(layout, upto, 0.7);
+    if (barStrip) b.maxY += W8 ? 1.3 : 0.09 * (b.maxY - b.minY);
+    return b;
+  }, [W8, layout, upto, barStrip]);
+  const fitPx = box.w > 0 ? Math.min(box.w / (vb0.maxX - vb0.minX), box.h > 0 ? box.h / (vb0.maxY - vb0.minY) : Infinity) : 0;
+  const want = fitPx > 0 ? MIN_PX_PER_UNIT / (fitPx * zoomQ) : 1;
+  const markK = Math.round(Math.max(1, Math.min(room, want)) * 10) / 10;
+  // lines thicken a little more than the marks grow (thicker strokes do not collide)
+  const strokeK = Math.round(Math.max(1, Math.min(1.5, want)) * 10) / 10;
+
   // ---- symbol path data, per node (memoised per layout + symbol options)
   const glyphs = useMemo(() => {
-    const o = { set: symbolSet, sc: scGlyph };
+    const o = { set: symbolSet, sc: scGlyph, scale: markK };
     const stroke: string[] = new Array(layout.nodes.length);
     const fill: string[] = new Array(layout.nodes.length);
     for (const n of layout.nodes) { const g = glyph(n, o); stroke[n.id] = g.stroke; fill[n.id] = g.fill; }
     return { stroke, fill };
-  }, [layout, symbolSet, scGlyph]);
+  }, [layout, symbolSet, scGlyph, markK]);
 
   const chunks = useMemo(() => {
     const out: { round: number; from: number; to: number }[] = [];
@@ -117,23 +211,23 @@ export function ChartView(props: ChartViewProps) {
   const bands = useMemo(() => {
     if (layout.mode !== 'radial') return [];
     return layout.rounds.filter((r) => r.first >= 0 && (r.r > r.r0 || r.pointed)).map((r) => (r.pointed
-      // a pointed round is judged by blocking: its arms' outline, no flat / cup / ruffle verdict
-      ? { index: r.index, d: bandPath(layout, r.index), edge: outlinePath(r), cls: 'pointed', message: POINTED_NOTE, loose: false }
+      // a pointed round is judged by blocking: no tint (a filled star reads as a flower), only the
+      // faint dashed outline it is pinned out to (tips and valley pins)
+      ? { index: r.index, d: '', edge: W8 ? wedgeHull(r.hull ?? [], W8.half) : hullPath(r), cls: 'pointed', message: POINTED_NOTE, loose: false }
       : {
         index: r.index, d: bandPath(layout, r.index), edge: r.flat && r.flat.class !== 'flat' && r.flat.class !== 'n/a' ? edgePath(r) : '',
         cls: r.flat?.class ?? 'n/a', message: r.flat?.message ?? '', loose: !!r.flat?.slackOnly,
       }));
-  }, [layout]);
+  }, [layout, W8]);
 
-  const symGeo = useMemo(() => symmetryGeometry(layout, symmetryOverlay, upto), [layout, symmetryOverlay, upto]);
+  const symGeo = useMemo(() => (W8 ? null : symmetryGeometry(layout, symmetryOverlay, upto)), [W8, layout, symmetryOverlay, upto]);
   const emph = useMemo(() => (emphasisNodes ?? []).filter((id) => id >= 0 && id <= lastNode).map((id) => layout.nodes[id]).filter(Boolean), [emphasisNodes, lastNode, layout]);
 
   const hitIndex = useMemo(() => buildHitIndex(layout), [layout]);
-  const vb = useMemo(() => boundsUpto(layout, upto, 0.7), [layout, upto]);
+  const vb = vb0;
   const vbW = vb.maxX - vb.minX, vbH = vb.maxY - vb.minY;
 
   // ---- pan / zoom (imperative)
-  const rootRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const view = useRef<View>({ k: 1, x: 0, y: 0 });
@@ -143,9 +237,12 @@ export function ChartView(props: ChartViewProps) {
     gRef.current?.setAttribute('transform', `translate(${v.x} ${v.y}) scale(${v.k})`);
     const z = Math.abs(v.k - 1) > 1e-3 || Math.abs(v.x) > 1e-3 || Math.abs(v.y) > 1e-3;
     setZoomed((p) => (p === z ? p : z));
+    // symbol size follows the zoom in steps (re-drawing glyphs per frame would be wasteful)
+    const q = Math.pow(1.25, Math.round(Math.log(v.k) / Math.log(1.25)));
+    setZoomQ((p) => (Math.abs(p - q) < 1e-6 ? p : q));
   }, []);
   const reset = useCallback(() => { view.current = { k: 1, x: 0, y: 0 }; applyView(); }, [applyView]);
-  useLayoutEffect(() => { reset(); }, [layout, reset]);
+  useLayoutEffect(() => { reset(); }, [layout, reset, mode]);
 
   const toUser = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -312,12 +409,14 @@ export function ChartView(props: ChartViewProps) {
   const cut = dimAfter && hl ? hl.id : undefined;
   const title = props.ariaLabel ?? `Symbol chart of ${pattern.meta.title || 'the pattern'}`;
   const ring = layout.ring?.kind === 'magic' ? magicRingGlyph(layout.ring.r) : null;
+  const showBar = !hideViewControls && !!wedge;
 
   return (
     <div
       ref={rootRef}
-      className={`ch-view${zoomed ? ' is-zoomed' : ''}${className ? ` ${className}` : ''}`}
-      style={{ ...style, ['--ch-ar' as string]: `${vbW} / ${vbH}` }}
+      className={`ch-view${zoomed ? ' is-zoomed' : ''}${W8 ? ' is-arm' : ''}${className ? ` ${className}` : ''}`}
+      style={{ ...style, ['--ch-ar' as string]: `${vbW} / ${vbH}`, ['--ch-sw' as string]: String(Math.round(0.065 * strokeK * 1000) / 1000) }}
+      data-view={mode}
       tabIndex={0}
       role="group"
       aria-label={`${title}. Drag to pan, pinch or scroll to zoom, double-tap to reset; keys + − 0 and arrows.`}
@@ -360,10 +459,13 @@ export function ChartView(props: ChartViewProps) {
                 alt={c.round % 2 === 1}
                 state={state}
                 cut={state === 'split' ? cut! : -1}
+                level={W8?.inside}
               />
             );
           })}
-          {showLabels && <Labels layout={layout} upto={upto} />}
+          {showLabels && (W8
+            ? <g className="ch-labels" aria-hidden="true">{W8.labels.map((l, i) => <text key={i} x={l.x} y={l.y}>{l.text}</text>)}</g>
+            : <Labels layout={layout} upto={upto} />)}
           {emph.length > 0 && (
             <g className="ch-emph" aria-hidden="true">
               {emph.map((n) => <circle key={n.id} cx={n.cx} cy={n.cy} r={0.8} />)}
@@ -388,15 +490,34 @@ export function ChartView(props: ChartViewProps) {
           {tip.lines.map((l, i) => <span key={i}>{l}</span>)}
         </div>
       )}
+      {showBar && (
+        <div className="ch-viewbar" role="group" aria-label="Chart view">
+          <button type="button" aria-pressed={mode === 'all'} onClick={() => { setMode('all'); setTip(null); }} title="Fit the whole piece">
+            Whole
+          </button>
+          <button type="button" aria-pressed={mode === 'arm'} onClick={() => { setMode('arm'); setTip(null); }} title={`Fit one repeat, enlarged (the piece is ${wedge!.order}-fold)`}>
+            {wedge!.kind === 'arm' ? 'One arm' : 'One repeat'} ×{wedge!.order}
+          </button>
+        </div>
+      )}
+      {W8 && !showBar && <p className="ch-viewnote">{wedgeNote(W8)}</p>}
       {zoomed && (
-        <button type="button" className="ch-reset" onClick={() => { reset(); setTip(null); }} aria-label="Reset zoom">
-          Reset view
+        <button type="button" className="ch-reset" onClick={() => { reset(); setTip(null); }} aria-label={W8 ? 'Fit the arm' : 'Fit the whole chart'}>
+          {W8 ? (W8.kind === 'arm' ? 'Fit arm' : 'Fit repeat') : 'Fit all'}
         </button>
       )}
     </div>
   );
 }
 export default ChartView;
+
+/** One-repeat view: the part of a pointed round's outline next to the arm (pointing up), open. */
+function wedgeHull(h: { x: number; y: number }[], half: number): string {
+  const near = (p: { x: number; y: number }) => Math.abs(Math.atan2(-p.y, p.x) - Math.PI / 2) <= half * 1.15 + 1e-6;
+  const pts = h.filter(near).sort((a, b) => Math.atan2(-b.y, b.x) - Math.atan2(-a.y, a.x));
+  if (pts.length < 2) return '';
+  return `M${pts.map((p) => `${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join('L')}`;
+}
 
 /** Lines and the shaded repeat of a symmetry overlay, in chart coordinates (centre at 0,0). */
 function symmetryGeometry(layout: ChartLayout, sym: SymmetryReport | null | undefined, upto: number) {
@@ -431,16 +552,32 @@ function symmetryGeometry(layout: ChartLayout, sym: SymmetryReport | null | unde
   return { sectors, axes, wedge };
 }
 
-const Chunk = memo(function Chunk({ stroke, fill, from, to, alt, state, cut }: {
+const Chunk = memo(function Chunk({ stroke, fill, from, to, alt, state, cut, level }: {
   stroke: string[]; fill: string[]; from: number; to: number; alt: boolean; state: 'done' | 'todo' | 'split'; cut: number;
+  /** One-repeat view: 2 = the repeat, 1 = context (half-tone), 0 = ghosted. */
+  level?: Uint8Array;
 }) {
   const part = (a: number, b: number, cls: string, key: string) => {
-    let s = '', f = '';
-    for (let i = a; i <= b; i++) { s += stroke[i]; f += fill[i]; }
+    if (!level) {
+      let s = '', f = '';
+      for (let i = a; i <= b; i++) { s += stroke[i]; f += fill[i]; }
+      return (
+        <g key={key} className={cls}>
+          {s && <path d={s} />}
+          {f && <path className="f" d={f} />}
+        </g>
+      );
+    }
+    const S = ['', '', ''], F = ['', '', ''];
+    for (let i = a; i <= b; i++) { const l = level[i] ?? 0; S[l] += stroke[i]; F[l] += fill[i]; }
     return (
       <g key={key} className={cls}>
-        {s && <path d={s} />}
-        {f && <path className="f" d={f} />}
+        {[2, 1, 0].map((l) => (S[l] || F[l]) && (
+          <g key={l} className={l === 2 ? undefined : l === 1 ? 'ch-ctx' : 'ch-ghost'}>
+            {S[l] && <path d={S[l]} />}
+            {F[l] && <path className="f" d={F[l]} />}
+          </g>
+        ))}
       </g>
     );
   };
@@ -469,12 +606,7 @@ const Bands = memo(function Bands({ bands, upto, flatness, hatchId }: {
       {bands.map((b) => {
         if (b.index > upto) return null;
         if (b.cls === 'pointed') {
-          return (
-            <g key={b.index}>
-              <path className="ch-band ch-band--pointed" d={b.d} fillRule="evenodd" />
-              {flatness && <path className="ch-edge ch-edge--pointed" d={b.edge} />}
-            </g>
-          );
+          return b.edge ? <path key={b.index} className="ch-hull" d={b.edge}><title>{b.message}</title></path> : null;
         }
         const shape = flatness && b.cls !== 'n/a' ? b.cls : '';
         if (!shape && b.index % 2 === 0) return null;

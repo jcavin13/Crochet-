@@ -2,6 +2,8 @@ import { Card, Page, PageHeader, Section, SegmentedControl, Select, ShapeBadge }
 import { compilerAvailable } from '@/app/coreApi';
 import { useAllPatterns, useStitchParams } from '@/app/hooks';
 import { useSettings, type ThemePref, type Terms } from '@/store/settings';
+import { MyYarnsManager } from '@/features/yarn/MyYarns';
+import type { ParamSet } from '@/core/params';
 import './about.css';
 
 const DOCS: [string, string][] = [
@@ -11,6 +13,7 @@ const DOCS: [string, string][] = [
   ['spec/flatness.md', 'The per-round flat / cup / ruffle rule'],
   ['spec/physics.md', 'The spring model behind the 3D view'],
   ['spec/stitch_params.json', 'Stitch sizes per yarn and hook'],
+  ['spec/yarn.md', 'How the yarn estimates are worked out, and how uncertain they are'],
   ['data/', 'Public-domain patterns transcribed into the notation'],
 ];
 
@@ -51,6 +54,14 @@ export default function AboutPage() {
               {mine.length} pattern{mine.length === 1 ? '' : 's'} of your own stored in this browser.
               Installed as an app, it works fully offline.
             </p>
+          </Section>
+
+          <Section title="My yarns" id="yarns">
+            <p className="muted small">
+              Yarn estimates (Editor, Counter, Amigurumi, designers) use these: your ball band's metres per 100 g and ball
+              size, and — once you weigh a swatch — your own calibration. Without one, an estimate is a nominal ±20 %.
+            </p>
+            <MyYarnsManager appParams={params.selected as unknown as ParamSet} />
           </Section>
 
           <Section title="Documentation">
@@ -94,6 +105,15 @@ export default function AboutPage() {
               <option value="auto">Automatic — the pattern's params, else {params.sets.find((x) => x.id === params.defaultSetId)?.label}</option>
               {params.sets.map((set) => <option key={set.id} value={set.id}>{set.label}</option>)}
             </Select>
+          </div>
+          <div className="about-setting">
+            <span className="about-setting__label">Yarn units</span>
+            <SegmentedControl<'metric' | 'imperial'>
+              label="Yarn units"
+              value={s.yarnUnits ?? 'metric'}
+              onChange={(yarnUnits) => s.set({ yarnUnits })}
+              options={[{ value: 'metric', label: 'Metres · grams' }, { value: 'imperial', label: 'Yards · ounces' }]}
+            />
           </div>
           <hr />
           <p className="muted small" style={{ margin: 0 }}>

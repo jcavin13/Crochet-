@@ -25,12 +25,14 @@
  *    then "suppressed": its target/count diagnostics are dropped because they would be cascades.
  */
 import type {
-  ChainItem, CountAnn, GroupItem, Item, JoinItem, PatternAst, Place, RepeatItem,
+  ChainItem, CountAnn, Extent, GroupItem, Item, JoinItem, PatternAst, Place, RepeatItem,
   RoundAst, SkipItem, Span, StitchItem, StitchSpec, Target, Unit,
 } from '../notation/ast';
 import { KNOWN_HEADERS } from '../notation/parser';
 import { nameOf, skipWord } from '../notation/vocab';
-import { buildTargets, entryMatches, nodeCounts, unitNoun, type Entry } from './targets';
+import {
+  anchorId, buildTargets, cornerTargets, entryAnchor, entryMatches, nodeCounts, perimeterTargets, unitNoun, type Entry,
+} from './targets';
 import type {
   Anchor, Diagnostic, DiagnosticCode, GroupKind, LoopMod, Meta, Node, Pattern, Round, RoundKind,
   Severity, Space, StitchType,
@@ -97,8 +99,19 @@ interface RoundState {
   madeStitch: boolean;
   ringThisRound?: number;
   openRun?: ChainRun;
-  chainCursor?: { chains: number[]; pos: number };
+  /** `part: 'base'`: walking the unused loops (other side) of a chain */
+  chainCursor?: { chains: number[]; pos: number; part?: 'base' };
+  /** chains addressed one by one in this round, in order (for "working along the other side") */
+  chainsWorked: number[];
   turned: boolean;
+  /** worked around rows: the target list is the perimeter (notation.md 3.9) */
+  perimeter: boolean;
+  /** the target list has corners (a border round) */
+  hasCorners: boolean;
+  /** the target list has foundation-chain (base) entries */
+  hasBase: boolean;
+  /** border rounds: entries (not spaces) passed over without being worked or skipped */
+  passedOver: Entry[];
   /** drop target-family diagnostics (cascade guard) */
   suppress: boolean;
   /** an error (reported or suppressed) happened in this round */
@@ -126,6 +139,8 @@ class Compiler {
   turnNext = false;
   prevUnreliable = false;
   tooBig = false;
+  /** round index → anchors of the corners of the list that round was worked into */
+  cornerInput = new Map<number, Anchor[]>();
   cur!: RoundState;
 
   constructor(private ast: PatternAst) {}
@@ -153,8 +168,8 @@ class Compiler {
 
   run(opts: CompileOptions): CompileResult {
     this.checkNumbering();
-    for (const r of this.ast.rounds) {
-      for (let n = r.label.from; n <= Math.max(r.label.from, r.label.to); n++) {
+    for (const block of this.blocks()) {
+      for (const { r, n } of block) {
         if (this.tooBig) break;
         this.compileRound(r, n);
       }
@@ -184,13 +199,80 @@ class Compiler {
     return out;
   }
 
+  /**
+   * The rounds in working order: one block per label, except that consecutive parity labels
+   * ("Rows 2-120 (even):", "Rows 3-121 (odd):") form one block whose rows are interleaved by number.
+   */
+  blocks(): { r: RoundAst; n: number }[][] {
+    const out: { r: RoundAst; n: number }[][] = [];
+    const rs = this.ast.rounds;
+    for (let i = 0; i < rs.length; i++) {
+      const L = rs[i].label;
+      if (!L.parity) {
+        const b: { r: RoundAst; n: number }[] = [];
+        for (let n = L.from; n <= Math.max(L.from, L.to); n++) b.push({ r: rs[i], n });
+        out.push(b);
+        continue;
+      }
+      const b: { r: RoundAst; n: number }[] = [];
+      let j = i;
+      for (; j < rs.length && rs[j].label.parity && rs[j].label.kind === L.kind; j++) {
+        for (let n = rs[j].label.from; n <= Math.max(rs[j].label.from, rs[j].label.to); n += 2) b.push({ r: rs[j], n });
+      }
+      b.sort((x, y) => x.n - y.n);
+      out.push(b);
+      i = j - 1;
+    }
+    return out;
+  }
+
   /** E_ROUND_NUMBER: numbers increase by one; Foundation only first; a Row↔Rnd switch may restart at 1. */
   checkNumbering(): void {
     let prev: { kind: RoundKind; to: number } | undefined;
+    const rs = this.ast.rounds;
+    for (let i = 0; i < rs.length; i++) {
+      const L0 = rs[i].label;
+      if (!L0.parity) continue;
+      // a block of parity labels: each label's ends have its parity; together they cover a run
+      let j = i;
+      const nums: number[] = [];
+      for (; j < rs.length && rs[j].label.parity && rs[j].label.kind === L0.kind; j++) {
+        const L = rs[j].label;
+        const want = L.parity === 'even' ? 0 : 1;
+        if (L.from % 2 !== want || L.to % 2 !== want) {
+          this.diags.push({ severity: 'error', code: 'E_ROUND_NUMBER', ...L.span,
+            message: `"${L.word} ${L.from}-${L.to} (${L.parity})" — both ends of an ${L.parity} range must be ${L.parity} numbers.` });
+        }
+        for (let n = L.from; n <= L.to; n += 2) nums.push(n);
+      }
+      nums.sort((a, b) => a - b);
+      const gap = nums.findIndex((n, k) => k > 0 && n !== nums[k - 1] + 1);
+      if (gap > 0) {
+        const L = rs[i].label;
+        this.diags.push({ severity: 'error', code: 'E_ROUND_NUMBER', ...L.span,
+          message: `the odd and even ranges starting here must together cover every ${L.kind === 'row' ? 'row' : 'round'} from ${nums[0]} to ${nums[nums.length - 1]} once, but ${nums[gap - 1] === nums[gap] ? `${nums[gap]} appears twice` : `${nums[gap - 1] + 1} is missing`}.` });
+      }
+      i = j - 1;
+    }
     this.ast.rounds.forEach((r, i) => {
       const L = r.label;
       const add = (msg: string) =>
         this.diags.push({ severity: 'error', code: 'E_ROUND_NUMBER', message: msg, ...L.span });
+      if (L.parity) {
+        // inside a parity block: only the block's first label is checked against the round before
+        const first = i === 0 || !rs[i - 1].label.parity || rs[i - 1].label.kind !== L.kind;
+        if (!first) return;
+        let lo = L.from, hi = L.to;
+        for (let j = i; j < rs.length && rs[j].label.parity && rs[j].label.kind === L.kind; j++) {
+          lo = Math.min(lo, rs[j].label.from);
+          hi = Math.max(hi, rs[j].label.to);
+        }
+        const expected = !prev || prev.kind === 'foundation' ? 1 : prev.to + 1;
+        const restartOk = prev && prev.kind !== 'foundation' && prev.kind !== L.kind && lo === 1;
+        if (lo !== expected && !restartOk) add(`expected ${canonLabel(L.kind, expected)} here but the odd/even ranges start at ${lo} — round numbers must increase by one.`);
+        prev = { kind: L.kind, to: hi };
+        return;
+      }
       if (L.kind === 'foundation') {
         if (i !== 0) add(`"${L.word}" (round 0) may only be the first round, but it comes after ${prev ? canonLabel(prev.kind, prev.to) : 'another round'}.`);
         prev = { kind: 'foundation', to: 0 };
@@ -215,18 +297,31 @@ class Compiler {
     const label = canonLabel(kind, n);
     const prev = this.rounds[index - 1];
     const autoTurn = !!prev && prev.kind === 'row' && kind === 'row';
-    let turned = autoTurn || this.turnNext;
+    // a round after rows goes round the piece, starting across the top of the last row (3.9)
+    const perimeter = !!prev && prev.kind === 'row' && kind === 'round';
+    let turned = autoTurn || perimeter || this.turnNext;
     this.turnNext = false;
     // an explicit "turn" as the first item of a Rnd turns this round (in a Row it is redundant)
     if (ast.items[0]?.kind === 'turn' && kind !== 'row') turned = true;
 
-    let targets = prev ? buildTargets(this.nodes, this.spaces, index - 1, prev.first, prev.last) : [];
-    if (turned) targets = targets.slice().reverse();
+    let targets: Entry[];
+    if (!prev) targets = [];
+    else if (perimeter) targets = perimeterTargets(this.nodes, this.spaces, this.rounds, index - 1);
+    else {
+      const corners = this.cornerInput.get(index - 1);
+      targets = corners
+        ? cornerTargets(this.nodes, this.spaces, index - 1, prev, corners)
+        : buildTargets(this.nodes, this.spaces, index - 1, prev.first, prev.last);
+      if (turned) targets = targets.slice().reverse();
+    }
+    const hasCorners = targets.some((e) => e.corner);
+    if (hasCorners) this.cornerInput.set(index, targets.filter((e) => e.corner).map(entryAnchor));
 
     this.cur = {
       index, label, kind, ast, prevLabel: prev?.label, targets, cursor: 0, used: [], workedSpaceLens: new Set(), start: this.nodes.length,
       madeStitch: false, turned, suppress: !!ast.broken || this.prevUnreliable,
-      unreliable: !!ast.broken, fastenReported: false,
+      unreliable: !!ast.broken, fastenReported: false, chainsWorked: [],
+      perimeter, hasCorners, hasBase: targets.some((e) => e.kind === 'base'), passedOver: [],
     };
     const R: Round = {
       index, label, kind, joined: false, turned, first: -1, last: -1, stitchCount: 0,
@@ -291,9 +386,20 @@ class Compiler {
   checkUnworked(): void {
     const c = this.cur;
     if (c.suppress || c.unreliable) return;
+    if (c.passedOver.length) {
+      this.diag('warning', 'W_UNWORKED',
+        `${c.label}: ${this.entriesText(c.passedOver)} of ${c.prevLabel} ${c.passedOver.length === 1 ? 'is' : 'are'} passed over without being worked${this.sidesText(c.passedOver)} — expected each to be worked into or skipped with "${skipWord(this.ast.terms)}".`,
+        c.ast.label.span, c.index);
+    }
     const rest = c.targets.slice(c.cursor).filter((e) =>
-      e.kind === 'stitch' || c.workedSpaceLens.has(this.spaces[e.space].chains.length));
+      e.kind !== 'space' || c.workedSpaceLens.has(this.spaces[e.space].chains.length));
     if (rest.length === 0) return;
+    if (c.hasCorners) {
+      this.diag('warning', 'W_UNWORKED',
+        `${c.label}: ${this.entriesText(rest)} of ${c.prevLabel} ${rest.length === 1 ? 'is' : 'are'} left unworked at the end of the round${this.sidesText(rest)} — expected every stitch${rest.some((e) => e.kind === 'rowEnd') ? ', row end' : ''} and space to be worked into or skipped with "${skipWord(this.ast.terms)}".`,
+        c.ast.label.span, c.index);
+      return;
+    }
     let k = this.nodes.length - 1;
     while (k >= c.start && this.nodes[k].type === 'slst') k--;
     const endsWithArc = k >= c.start && this.nodes[k].type === 'ch' && this.nodes[k].role !== 'tch';
@@ -317,6 +423,37 @@ class Compiler {
     this.diag('warning', 'W_UNWORKED',
       `${c.label}: ${what} of ${c.prevLabel} ${verb} left unworked at the end of the round${arcNote} — expected ${expectWord} to be worked into or skipped with "${skipWord(this.ast.terms)}".`,
       span, c.index);
+  }
+
+  /** "2 stitches and 3 row ends" */
+  entriesText(es: Entry[]): string {
+    const n = (k: Entry['kind']) => es.filter((e) => e.kind === k).length;
+    const parts: string[] = [];
+    const add = (k: number, one: string, many: string) => { if (k) parts.push(`${k} ${k === 1 ? one : many}`); };
+    add(n('stitch'), 'stitch', 'stitches');
+    add(n('rowEnd'), 'row end', 'row ends');
+    add(n('base'), 'foundation chain', 'foundation chains');
+    add(n('space'), 'chain space', 'chain spaces');
+    return parts.join(' and ');
+  }
+
+  /** " on the top edge and the bottom" for perimeter entries; "" otherwise. */
+  sidesText(es: Entry[]): string {
+    if (!this.cur.perimeter) return '';
+    const names = [...new Set(es.map((e) => this.sideName(e)))];
+    return names.length ? ` (on ${names.join(' and ')})` : '';
+  }
+
+  sideName(e: Entry | undefined): string {
+    const c = this.cur;
+    if (!e || !c.perimeter) return 'this side';
+    switch (e.side) {
+      case 0: return `the top edge (${c.prevLabel})`;
+      case 1: return 'the first side (row ends)';
+      case 2: return 'the bottom (foundation chain)';
+      case 3: return 'the second side (row ends)';
+      default: return 'this side';
+    }
   }
 
   /** Closing-arc rule (see checkUnworked). */
@@ -489,6 +626,7 @@ class Compiler {
         return;
       }
       case 'turn': return this.compileTurn(it.span, top);
+      case 'otherSide': return this.compileOtherSide(it.span);
       case 'fasten':
         this.fastened = true;
         this.fastenSpan = it.span;
@@ -505,6 +643,10 @@ class Compiler {
       return;
     }
     if (this.nodes.length === c.start) return; // handled at round start
+    if (c.perimeter && !c.madeStitch) {
+      this.diag('info', 'I_REDUNDANT_TURN', `${c.label}: "turn" is not needed — a round worked around rows starts across the top of ${c.prevLabel}, turned.`, span, c.index);
+      return;
+    }
     this.turnNext = true;
   }
 
@@ -532,20 +674,51 @@ class Compiler {
     return new TargetError('E_NO_TARGET', `needs a ${what} to work into but ${c.prevLabel} ${none}.`, span);
   }
 
+  /** Chains come from the chain cursor (not the target list) unless this is a border round's bottom. */
+  chainFromCursor(): boolean {
+    const c = this.cur;
+    return !c.hasBase || (!!c.chainCursor && c.chainCursor.pos < c.chainCursor.chains.length);
+  }
+
   /** Move to the next entry matching `u` and consume it. */
   take(u: Unit, span: Span, setLast = true): Anchor {
     const c = this.cur;
-    if (u.kind === 'ch') return this.takeChain(span, setLast);
+    if (u.kind === 'ch' && this.chainFromCursor()) return this.takeChain(span, setLast);
     for (let k = c.cursor; k < c.targets.length; k++) {
       const e = c.targets[k];
       if (entryMatches(e, u, this.nodes, this.spaces)) {
+        if (c.hasCorners && k > c.cursor) {
+          // A corner is never passed over (see below). Going to a corner leaves the stitches before
+          // it unworked (warning); a row end or foundation chain passed over is a wrong unit.
+          const passed = c.targets.slice(c.cursor, k).filter((x) => x.kind !== 'space');
+          if (u.kind === 'corner') c.passedOver.push(...passed);
+          else {
+            const wrong = passed.find((x) => x.kind === 'rowEnd' || x.kind === 'base');
+            if (wrong) {
+              const what = wrong.kind === 'rowEnd' ? 'row end' : 'foundation chain';
+              const use = wrong.kind === 'rowEnd' ? 'row end' : 'ch';
+              throw new TargetError('E_NO_TARGET',
+                `needs a ${this.noun(u)} but the next target on ${this.sideName(wrong)} is a ${what} — write "${this.name('sc')} in next ${use}" (or "… in each ${use} across") to work along this side.`, span);
+            }
+          }
+        }
         c.cursor = k + 1;
         c.used.push(k);
         if (e.kind === 'space') c.workedSpaceLens.add(this.spaces[e.space].chains.length);
-        const a: Anchor = e.kind === 'stitch' ? { node: e.node } : { space: e.space };
+        const a: Anchor = entryAnchor(e);
         if (setLast) c.lastUsed = a;
         return a;
       }
+      if (c.hasCorners && e.corner && u.kind !== 'corner') {
+        throw new TargetError('E_NO_TARGET',
+          `needs a ${this.noun(u)} to work into but ${this.sideName(c.targets[c.cursor] ?? e)} has none left before the corner — work the corner first (e.g. "3 ${this.name('sc')} in corner"), or check the number of ${this.noun(u)}${u.kind === 'st' ? 'e' : ''}s along this side.`, span);
+      }
+    }
+    if (u.kind === 'corner') {
+      const had = c.targets.some((e) => e.corner);
+      throw new TargetError('E_NO_TARGET', had
+        ? `needs a corner but no corner is left in ${c.prevLabel} — all ${c.targets.filter((e) => e.corner).length} corners have been worked (or passed) already.`
+        : `needs a corner but ${c.prevLabel ?? 'the previous round'} has none — corners exist only in a round worked around rows (a border) and in the rounds after it.`, span);
     }
     if (u.kind === 'space' && u.chains !== undefined) {
       const next = c.targets.slice(c.cursor).find((e) => e.kind === 'space');
@@ -568,16 +741,40 @@ class Compiler {
     return { kind: 'st' };
   }
 
-  remaining(u: Unit): number {
+  remaining(u: Unit, limit?: number, from?: number): number {
     const c = this.cur;
-    if (u.kind === 'ch') {
+    if (u.kind === 'ch' && this.chainFromCursor()) {
       if (c.chainCursor) return c.chainCursor.chains.length - c.chainCursor.pos;
       const f = this.foundationRun();
       return f ? f.nodes.length : 0;
     }
     let n = 0;
-    for (let k = c.cursor; k < c.targets.length; k++) if (entryMatches(c.targets[k], u, this.nodes, this.spaces)) n++;
+    const end = Math.min(limit ?? c.targets.length, c.targets.length);
+    for (let k = from ?? c.cursor; k < end; k++) if (entryMatches(c.targets[k], u, this.nodes, this.spaces)) n++;
     return n;
+  }
+
+  /** remaining(u, limit) > 0, stopping at the first match. */
+  hasRemaining(u: Unit, limit?: number): boolean {
+    const c = this.cur;
+    if (u.kind === 'ch' && this.chainFromCursor()) return this.remaining(u) > 0;
+    const end = Math.min(limit ?? c.targets.length, c.targets.length);
+    for (let k = c.cursor; k < end; k++) if (entryMatches(c.targets[k], u, this.nodes, this.spaces)) return true;
+    return false;
+  }
+
+  /**
+   * End (exclusive) of the side the cursor is on: the next corner after the cursor. A corner the
+   * cursor stands on belongs to the side (it is worked as an ordinary stitch) — 3.9.
+   */
+  sideLimit(span: Span, what: string): number {
+    const c = this.cur;
+    if (!c.hasCorners) {
+      throw new TargetError('E_NO_TARGET',
+        `"${what}" but ${c.prevLabel ?? 'the previous round'} has no corners — corners exist only in a round worked around rows (a border) and in the rounds after it; use "across" or "around".`, span);
+    }
+    for (let k = c.cursor + 1; k < c.targets.length; k++) if (c.targets[k].corner) return k;
+    return c.targets.length;
   }
 
   /** A plain chain run of the previous round nobody has addressed yet (a foundation chain). */
@@ -615,10 +812,25 @@ class Compiler {
         }
       }
     }
-    const id = c.chainCursor!.chains[c.chainCursor!.pos++];
-    const a: Anchor = { node: id };
+    const cc = c.chainCursor!;
+    const id = cc.chains[cc.pos++];
+    const a: Anchor = cc.part ? { node: id, part: cc.part } : { node: id };
+    if (!cc.part) c.chainsWorked.push(id);
     if (setLast) c.lastUsed = a;
     return a;
+  }
+
+  /** "working along the other side of the chain" (3.9). */
+  compileOtherSide(span: Span): void {
+    const c = this.cur;
+    if (c.hasBase) return; // a border round: the foundation chain is already part of the round
+    const worked = c.chainsWorked;
+    if (worked.length < 2) {
+      throw new TargetError('E_NO_CHAIN',
+        '"working along the other side of the chain" needs a chain worked from the hook earlier in this round, as in "sc in 2nd ch from hook, sc in each ch across, 3 sc in last ch, working along the other side of the chain, sc in each ch across".', span);
+    }
+    // round the end of the chain: back along the unused loops, not into the last chain again
+    c.chainCursor = { chains: worked.slice(0, -1).reverse(), pos: 0, part: 'base' };
   }
 
   /** Resolve a place to one or more slots. `single` = all stitches go into one place. */
@@ -657,13 +869,18 @@ class Compiler {
       }
       case 'each': {
         const slots = into;
+        const sided = p.extent === 'corner' || (p.extent === 'across' && c.hasCorners);
         if (p.n !== undefined) {
           for (let k = 0; k < p.n; k++) slots.push(this.take(p.unit, t.span));
+        } else if (sided) {
+          // "across" / "across to corner" in a border round: to the end of this side (may be none)
+          const limit = this.sideLimit(t.span, 'across to corner');
+          while (this.hasRemaining(p.unit, limit)) slots.push(this.take(p.unit, t.span));
         } else {
           // nothing counted as remaining: take() either throws the right error or (for chains)
           // enters the next chain space
-          if (this.remaining(p.unit) === 0) slots.push(this.take(p.unit, t.span));
-          while (this.remaining(p.unit) > 0) slots.push(this.take(p.unit, t.span));
+          if (!this.hasRemaining(p.unit)) slots.push(this.take(p.unit, t.span));
+          while (this.hasRemaining(p.unit)) slots.push(this.take(p.unit, t.span));
         }
         return { slots, single: false };
       }
@@ -711,6 +928,7 @@ class Compiler {
         `"${ordinal(ord)} ch from hook" but the chain just made has only ${len} ch.`, span);
     }
     const id = run.nodes[len - ord];
+    c.chainsWorked.push(id);
     run.addressed = true;
     run.hookSkip = ord - 1;
     if (run.closed) {
@@ -911,7 +1129,7 @@ class Compiler {
       return;
     }
     const reqs = it.target ? this.placeRequests(it.target.place) : this.requests(it.items, !!slot);
-    this.repeatUntilExhausted(once, reqs, it.span, 'group');
+    this.repeatUntilExhausted(once, reqs, it.span, 'group', it.times.kind);
   }
 
   compileRepeat(it: RepeatItem, slot: Slot | undefined): void {
@@ -920,30 +1138,32 @@ class Compiler {
       return;
     }
     const reqs = this.requests(it.items, !!slot);
-    this.repeatUntilExhausted(() => this.compileItems(it.items, slot), reqs, it.span, 'repeat');
+    this.repeatUntilExhausted(() => this.compileItems(it.items, slot), reqs, it.span, 'repeat', it.times.kind);
   }
 
   /**
    * `*…* around` (3.3): repeat while any target kind the body uses remains. A repetition that runs
    * out of targets part-way is E_REPEAT_UNEVEN.
    */
-  repeatUntilExhausted(body: () => void, reqs: Unit[], span: Span, what: 'repeat' | 'group'): void {
+  repeatUntilExhausted(body: () => void, reqs: Unit[], span: Span, what: 'repeat' | 'group', extent: Extent = 'around'): void {
     const c = this.cur;
     const label = what === 'repeat' ? 'the repeat "* … *"' : 'the group';
     if (reqs.length === 0) {
       this.err('E_REPEAT_UNEVEN', `${label} is worked "around" but does not work into any stitch or space, so it would never end — give a count like "x6".`, span);
       return;
     }
+    // in a border round, "across" / "to corner" ends at the next corner (3.9)
+    const limit = extent === 'corner' || (extent === 'across' && c.hasCorners) ? this.sideLimit(span, 'to corner') : undefined;
     let reps = 0;
     for (let guard = 0; guard < 100000; guard++) {
-      if (reqs.every((u) => this.remaining(u) === 0)) break;
+      if (reqs.every((u) => !this.hasRemaining(u, limit))) break;
       const before = { cursor: c.cursor, chain: c.chainCursor?.pos, chains: c.chainCursor?.chains };
-      const left = this.remaining({ kind: 'st' });
       try {
         body();
       } catch (e) {
         if (!(e instanceof TargetError) || this.tooBig) throw e;
         if (reps === 0 && e.code !== 'E_NO_TARGET' && e.code !== 'E_NO_SPACE') throw e;
+        const left = this.remaining({ kind: 'st' }, limit, before.cursor);
         this.err('E_REPEAT_UNEVEN',
           `${label} does not fit evenly: after ${reps} full repeat${reps === 1 ? '' : 's'} ${left} stitch${left === 1 ? ' is' : 'es are'} left in ${c.prevLabel ?? 'the previous round'}, not enough for another repeat.`,
           span);

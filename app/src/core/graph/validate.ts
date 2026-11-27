@@ -22,6 +22,7 @@ export type GraphIssueCode =
   | 'G_ANCHOR_FORWARD'
   | 'G_ANCHOR_ROUND'
   | 'G_ANCHOR_COUNT'
+  | 'G_ANCHOR_PART'
   | 'G_CLUSTER'
   | 'G_SPACE'
   | 'G_COUNTS_AS'
@@ -144,6 +145,14 @@ export function validateGraph(g: Graph, opts: ValidateOptions = {}): GraphIssue[
         const t = nodes[a.node];
         if (!t) { add({ severity: 'error', code: 'G_ANCHOR_RANGE', message: `node ${id} is worked into node ${a.node}, which does not exist`, node: id }); continue; }
         if (a.node >= id) { add({ severity: 'error', code: 'G_ANCHOR_FORWARD', message: `node ${id} is worked into node ${a.node}, which is made later`, node: id }); continue; }
+        if (a.part !== undefined) {
+          // row ends and the other side of a foundation chain are reached from a border round,
+          // however many rows back they lie (notation.md 3.9)
+          if (a.part === 'side' && !nodeCounts(t)) add({ severity: 'error', code: 'G_ANCHOR_PART', message: `node ${id} is worked into the row end of node ${a.node} (${t.type}), which is not a stitch`, node: id });
+          else if (a.part === 'base' && t.type !== 'ch') add({ severity: 'error', code: 'G_ANCHOR_PART', message: `node ${id} is worked into the unused loops of node ${a.node} (${t.type}), which is not a chain`, node: id });
+          else if (a.part !== 'side' && a.part !== 'base') add({ severity: 'error', code: 'G_ANCHOR_PART', message: `node ${id} has an anchor with unknown part ${JSON.stringify(a.part)}`, node: id });
+          continue;
+        }
         if (R && t.round !== n.round && t.round !== n.round - 1) {
           add({ severity: 'warning', code: 'G_ANCHOR_ROUND', message: `node ${id} (${R.label}) is worked into node ${a.node} of round ${t.round}, not the previous round`, node: id });
         }

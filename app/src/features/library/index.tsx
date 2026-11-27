@@ -8,6 +8,7 @@ import { exportPattern, importPatterns } from '@/app/patternActions';
 import { NewPatternDialog } from '@/features/editor/NewPatternDialog';
 import { useLibrary } from '@/store/library';
 import type { PatternRecord } from '@/store/types';
+import { YarnHint } from './YarnHint';
 import './library.css';
 
 const originLabel: Record<PatternRecord['origin'], string> = { user: 'Mine', designer: 'Designer', fixture: 'Example', corpus: 'Corpus' };
@@ -121,6 +122,7 @@ function Row({ r, onDelete }: { r: PatternRecord | BuiltinRecord; onDelete?: () 
             {b.expectedShape && <ShapeBadge shape={b.expectedShape} />}
             {!r.readOnly && <span>Edited {fmtDate(r.updatedAt)}</span>}
             {r.graph && <Badge tone="info">graph only</Badge>}
+            <YarnHint text={r.text} graph={r.graph} />
           </span>
         </span>
       </Link>

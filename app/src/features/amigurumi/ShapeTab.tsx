@@ -12,6 +12,7 @@ import type { SimViewProps } from '@/features/sim/SimView';
 import { KIND_COLOR, ProfileEditor } from './ProfileEditor';
 import { LathePreview } from './LathePreview';
 import { PatternOutput } from './PatternOutput';
+import { YarnPanel } from '@/features/yarn/YarnPanel';
 
 const SimView = lazy(() => import('@/features/sim/SimView')) as React.LazyExoticComponent<(p: SimViewProps) => React.ReactNode>;
 
@@ -159,11 +160,16 @@ export function ShapeTab() {
             <div><dt>Stitches</dt><dd>{result.totalStitches}</dd></div>
             <div><dt>Height</dt><dd>{cm(result.dims.heightMm)} <span className="muted">/ {cm(result.targetDims.heightMm)} drawn</span></dd></div>
             <div><dt>Widest</dt><dd>{cm(result.dims.diameterMm)} <span className="muted">/ {cm(result.targetDims.diameterMm)} drawn</span></dd></div>
-            <div><dt>Yarn</dt><dd>≈ {Math.round(result.yarnMm / 1000)} m <span className="muted">(rough, ±30%)</span></dd></div>
             <div><dt>Start</dt><dd>{result.start.kind === 'ring' ? `magic ring, ${result.start.count}` : `chain ring of ${result.start.count}`}</dd></div>
           </dl>
         </div>
         <CountStrip result={result} onHover={setHl} />
+      </Card>
+
+      <Card className="ami-yarn">
+        {compiled.pattern && !compiled.pending
+          ? <YarnPanel pattern={compiled.pattern} params={params} compact />
+          : <YarnPanel counts={{ [st.stitch]: result.totalStitches, ...(result.start.kind === 'chain' ? { ch: result.start.count, 'sl st': 1 } : {}) }} params={params} compact />}
       </Card>
 
       {result.warnings.length > 0 && (

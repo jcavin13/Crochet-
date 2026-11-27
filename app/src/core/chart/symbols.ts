@@ -17,6 +17,12 @@ export interface SymbolOptions {
   set?: SymbolSet;
   /** Single crochet as '×' (default) or '+'. */
   sc?: ScGlyph;
+  /**
+   * Size of the symbols' marks (chain ovals, dots, crosses, bars, hatches, picots) relative to
+   * the chart's spacing; stems keep their ends. Default 1. A view raises it when the chart is
+   * shown small (never past `symbolRoom`, so marks do not collide).
+   */
+  scale?: number;
 }
 export interface Glyph { stroke: string; fill: string }
 
@@ -95,10 +101,11 @@ export const SYM = {
 } as const;
 
 /** Hatches across a leg: `k` slashes centred at fraction ~0.5 of the leg. */
-function hatches(k: number, at: (t: number) => { p: Pt; d: Pt }, legLen: number): string {
+function hatches(k: number, at: (t: number) => { p: Pt; d: Pt }, legLen: number, K = 1): string {
   if (k <= 0) return '';
   let s = '';
-  const pitch = Math.min(SYM.hatchPitch, (legLen * 0.6) / Math.max(1, k));
+  const H = SYM.hatch * Math.min(K, 1.4);
+  const pitch = Math.min(SYM.hatchPitch * Math.min(K, 1.4), (legLen * 0.6) / Math.max(1, k));
   const mid = 0.5;
   for (let i = 0; i < k; i++) {
     const off = (i - (k - 1) / 2) * pitch;
@@ -106,8 +113,8 @@ function hatches(k: number, at: (t: number) => { p: Pt; d: Pt }, legLen: number)
     const { p, d } = at(t);
     const q = perpOf(d);
     // slanted slash: from lower-left to upper-right of the stem
-    const a = add(add(p, q, -SYM.hatch * 0.85), d, -SYM.hatch * 0.45);
-    const b = add(add(p, q, SYM.hatch * 0.85), d, SYM.hatch * 0.45);
+    const a = add(add(p, q, -H * 0.85), d, -H * 0.45);
+    const b = add(add(p, q, H * 0.85), d, H * 0.45);
     s += line(a, b);
   }
   return s;
@@ -116,6 +123,7 @@ function hatches(k: number, at: (t: number) => { p: Pt; d: Pt }, legLen: number)
 /** Glyph of one laid-out node. */
 export function glyph(n: ChartNode, o: SymbolOptions = {}): Glyph {
   const set = o.set ?? 'cyc';
+  const K = o.scale ?? 1;
   const T: Pt = { x: n.x, y: n.y };
   switch (n.kind) {
     case 'chain':
@@ -123,16 +131,16 @@ export function glyph(n: ChartNode, o: SymbolOptions = {}): Glyph {
     case 'ringch': {
       // (chains packed closer than their length — a long valley bridge — are drawn smaller)
       const k = Math.min(1, n.scale ?? 1);
-      return { stroke: ellipse(T, SYM.chRx * k, SYM.chRy * Math.max(0.8, k), n.rot), fill: '' };
+      return { stroke: ellipse(T, SYM.chRx * k * K, SYM.chRy * Math.max(0.8, k) * K, n.rot), fill: '' };
     }
     case 'slst':
       return set === 'jis'
-        ? { stroke: '', fill: ellipse(T, 0.13, 0.072, n.rot) }
-        : { stroke: '', fill: circle(T, SYM.dot) };
+        ? { stroke: '', fill: ellipse(T, 0.13 * K, 0.072 * K, n.rot) }
+        : { stroke: '', fill: circle(T, SYM.dot * K) };
     case 'picot': {
       const out = { x: Math.cos(n.rot), y: Math.sin(n.rot) };
       const chains = n.symbol.size ?? 3;
-      const rl = 0.15 * Math.sqrt(chains / 3) * (n.scale ?? 1);
+      const rl = 0.15 * Math.sqrt(chains / 3) * (n.scale ?? 1) * Math.min(K, 1.25);
       const c = add(T, out, rl + 0.02);
       if (set === 'jis') {
         // a ring of small chain ovals closed by a dot (unverified; SYMBOLS.md)
@@ -148,20 +156,20 @@ export function glyph(n: ChartNode, o: SymbolOptions = {}): Glyph {
       if ((n.scale ?? 1) > 1) {
         // a picot on an arm: a pointed loop standing out from the spine, like the frond it blocks to
         const q = perpOf(out);
-        const L = rl * 2.5, w = rl * 0.95;
+        const L = rl * 2.9, w = rl * 0.8;
         const tipP = add(T, out, L);
         const c1 = add(add(T, out, L * 0.15), q, w * 1.25), c2 = add(add(T, out, L * 0.85), q, w * 0.75);
         const c3 = add(add(T, out, L * 0.85), q, -w * 0.75), c4 = add(add(T, out, L * 0.15), q, -w * 1.25);
-        return { stroke: `M${P(T)}C${P(c1)} ${P(c2)} ${P(tipP)}C${P(c3)} ${P(c4)} ${P(T)}Z`, fill: circle(T, 0.055) };
+        return { stroke: `M${P(T)}C${P(c1)} ${P(c2)} ${P(tipP)}C${P(c3)} ${P(c4)} ${P(T)}Z`, fill: circle(T, 0.055 * K) };
       }
-      return { stroke: circle(c, rl), fill: circle(T, 0.055) };
+      return { stroke: circle(c, rl), fill: circle(T, 0.055 * K) };
     }
     default:
-      return stitchGlyph(n, o);
+      return stitchGlyph(n, o, K);
   }
 }
 
-function stitchGlyph(n: ChartNode, o: SymbolOptions): Glyph {
+function stitchGlyph(n: ChartNode, o: SymbolOptions, K = 1): Glyph {
   const set = o.set ?? 'cyc';
   const sp = n.symbol;
   const T: Pt = { x: n.x, y: n.y };
@@ -179,7 +187,7 @@ function stitchGlyph(n: ChartNode, o: SymbolOptions): Glyph {
 
   if (base === 'sc' && sp.legs === 1) {
     const C = add(T, dir, -Math.min(L / 2, 0.42));
-    const a = Math.min(0.21, Math.max(0.12, L * 0.3));
+    const a = Math.min(0.21, Math.max(0.12, L * 0.3)) * Math.min(K, Math.max(1, (L * 0.45) / 0.21));
     // worked into the same place as its neighbour (inc): join the fan to the anchor
     if (n.fan && L - Math.min(L / 2, 0.42) - a > 0.4) stroke += line(A, add(C, dir, -a * 0.75));
     // The cross itself stays upright on the page (review R23): rotated with the round, a × at
@@ -220,7 +228,7 @@ function stitchGlyph(n: ChartNode, o: SymbolOptions): Glyph {
     const cross = base === 'sc';
     if (m === 1) {
       stroke += line(A, T);
-      stroke += hatches(k, (t) => ({ p: add(A, sub(T, A), t), d: dir }), L);
+      stroke += hatches(k, (t) => ({ p: add(A, sub(T, A), t), d: dir }), L, K);
     } else if (collapsed || sp.cluster) {
       // legs from one place fan out and rejoin at the top
       const spread = 0.17 + 0.02 * m;
@@ -230,19 +238,19 @@ function stitchGlyph(n: ChartNode, o: SymbolOptions): Glyph {
         const c = add(add(a, sub(T, a), 0.45), perp, off * 2);
         stroke += `M${P(a)}Q${P(c)} ${P(T)}`;
         const legLen = len(sub(T, a));
-        stroke += hatches(k, (t) => ({ p: quadAt(a, c, T, t), d: quadTan(a, c, T, t) }), legLen);
-        if (cross) stroke += smallX(quadAt(a, c, T, 0.5), quadTan(a, c, T, 0.5));
+        stroke += hatches(k, (t) => ({ p: quadAt(a, c, T, t), d: quadTan(a, c, T, t) }), legLen, K);
+        if (cross) stroke += smallX(quadAt(a, c, T, 0.5), quadTan(a, c, T, 0.5), K);
       }
     } else {
       for (const a of gapped) {
         stroke += line(a, T);
         const d = norm(sub(T, a));
         const legLen = len(sub(T, a));
-        stroke += hatches(k, (t) => ({ p: add(a, sub(T, a), t), d }), legLen);
-        if (cross) stroke += smallX(add(a, sub(T, a), 0.5), d);
+        stroke += hatches(k, (t) => ({ p: add(a, sub(T, a), t), d }), legLen, K);
+        if (cross) stroke += smallX(add(a, sub(T, a), 0.5), d, K);
       }
     }
-    if (!cross) stroke += line(add(T, perp, -SYM.bar), add(T, perp, SYM.bar));
+    if (!cross) stroke += line(add(T, perp, -SYM.bar * K), add(T, perp, SYM.bar * K));
   }
 
   // loop modifiers under the stem
@@ -267,9 +275,9 @@ function stitchGlyph(n: ChartNode, o: SymbolOptions): Glyph {
   return { stroke, fill };
 }
 
-function smallX(c: Pt, d: Pt): string {
+function smallX(c: Pt, d: Pt, K = 1): string {
   const q = perpOf(d);
-  const a = 0.11;
+  const a = 0.11 * Math.min(K, 1.4);
   const d1 = { x: (d.x + q.x) * a * 0.7071, y: (d.y + q.y) * a * 0.7071 };
   const d2 = { x: (d.x - q.x) * a * 0.7071, y: (d.y - q.y) * a * 0.7071 };
   return line(add(c, d1, -1), add(c, d1)) + line(add(c, d2, -1), add(c, d2));
