@@ -95,6 +95,8 @@ interface Unit {
   perOcc?: number;
   /** the unit makes compound groups (inc/shell/V) one per step */
   splitGroups: boolean;
+  /** "2 dc in each st around": one step per target */
+  each: boolean;
   repeatSpan?: Span;
   prefix: string[];
   suffix: string[];
@@ -152,8 +154,12 @@ function indexUnits(ast: PatternAst, terms: Terms): { units: Map<string, Unit>; 
       const u: Unit = {
         key: spanKey(it.span), item: it, span: it.span, leafOrder: new Map(spans.map((s, i) => [spanKey(s), i])),
         perOcc: single ? nodesPerOccurrence(it) : undefined,
-        splitGroups: it.kind === 'stitch', repeatSpan, prefix: [], suffix: [],
+        splitGroups: it.kind === 'stitch', each: false, repeatSpan, prefix: [], suffix: [],
       };
+      if (it.kind === 'stitch' && it.target?.place.kind === 'each') {
+        u.each = true;
+        u.perOcc = nodesPerOccurrence({ ...it, target: undefined, count: it.count ?? 1 });
+      }
       for (const s of spans) units.set(spanKey(s), u);
       made.push(u);
     }
@@ -179,6 +185,11 @@ function indexUnits(ast: PatternAst, terms: Terms): { units: Map<string, Unit>; 
 function singleText(u: Unit, terms: Terms): string {
   const it = u.item;
   if (it.kind !== 'stitch') return printItem(it, terms);
+  if (u.each && it.target?.place.kind === 'each') {
+    const place = it.target.place;
+    const grouped = it.spec.kind === 'inc' || it.spec.kind === 'shell' || it.spec.kind === 'v';
+    return printItem({ ...it, count: grouped ? undefined : it.count, times: undefined, target: { ...it.target, place: { kind: 'next', unit: place.unit } } }, terms);
+  }
   return printItem({ ...it, count: undefined, times: undefined }, terms);
 }
 
@@ -266,7 +277,7 @@ export function buildSteps(pattern: Pattern, opts: StepOptions = {}): StepList {
           occCount++;
           j++;
         }
-        if (u.splitGroups && a.group) split = true;
+        if ((u.splitGroups && a.group) || u.each) split = true;
       } else {
         // fallback: same src (if any) + same compound group; chain runs; else single node
         while (j + 1 <= R.last) {

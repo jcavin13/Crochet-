@@ -53,7 +53,7 @@ export function sampleProfile(profile: Profile, perSpan = 40): SampledProfile {
   const sharpIdx: number[] = []; // indices into `out` of interior sharp points
   for (let i = 0; i < last; i++) {
     const p1 = raw[i], p2 = raw[i + 1];
-    if (!smooth || (sharp(i) && sharp(i + 1) && (i === 0 ? true : true) && false)) {
+    if (!smooth) {
       out.push({ r: p2.r, z: p2.z });
     } else {
       const ghost = (end: P, nb: P | undefined, profileEnd: boolean): P => {
