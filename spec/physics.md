@@ -1,5 +1,13 @@
 # Physical model shared by both simulators, v0.1
 
+> **Amended by `lab/SPEC_NOTES.md` (normative).** Section 3 below gives the spring *topology*.
+> Taken literally, its rectangular-cell rest lengths are frustrated in a disc and buckle flat
+> pieces, so the reference implementation (`lab/src/crolab/network.py`, `variant="metric"`)
+> derives rest lengths from the fabric's intrinsic geometry (N1), treats counts-as tops as full
+> stitches (N2), excludes turning chains and slip stitches from shear/bend (N3) and makes
+> chain-space chains tension-only (N4). Growth placement rules P0–P6 are also made exact there.
+> Both sims implement the amended model; `tau_flat` is 0.25.
+
 Two simulators exist: the research one in `lab/` (Python, reference) and the real-time one in
 `app/src/core/sim` (TypeScript). They may use different solvers, but they **must build the same
 spring network from the same graph and parameters, and classify shapes with the same metric**.

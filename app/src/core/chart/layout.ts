@@ -513,7 +513,9 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         const m = it.ids.length;
         it.ids.forEach((id, j) => {
           const f = (j + 0.5) / m;
-          place(id, mx + (tx - mx) * f, my + (ty - my) * f, rot + Math.PI / 2, tx, ty);
+          const cxs = mx + (tx - mx) * f, cys = my + (ty - my) * f;
+          if (id === it.rep) place(id, cxs, cys, rot + Math.PI / 2, tx, ty);
+          else place(id, cxs, cys, rot + Math.PI / 2);
           ramp[id] = rp;
         });
         // the top chain is where the next round attaches
