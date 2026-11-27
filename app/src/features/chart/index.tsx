@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PatternPicker, patternHref, useCurrentPattern, useStitchParams } from '@/app';
 import { analyzeFlatness } from '@/core/flatness';
 import type { ParamSet } from '@/core/params';
@@ -8,16 +8,42 @@ import { usePersistentState, useSettings } from '@/store';
 import {
   Badge, Button, Card, EmptyState, Icon, Page, PageHeader, SegmentedControl, ShapeBadge, Slider, Toggle, buttonClass, toast,
 } from '@/ui';
-import { ChartView, useChartLayout, useChartWedge, type ChartViewMode } from './ChartView';
+import { ChartTooBig, ChartView, MAX_CHART_NODES, preferWedge, useChartLayout, useChartWedge, wedgeLabel, type ChartViewMode } from './ChartView';
 import { ChartLegend } from './Legend';
 import { downloadChartPng, downloadChartSvg } from './export';
 import { SymmetryPanel, useSymmetry } from '@/features/symmetry/SymmetryPanel';
+import { swatchFromQuery } from './swatch';
 import './chart.css';
 
 type Prefs = { flatness: boolean; labels: boolean; set: SymbolSet; sc: ScGlyph; print: boolean; symmetry: boolean };
 const DEFAULT_PREFS: Prefs = { flatness: true, labels: true, set: 'cyc', sc: 'x', print: false, symmetry: false };
 
 export default function ChartPage() {
+  const [query] = useSearchParams();
+  const blanket = query.get('blanket');
+  if (blanket) return <BlanketSwatchPage query={query} />;
+  return <PatternChartPage />;
+}
+
+/**
+ * `#/chart?blanket=rect:dc:sc,shell` — the swatch of a blanket-studio design (body in rows with its
+ * border, or a piece worked in the round) on the chart page, without saving it (see swatch.ts).
+ */
+function BlanketSwatchPage({ query }: { query: URLSearchParams }) {
+  const sw = useMemo(() => swatchFromQuery(query), [query]);
+  if (!sw) {
+    return (
+      <Page>
+        <EmptyState title="Unknown blanket swatch" actions={<Link className={buttonClass()} to="/blanket">Open the blanket studio</Link>}>
+          The link does not describe a blanket the studio can make.
+        </EmptyState>
+      </Page>
+    );
+  }
+  return <ChartScreen key={query.toString()} id="" pattern={sw.pattern} title={sw.title} fixedParams={sw.params} />;
+}
+
+function PatternChartPage() {
   const cur = useCurrentPattern();
   const params = useParams();
   const navigate = useNavigate();
@@ -48,12 +74,23 @@ export default function ChartPage() {
       </Page>
     );
   }
+  if (cur.pattern.graph.nodes.length > MAX_CHART_NODES) {
+    return (
+      <Page wide className="ch-page">
+        <PageHeader kicker="Chart" title={cur.record.title} actions={<PatternPicker value={cur.id} />} />
+        <ChartTooBig nodes={cur.pattern.graph.nodes.length} />
+      </Page>
+    );
+  }
   return <ChartScreen key={cur.id} id={cur.id!} pattern={cur.pattern} title={cur.record.title} />;
 }
 
-function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<ReturnType<typeof useCurrentPattern>['pattern']>; title: string }) {
+function ChartScreen({ id, pattern, title, fixedParams }: {
+  /** '' for a pattern that is not in the library (a blanket swatch): no Editor / Counter links. */
+  id: string; pattern: NonNullable<ReturnType<typeof useCurrentPattern>['pattern']>; title: string; fixedParams?: ParamSet;
+}) {
   const { selected } = useStitchParams(pattern);
-  const params = selected as unknown as ParamSet;
+  const params = fixedParams ?? (selected as unknown as ParamSet);
   const layout = useChartLayout(pattern, params);
   const flat = useMemo(() => analyzeFlatness(pattern.graph, params), [pattern.graph, params]);
   const terms = useSettings((s) => s.terms);
@@ -68,17 +105,18 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
   const sym = useSymmetry(pattern);
   const [emphasis, setEmphasis] = useState<number[]>([]);
   useEffect(() => { setEmphasis([]); }, [pattern]);
-  // whole piece or one repeat wedge (one arm of a snowflake): starts on one arm for pointed pieces on narrow screens
+  // whole piece or one repeat wedge (one arm of a snowflake, the corner of a border): starts on it
+  // for pointed pieces and bordered swatches on narrow screens
   const wedge = useChartWedge(pattern, layout);
-  const pointedPiece = layout.rounds.some((r) => r.pointed);
-  const [view, setView] = useState<ChartViewMode>(() => (pointedPiece && typeof window !== 'undefined' && window.innerWidth < 600 ? 'arm' : 'all'));
+  const [view, setView] = useState<ChartViewMode>(() => (typeof window !== 'undefined' && preferWedge(layout, window.innerWidth) ? 'arm' : 'all'));
   const armView = view === 'arm' && !!wedge;
   const showSym = prefs.symmetry && !prefs.print && layout.mode === 'radial' && !!sym?.applicable && !armView;
   const svgOpts = {
     symbols: { set: prefs.set, sc: prefs.sc }, showFlatness: showFlat, showLabels: prefs.labels, uptoRound: upto,
     title, terms, mono: prefs.print, wedge: armView ? wedge : null,
   };
-  const armWord = wedge?.kind === 'arm' ? 'one arm' : 'one repeat';
+  const armWord = wedge?.kind === 'arm' ? 'one arm' : wedge?.kind === 'corner' ? 'the corner detail' : 'one repeat';
+  const border = layout.rounds.some((r) => r.border);
 
   const exportSvg = () => { downloadChartSvg(layout, svgOpts, title); toast('Chart downloaded as SVG'); };
   const exportPng = () => {
@@ -109,17 +147,21 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
       <PageHeader
         kicker="Chart"
         title={title}
-        actions={(
+        actions={id ? (
           <div className="row">
             <Link className={buttonClass('default', 'sm')} to={patternHref('editor', id)}><Icon name="edit" size={18} />Editor</Link>
             <Link className={buttonClass('default', 'sm')} to={patternHref('counter', id)}><Icon name="counter" size={18} />Counter</Link>
+          </div>
+        ) : (
+          <div className="row">
+            <Link className={buttonClass('default', 'sm')} to="/blanket">Blanket studio</Link>
           </div>
         )}
       />
       <div className="ch-layout">
         <div className="ch-main">
           <div className="ch-toolbar">
-            <PatternPicker value={id} />
+            {id ? <PatternPicker value={id} /> : <span className="muted small">Blanket swatch — not saved</span>}
             <div className="ch-slider">
               <Slider
                 label="Show up to"
@@ -170,7 +212,7 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
               <Toggle label="Round numbers" checked={prefs.labels} onChange={(v) => set({ labels: v })} />
               <Toggle label="Symmetry" checked={prefs.symmetry} onChange={(v) => set({ symmetry: v })} disabled={layout.mode !== 'radial' || prefs.print || !sym?.applicable} />
               <Toggle
-                label={wedge?.kind === 'arm' ? `One arm (×${wedge.order})` : wedge ? `One repeat (×${wedge.order})` : 'One repeat'}
+                label={wedge?.kind === 'corner' ? 'Corner detail' : wedge?.kind === 'arm' ? `One arm (×${wedge.order})` : wedge ? `One repeat (×${wedge.order})` : 'One repeat'}
                 checked={armView}
                 onChange={(v) => setView(v ? 'arm' : 'all')}
                 disabled={!wedge}
@@ -223,7 +265,10 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
           <Card>
             <h2>Flatness by round</h2>
             {!flat.applicable ? (
-              <p className="muted small" style={{ margin: 0 }}>Worked in rows — the flatness check applies to pieces worked in the round.</p>
+              <p className="muted small" style={{ margin: 0 }}>
+                Worked in rows — the flatness check applies to pieces worked in the round.
+                {border && <> The border rounds (R1, R2…) are worked round the rows: see the blanket studio&apos;s edge and corner checks.</>}
+              </p>
             ) : (
               <>
                 <p className="ch-worst">
@@ -268,7 +313,9 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
             </div>
             <p className="muted small" style={{ margin: 'var(--s-2) 0 0' }}>
               {armView
-                ? <>Exports {armWord} of {wedge!.order} enlarged (“work it ×{wedge!.order}”), with its legend. Switch to Whole to export the whole piece.</>
+                ? wedge!.kind === 'corner'
+                  ? <>Exports the corner detail enlarged (all four corners are worked alike), with its legend. Switch to Whole to export the whole piece.</>
+                  : <>Exports {armWord} of {wedge!.order} enlarged (“work it ×{wedge!.order}”), with its legend. Switch to Whole to export the whole piece.</>
                 : <>Exports the chart as shown (up to {rounds[upto]?.label}), with its legend{wedge ? <> — switch on {armWord} to export it enlarged</> : null}.</>}
               {' '}Symbols after the Craft Yarn Council chart conventions.
             </p>

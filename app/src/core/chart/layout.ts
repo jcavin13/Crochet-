@@ -41,7 +41,24 @@
  * middle). Pointed rounds: valley bridges are drawn pinned out (a V to a pin), the round's
  * outline (`hull`) runs through the arm tips and the bridge pins.
  *
- * Rows (any `Row` round): the same machinery with x for the angle and height for the radius.
+ * Rows (any `Row` round): the same machinery with x for the angle and height for the radius. Every
+ * column is one stitch wide; an increase at a row's edge keeps the edge straight (the outermost
+ * stitch on its anchor, the others leaning in) and the edge stitches hold, so fans spread inwards.
+ *
+ * Shapes (frames.ts — `opts.shapes`, default on), each still "a course and a height":
+ *  - Border rounds of a body in rows (a `Rnd` after `Row`s, notation.md 3.9): the course runs round
+ *    the body's rectangle at a distance (a rounded rectangle per round), so stitches on the top
+ *    stand over the last row, row-end stitches beside their row (at its mid-height, pointing out),
+ *    stitches in the foundation chain's unused loops below it (pointing down); corner groups (the
+ *    compiler's corners, core/graph borderLists) are centred on the corner's bisector and fan round
+ *    it. Tops are level per stitch height along a side. Row numbers move to the margin outside the
+ *    border; border rounds are numbered R1, R2… at their start.
+ *  - A piece worked round both sides of a foundation chain: the chain is a straight line and the
+ *    rounds are stadiums round it.
+ *  - A polygon worked from the centre (corners.ts: n corner groups, evenly spaced, round after
+ *    round, sides between them): from its first cornered round each round is a regular n-gon with
+ *    rounded corners (straight sides, corner groups fanned), height = distance from the centre to
+ *    the side; the piece is turned so it sits on a side. Everything else stays a circle.
  */
 import { analyzeFlatness, type RoundFlatness } from '../flatness';
 import { childrenOf, type Graph, type Node } from '../graph';
@@ -199,6 +216,8 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     flush();
   });
   const firstRing = graph.spaces.find((s) => s.kind === 'ring');
+  const ringSpaces = graph.spaces.filter((s) => s.kind === 'ring');
+  const placedScan = { upto: 0, any: false };
   const hub = new Uint8Array(N);
 
   // Anchor point of leg `leg` of node n; `atS` = course coordinate for ring / hub legs.
@@ -381,7 +400,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     const lenC = (d: number, r: number) => (OF ? (TAU * d) / OF.circ(r) : d / r);
 
     // --- ring chains of rings made in this round
-    for (const sp of graph.spaces) {
+    for (const sp of ringSpaces) {
       if (sp.kind !== 'ring' || sp.round !== k || ringPlaced.has(sp.id) || !sp.chains.length) continue;
       ringPlaced.add(sp.id);
       const n = sp.chains.length;
@@ -395,7 +414,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       const ring = { x: 0, y: 0 };
       spacesOut.push({ id: sp.id, round: k, kind: 'ring', d: circlePath(ring.x, ring.y, r0), apex: r0 });
     }
-    for (const sp of graph.spaces) {
+    for (const sp of ringSpaces) {
       if (sp.kind === 'ring' && sp.round === k && !sp.chains.length && !ringPlaced.has(sp.id)) {
         ringPlaced.add(sp.id);
         spacesOut.push({ id: sp.id, round: k, kind: 'ring', d: circlePath(0, 0, ringR[sp.id]), apex: ringR[sp.id] });
@@ -403,7 +422,16 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     }
 
     // --- hub chains (centre of "ch 2, 6 sc in 2nd ch from hook")
-    const anyPlacedBefore = first > 0 && placed.slice(0, first).some((p, i) => p && kind[i] !== 'ringch');
+    let anyPlacedBefore = false;
+    if (first > 0) {
+      // (placed nodes before this round, ring chains aside: scanned from where the last scan stopped)
+      if (placedScan.any) anyPlacedBefore = true;
+      else {
+        for (let i = placedScan.upto; i < first; i++) if (placed[i] && kind[i] !== 'ringch') { placedScan.any = true; break; }
+        placedScan.upto = first;
+        anyPlacedBefore = placedScan.any;
+      }
+    }
     if (!anyPlacedBefore) {
       for (const id of ids) {
         const n = graph.nodes[id];
@@ -508,8 +536,15 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       const out: number[] = [];
       for (let l = 0; l < n.into.length; l++) {
         const p = legPoint(n, l, undefined);
-        if (p && p.resolved) out.push(F.course(p.x, p.y));
-        else {
+        if (p && p.resolved) {
+          // the first border round's top: stitches of the last row are on the top edge, however low
+          // they stand below the row's tallest (a sc beside a bobble)
+          const a = n.into[l];
+          if (isBorder && k === borderStart && 'node' in a && !a.part && graph.nodes[a.node]?.round === k - 1) {
+            const yTop = Math.min(...rect!.core.map((q) => q.y));
+            out.push(F.course(p.x, Math.min(p.y, yTop - 1e-3)));
+          } else out.push(F.course(p.x, p.y));
+        } else {
           const a = n.into[l];
           if ('node' in a && graph.nodes[a.node]?.round === k) {
             const ii = itemOf[a.node - first];
@@ -618,6 +653,8 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         };
         straighten(stIdx, 1);
         straighten([...stIdx].reverse(), -1);
+        // and the edges hold: what the row adds inside (fans) spreads inwards, not off the edge
+        if (stIdx.length >= 3) { items[stIdx[0]].w = 25; items[stIdx[stIdx.length - 1]].w = 25; }
       }
       if (OF && OF.corners >= 3) {
         // corner groups fan round their corner: centred on the corner's bisector
@@ -789,6 +826,18 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     const gK = spiral ? Math.min(Math.max(minGap, rho - prevTop), Math.max(minGap, hBar)) : 0;
     const s0 = n ? S[items[0].rep] : start;
     const rampOf = (s: number) => (spiral ? (Math.min(1, Math.max(0, (dir * (s - s0)) / TAU)) - 0.5) * gK : 0);
+    let baseLevel = NaN;
+    if (OF) {
+      let sb = 0, cb = 0;
+      for (const it of items) {
+        if (it.kind !== 'st' && it.kind !== 'tch') continue;
+        const nd = graph.nodes[it.rep];
+        let sh = 0, c = 0;
+        for (let l = 0; l < nd.into.length; l++) { const p = legPoint(nd, l, S[it.rep]); if (p) { sh += F.height(p.x, p.y); c++; } }
+        if (c) { sb += sh / c; cb++; }
+      }
+      if (cb) baseLevel = sb / cb;
+    }
     for (const it of items) {
       if (it.kind !== 'st' && it.kind !== 'tch') continue;
       const nd = graph.nodes[it.rep];
@@ -805,7 +854,9 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       const base = pts.length ? sh / pts.length : prevTop;
       const inh = pts.length ? si / pts.length : 0;
       const rp = rampOf(s);
-      let top = base - inh + hOf(nd) * kappa + rp;
+      // (a polygon / border / stadium round: tops level — one line per stitch height along a side,
+      // as charts draw them; the legs reach down to wherever they are worked)
+      let top = (OF && Number.isFinite(baseLevel) ? baseLevel : base - inh) + hOf(nd) * kappa + rp;
       top = Math.max(top, (pts.length ? maxH : prevTop) + 0.45);
       const [tx, ty] = F.pos(s, top);
       if (!pts.length) { const [bx, by] = F.pos(s, prevTop); pts.push({ x: bx, y: by }); }
@@ -1202,6 +1253,22 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     });
     prevTop = rMean;
     prevDir = dir;
+  }
+
+  // a body in rows with a border: the row numbers go in the margin outside the border (left / right
+  // as the rows start), border rounds are numbered "R1", "R2"… at their start
+  if (borderStart > 0 && rect) {
+    const xs = rect.core.map((p) => p.x);
+    const xL = Math.min(...xs), xR = Math.max(...xs);
+    let out = 0;
+    for (const r of roundsOut) if (r.border && r.first >= 0) out = Math.max(out, r.rOuter);
+    for (const r of roundsOut) {
+      if (r.first < 0) continue;
+      if (r.border) { r.short = `R${r.short}`; continue; }
+      const left = r.labelAt.x < (xL + xR) / 2;
+      r.labelAt = { x: left ? xL - out - 0.8 : xR + out + 0.8, y: r.labelAt.y };
+      growPt(r.bounds, r.labelAt.x, r.labelAt.y, 0.4);
+    }
   }
 
   // unplaced nodes (should not happen for valid graphs): park them at the centre

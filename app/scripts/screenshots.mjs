@@ -64,6 +64,47 @@ export const ROUTES = [
   { name: 'chart-petal', path: '/chart/corpus%3Apetal-doily-12', wait: '.ch-svg' },
   { name: 'chart-spiderweb', path: '/chart/corpus%3Aspiderweb-doily-10', wait: '.ch-svg' },
   { name: 'chart-granny', path: '/chart/corpus%3Agranny-square-motif', wait: '.ch-svg', only: 'desktop' },
+  // blankets on the chart page (#/chart?blanket=…: the studio's swatch, not saved): a body in rows
+  // with its border round it (rounded-rectangle rounds, corner fans), polygons and stadiums in the round
+  ...(() => {
+    const toStage = async (page) => {
+      await page.locator('.ch-stage').evaluate((el) => { if (window.innerWidth < 900) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 64); });
+      await page.waitForTimeout(300);
+    };
+    const corner = async (page) => {
+      const b = page.locator('.ch-viewbar button').nth(1);
+      if ((await b.getAttribute('aria-pressed')) !== 'true') await b.click();
+      await page.waitForTimeout(400);
+      await toStage(page);
+    };
+    const c = (q) => `/chart?blanket=${q}`;
+    return [
+      { name: 'chart-blanket-border', path: c('rect:dc:sc,shell'), wait: '.ch-svg', only: 'desktop', prepare: toStage },
+      // corner detail: the default on a phone (one corner, the first rows, every border round)
+      { name: 'chart-blanket-corner', path: c('rect:dc:sc,shell'), wait: '.ch-svg', prepare: corner },
+      { name: 'chart-blanket-moss', path: c('rect:moss:sc'), wait: '.ch-svg', only: 'desktop', prepare: toStage },
+      { name: 'chart-blanket-granny-stripe', path: c('demo:granny-stripe-baby'), wait: '.ch-svg', only: 'desktop', prepare: toStage },
+      { name: 'chart-blanket-ripple', path: c('rect:ripple:sc,sc'), wait: '.ch-svg', only: 'desktop', prepare: toStage },
+      { name: 'chart-blanket-granny-square', path: c('round:granny-square:granny'), wait: '.ch-svg', prepare: toStage },
+      { name: 'chart-blanket-solid-square', path: c('round:solid-square:dc'), wait: '.ch-svg', only: 'desktop', prepare: toStage },
+      { name: 'chart-blanket-hexagon', path: c('round:hexagon:dc'), wait: '.ch-svg', only: 'desktop', prepare: toStage },
+      { name: 'chart-blanket-c2s', path: `${c('round:circle-to-square:dc,hdc')}&full=1&w=30`, wait: '.ch-svg', only: 'desktop', prepare: toStage },
+      { name: 'chart-blanket-rect-round', path: c('round:rect-round:sc'), wait: '.ch-svg', only: 'desktop', prepare: toStage },
+      // the blanket studio's own swatch chart (it embeds ChartView)
+      {
+        name: 'blanket-swatch-chart', path: '/blanket?demo=moss-throw', wait: '.bk-controls',
+        prepare: async (page) => {
+          await page.waitForSelector('.bk-hero__svg', { timeout: 30_000, state: 'attached' });
+          const t = page.getByRole('tab', { name: 'Blanket' });
+          if (await t.isVisible().catch(() => false)) { await t.click(); await page.waitForTimeout(400); }
+          await page.getByRole('switch', { name: 'Chart', exact: true }).check({ force: true });
+          await page.waitForSelector('.bk-chart .ch-svg', { timeout: 10_000 });
+          await page.locator('.bk-chart').evaluate(scrollToInPane);
+          await page.waitForTimeout(500);
+        },
+      },
+    ];
+  })(),
   // symmetry overlay (one repeat shaded, sector lines) and a symmetry defect shown on the chart
   ...(() => {
     const symOn = async (page) => {

@@ -16,7 +16,7 @@ export { simulate, networkEnergy, springStrain, Grower, Placer, GOLDEN } from '.
 export type { SimResult, SolveOptions } from './solve';
 export { Lbfgs, springEnergy } from './lbfgs';
 export type { SpringSet, LbfgsOptions, LbfgsStatus } from './lbfgs';
-export { shapeMetric } from './metrics';
+export { shapeMetric, networkMetric, usesPcaAxis } from './metrics';
 export type { ShapeMetric } from './metrics';
 export { block, setupBlock, blockVerdict, alignPins, pinOverstretch, PIN_OVERSTRETCH } from './blocking';
 export type { BlockResult, BlockVerdict, BlockPin, PinStretch } from './blocking';

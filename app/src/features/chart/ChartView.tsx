@@ -12,8 +12,8 @@ import type { Pattern, Terms } from '@/core/graph';
 import { describeNode } from '@/core/graph';
 import { paramsFor, type ParamSet } from '@/core/params';
 import {
-  bandPath, boundsUpto, buildHitIndex, edgePath, glyph, hitTest, hullPath, layoutChart, magicRingGlyph, roundAt, symbolRoom, wedgeNote, wedgeView,
-  POINTED_NOTE, type ChartLayout, type ScGlyph, type SymbolSet, type WedgeView,
+  bandPath, boundsUpto, buildHitIndex, cornerView, edgePath, glyph, hitTest, hullPath, layoutChart, magicRingGlyph, roundAt, symbolRoom, wedgeNote, wedgeView,
+  BORDER_NOTE, POINTED_NOTE, type ChartLayout, type ScGlyph, type SymbolSet, type WedgeView,
 } from '@/core/chart';
 import { analyzeSymmetry, type SymmetryReport } from '@/core/symmetry';
 import { useSettings } from '@/store/settings';
@@ -58,8 +58,10 @@ export interface ChartViewProps {
   emphasisNodes?: number[];
   /**
    * 'all': the whole piece; 'arm': one repeat wedge enlarged (one arm of a snowflake, one repeat
-   * of a doily), "×n" noted, the rest ghosted. Controlled when given; otherwise the view keeps its
-   * own state, starting on 'arm' for pointed pieces (snowflakes) on narrow screens.
+   * of a doily, one side and corner of a polygon), "×n" noted, the rest ghosted — or, for a body in
+   * rows with a border round it, the corner detail (one corner, the first rows, every border
+   * round). Controlled when given; otherwise the view keeps its own state, starting on 'arm' for
+   * pointed pieces (snowflakes) and for bordered swatches of some size on narrow screens.
    */
   view?: ChartViewMode;
   onViewChange?: (v: ChartViewMode) => void;
@@ -71,8 +73,28 @@ export type ChartViewMode = 'all' | 'arm';
 
 /** Symbols are drawn at least this many screen pixels per chart unit (one sc wide), room permitting. */
 const MIN_PX_PER_UNIT = 22;
-/** On screens narrower than this a pointed chart opens on one arm. */
+/** On screens narrower than this a pointed chart opens on one arm, a bordered piece on its corner. */
 const NARROW_PX = 600;
+/** A bordered piece of at least this many stitches opens on its corner detail on a narrow screen. */
+const CORNER_FIRST_NODES = 150;
+/**
+ * Above this many stitches the chart is not drawn (laying it out and drawing every symbol would
+ * stall the page); a message says so. A full blanket of ~10 k stitches lays out in well under a
+ * second, so this is far above any swatch.
+ */
+export const MAX_CHART_NODES = 40_000;
+
+/** Short name of the one-repeat view of a chart (button and toggle labels). */
+export function wedgeLabel(w: Pick<WedgeView, 'kind' | 'order'>): string {
+  return w.kind === 'corner' ? 'Corner detail' : `${w.kind === 'arm' ? 'One arm' : 'One repeat'} ×${w.order}`;
+}
+
+/** Should this chart open on its arm / corner view (narrow screen)? */
+export function preferWedge(layout: ChartLayout, width: number): boolean {
+  if (!(width > 0 && width < NARROW_PX)) return false;
+  if (layout.rounds.some((r) => r.pointed)) return true;
+  return layout.shape?.kind === 'border' && layout.nodes.length >= CORNER_FIRST_NODES;
+}
 
 const symCache = new WeakMap<object, SymmetryReport | null>();
 /** Memoised symmetry analysis of a pattern's graph (for the one-repeat view). */
@@ -89,6 +111,7 @@ export function chartSymmetry(pattern: Pattern): SymmetryReport | null {
  * first repeat; null when the piece has no rotational symmetry (the view then stays whole).
  */
 export function chartWedge(layout: ChartLayout, sym: SymmetryReport | null | undefined): WedgeView | null {
+  if (layout.shape?.kind === 'border') return cornerView(layout);
   if (!sym || !sym.applicable || sym.order < 2 || layout.mode !== 'radial') return null;
   let axis: number | undefined;
   const f = sym.frame;
@@ -131,7 +154,26 @@ export function useChartLayout(pattern: Pattern, params?: ParamSet): ChartLayout
 type Tip = { x: number; y: number; title: string; lines: string[]; pinned: boolean };
 type View = { k: number; x: number; y: number };
 
+/** The chart, or — for a pattern too big to chart here — a message instead (the page stays responsive). */
 export function ChartView(props: ChartViewProps) {
+  const n = props.pattern.graph.nodes.length;
+  if (!props.layout && n > MAX_CHART_NODES) return <ChartTooBig nodes={n} className={props.className} style={props.style} />;
+  return <ChartViewInner {...props} />;
+}
+
+export function ChartTooBig({ nodes, className, style }: { nodes: number; className?: string; style?: React.CSSProperties }) {
+  return (
+    <div className={`ch-view ch-toobig${className ? ` ${className}` : ''}`} style={style} role="note">
+      <p>
+        <strong>Too big to chart here:</strong> {nodes.toLocaleString('en')} stitches and chains. A symbol chart is read a
+        repeat at a time — chart a swatch or one motif instead (the blanket studio's swatch chart shows the stitch pattern
+        and the border&apos;s corners).
+      </p>
+    </div>
+  );
+}
+
+function ChartViewInner(props: ChartViewProps) {
   const {
     pattern, showFlatness = true, uptoRound, highlightNode, dimAfter, onNodeClick, className, style,
     showLabels = true, symbolSet = 'cyc', scGlyph = 'x', onRoundClick, symmetryOverlay, emphasisNodes, hideViewControls,
@@ -142,7 +184,6 @@ export function ChartView(props: ChartViewProps) {
   const computed = useChartLayout(pattern, params);
   const full = props.layout ?? computed;
   const graph = pattern.graph;
-  const pointedPiece = useMemo(() => full.rounds.some((r) => r.pointed), [full]);
   const wedge = useChartWedge(pattern, full);
 
   // ---- whole / one-arm view (controlled or own state)
@@ -151,9 +192,9 @@ export function ChartView(props: ChartViewProps) {
   useLayoutEffect(() => {
     if (ownView !== null) return;
     const w = typeof window !== 'undefined' ? window.innerWidth : 1000;
-    setOwnView(pointedPiece && w > 0 && w < NARROW_PX && highlightNode === undefined ? 'arm' : 'all');
+    setOwnView(preferWedge(full, w) && highlightNode === undefined ? 'arm' : 'all');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pointedPiece]);
+  }, [full]);
   const mode: ChartViewMode = (props.view ?? ownView ?? 'all') === 'arm' && wedge ? 'arm' : 'all';
   const setMode = (v: ChartViewMode) => { if (props.view === undefined) setOwnView(v); props.onViewChange?.(v); };
   const W8 = mode === 'arm' ? wedge : null;
@@ -294,13 +335,13 @@ export function ChartView(props: ChartViewProps) {
     if (id >= 0) {
       const n = graph.nodes[id];
       const R = layout.rounds[n.round];
-      const lines = [R?.pointed ? `${R.label}: ${POINTED_NOTE}` : showFlatness && R?.flat && R.flat.class !== 'n/a' ? R.flat.message : R?.label ?? ''];
+      const lines = [R?.pointed ? `${R.label}: ${POINTED_NOTE}` : R?.border ? `${R.label}: ${BORDER_NOTE}` : showFlatness && R?.flat && R.flat.class !== 'n/a' ? R.flat.message : R?.label ?? ''];
       return { tip: { ...at, title: describeNode(graph, id, { terms }), lines, pinned }, node: id, round: n.round };
     }
     const r = roundAt(layout, c.x, c.y, upto);
     if (r >= 0) {
       const R = layout.rounds[r];
-      const msg = R.pointed ? `Pointed round — judged by blocking, not by the flatness rule` : showFlatness && R.flat && R.flat.class !== 'n/a' ? R.flat.message : '';
+      const msg = R.pointed ? `Pointed round — judged by blocking, not by the flatness rule` : R.border ? `Border round — see the blanket studio's edge and corner checks` : showFlatness && R.flat && R.flat.class !== 'n/a' ? R.flat.message : '';
       return { tip: { ...at, title: R.label, lines: msg ? [msg] : [], pinned }, node: -1, round: r };
     }
     return { tip: null, node: -1, round: -1 };
@@ -495,15 +536,15 @@ export function ChartView(props: ChartViewProps) {
           <button type="button" aria-pressed={mode === 'all'} onClick={() => { setMode('all'); setTip(null); }} title="Fit the whole piece">
             Whole
           </button>
-          <button type="button" aria-pressed={mode === 'arm'} onClick={() => { setMode('arm'); setTip(null); }} title={`Fit one repeat, enlarged (the piece is ${wedge!.order}-fold)`}>
-            {wedge!.kind === 'arm' ? 'One arm' : 'One repeat'} ×{wedge!.order}
+          <button type="button" aria-pressed={mode === 'arm'} onClick={() => { setMode('arm'); setTip(null); }} title={wedge!.kind === 'corner' ? 'One corner of the border with the first rows, enlarged (all four corners are worked alike)' : `Fit one repeat, enlarged (the piece is ${wedge!.order}-fold)`}>
+            {wedgeLabel(wedge!)}
           </button>
         </div>
       )}
       {W8 && !showBar && <p className="ch-viewnote">{wedgeNote(W8)}</p>}
       {zoomed && (
-        <button type="button" className="ch-reset" onClick={() => { reset(); setTip(null); }} aria-label={W8 ? 'Fit the arm' : 'Fit the whole chart'}>
-          {W8 ? (W8.kind === 'arm' ? 'Fit arm' : 'Fit repeat') : 'Fit all'}
+        <button type="button" className="ch-reset" onClick={() => { reset(); setTip(null); }} aria-label={W8 ? (W8.kind === 'corner' ? 'Fit the corner' : 'Fit the arm') : 'Fit the whole chart'}>
+          {W8 ? (W8.kind === 'arm' ? 'Fit arm' : W8.kind === 'corner' ? 'Fit corner' : 'Fit repeat') : 'Fit all'}
         </button>
       )}
     </div>

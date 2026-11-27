@@ -14,6 +14,7 @@ import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../pa
 import { hyp, sq } from './lbfgs';
 import { dsin, npMean } from './detmath';
 import { armBases, findPointedLoops, findSpines, type PointedLoop, type Spine } from './spine';
+import { buildOutline, pointAt, type Outline } from './outline';
 
 export const COURSE = 0, WALE = 1, SHEAR = 2, BEND_COURSE = 3, BEND_WALE = 4;
 export type SpringKind = 0 | 1 | 2 | 3 | 4;
@@ -48,6 +49,8 @@ export interface Network {
   spines: Spine[];
   /** Pointed loops (`ch ≥ 4, picot, ch ≥ 4` off one stitch, nothing worked into them), SPEC_NOTES N6. */
   pointedLoops: PointedLoop[];
+  /** Planar reference layout of rows, borders and polygon rounds (SPEC_NOTES N8–N10), or null. */
+  outline: Outline | null;
 }
 
 /** Plain-object view of the springs (for tests and debugging). */
@@ -438,6 +441,13 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
     push(i, b, L, kb, BEND_WALE);
   }
 
+  // N8–N10: rows, border rounds and polygon rounds take their reference cells from the planar
+  // layout (outline.ts): wale, shear and wale-bend rest lengths are layout distances; course
+  // springs keep the stitch widths, bent by the chord/arc ratio of the reference curve; the
+  // foundation span takes the first row's length
+  const outline = buildOutline(g, wEff, w, h, cfg.flatness?.chain_nominal ?? 0.85);
+  if (outline) applyOutline(outline, g.nodes.map((nd) => nd.round), counting, chspChain, Lc, gi, gj, gL, gt);
+
   // N5: every spring between two nodes of one spine takes its rest length from the spine's flat
   // reference layout; course bends along the stem and along the return row get course stiffness
   const spines = findSpines(g, w, h, param(params, 'ch', 'width'));
@@ -508,6 +518,48 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
   return {
     nNodes: n, nParticles, m, I, J, L, k: K, kind, slack, springs,
     particleRound: Int32Array.from(prounds), virtualSpace, spaceParticle, anchors,
-    width: w, height: h, graph: g, params, spines, pointedLoops,
+    width: w, height: h, graph: g, params, spines, pointedLoops, outline,
   };
+}
+
+/** SPEC_NOTES N8–N10: rest lengths from the outline layout (crolab.network._apply_outline). */
+function applyOutline(o: Outline, round: number[], counting: boolean[], chsp: Uint8Array, Lc: (a: number, b: number) => number,
+  gi: number[], gj: number[], gL: number[], gt: number[]) {
+  const n = round.length;
+  const has = (p: number) => p < n && o.has[p] === 1;
+  const dist = (a: number, b: number) => hyp(o.qx[a] - o.qx[b], o.qy[a] - o.qy[b]);
+  const span = new Set(o.span);
+  const ocourse = (i: number) => o.roundKind[round[i]] === 'border' || o.roundKind[round[i]] === 'polygon';
+  for (let idx = 0; idx < gi.length; idx++) {
+    const a = gi[idx], b = gj[idx], t = gt[idx];
+    if (t === WALE || t === SHEAR || t === BEND_WALE) {
+      if (counting[a] && has(a) && has(b)) gL[idx] = dist(a, b);
+      continue;
+    }
+    // course and course bend: a < b, b − a ∈ {1, 2}
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    if (!has(lo) || !has(hi)) continue;
+    if (span.has(lo) && span.has(hi) && (hi - lo === 1 || span.has(lo + 1))) {
+      let L = 0.5 * (o.c[lo] + o.c[hi]);
+      if (hi - lo === 2) L += o.c[lo + 1];
+      gL[idx] = L;
+    } else if (round[lo] !== round[hi]) {
+      if (counting[lo] && counting[hi]) gL[idx] = dist(lo, hi);
+    } else if (ocourse(lo)) {
+      let slackish = false;
+      for (let q = lo; q <= hi; q++) if (chsp[q]) slackish = true;
+      if (slackish || !o.courses.has(round[lo])) continue;
+      const poly = o.courses.get(round[lo])!.poly;
+      const Sa = o.S[lo], Sb = o.S[hi];
+      if (!Number.isFinite(Sa) || !Number.isFinite(Sb)) continue;
+      let path = Sb - Sa;
+      path -= poly.P * Math.floor(path / poly.P + 0.5);
+      path = Math.abs(path);
+      if (path < 1e-9) continue;
+      const pa = pointAt(poly, Sa), pb = pointAt(poly, Sb);
+      let arc = 0;
+      for (let q = lo; q < hi; q++) arc += Lc(q, q + 1);
+      gL[idx] = (arc * hyp(pa[0] - pb[0], pa[1] - pb[1])) / path;
+    }
+  }
 }

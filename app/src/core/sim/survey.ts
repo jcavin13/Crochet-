@@ -8,7 +8,7 @@ import type { Pattern } from '../graph';
 import { analyzeFlatness, type RoundClass } from '../flatness';
 import { paramsFor, simConfig, type ParamSet } from '../params';
 import { now } from './lbfgs';
-import { shapeMetric } from './metrics';
+import { networkMetric } from './metrics';
 import { FAST_TOLERANCES } from './sim';
 import { simulate } from './solve';
 
@@ -57,7 +57,7 @@ export function surveyPattern(pattern: Pattern, opts: SurveyOptions = {}): Surve
   const X = res.positions;
   let finite = true;
   for (let q = 0; q < 3 * net.nNodes; q++) if (!Number.isFinite(X[q])) { finite = false; break; }
-  const m = shapeMetric(X.subarray(0, 3 * net.nNodes), net.particleRound.subarray(0, net.nNodes), simConfig);
+  const m = networkMetric(net, X, simConfig);
   return {
     analytic: flat.final,
     analyticSlackOnly: !!lastA?.slackOnly,

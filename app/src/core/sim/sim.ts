@@ -8,7 +8,7 @@ import type { Graph, Pattern } from '../graph';
 import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../params';
 import { hyp, now } from './lbfgs';
 import { setupBlock, type BlockPin, type BlockResult, type BlockSetup, type PinStretch } from './blocking';
-import { shapeMetric, type ShapeMetric } from './metrics';
+import { networkMetric, type ShapeMetric } from './metrics';
 import { buildNetwork, type Network } from './network';
 import { Grower } from './solve';
 
@@ -183,7 +183,7 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
       if (!X) return undefined;
       let m = metricCache.get(target);
       if (!m) {
-        m = shapeMetric(X.subarray(0, 3 * net.nNodes), net.particleRound.subarray(0, net.nNodes), cfg);
+        m = networkMetric(net, X, cfg);
         metricCache.set(target, m);
       }
       return m;

@@ -1,7 +1,7 @@
 /** Legend: the symbols used in the chart (rounds 0..upto) with US or UK names. */
 import { memo, useMemo } from 'react';
 import type { Terms } from '@/core/graph';
-import { legendEntries, sampleGlyph, type ChartLayout, type ScGlyph, type SymbolSet } from '@/core/chart';
+import { BORDER_NOTE, legendEntries, sampleGlyph, type ChartLayout, type ScGlyph, type SymbolSet } from '@/core/chart';
 
 export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet = 'cyc', scGlyph = 'x', upto, showFlatness }: {
   layout: ChartLayout; terms: Terms; symbolSet?: SymbolSet; scGlyph?: ScGlyph; upto?: number; showFlatness?: boolean;
@@ -9,6 +9,7 @@ export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet 
   const entries = useMemo(() => legendEntries(layout, terms, upto), [layout, terms, upto]);
   const loose = layout.rounds.some((r) => r.flat?.slackOnly && !r.pointed && (upto === undefined || r.index <= upto));
   const pointed = layout.rounds.some((r) => r.pointed && r.first >= 0 && (upto === undefined || r.index <= upto));
+  const border = layout.rounds.some((r) => r.border && r.first >= 0 && (upto === undefined || r.index <= upto));
   return (
     <div>
       <ul className="ch-legend" aria-label="Symbols used">
@@ -30,6 +31,13 @@ export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet 
         <p className="ch-shapekey" aria-label="Pointed round">
           <span title="The arms stand off the circle (chain spines, pointed loops): such a round is stiffened and pinned out, so it is judged by how it blocks, not by the circle rule.">
             <i className="ch-swatch ch-swatch--pointed" aria-hidden="true" />pointed round: pin the arm tips and the valleys out to the dashed star — judged by blocking
+          </span>
+        </p>
+      )}
+      {border && (
+        <p className="ch-shapekey" aria-label="Border rounds">
+          <span title="Rounds worked round the rows (R1, R2…): flatness does not apply; the blanket studio checks how the border fits the edges and corners.">
+            R1, R2… {BORDER_NOTE}
           </span>
         </p>
       )}

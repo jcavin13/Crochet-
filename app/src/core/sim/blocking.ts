@@ -11,7 +11,7 @@
  */
 import { simConfig as defaultConfig, type SimConfig } from '../params';
 import { hyp, Lbfgs, now as clock, springEnergy, type LbfgsStatus, type SpringSet } from './lbfgs';
-import { eigSym3, shapeMetric } from './metrics';
+import { eigSym3, networkMetric } from './metrics';
 import { COURSE, WALE, type Network } from './network';
 
 export type BlockVerdict = 'easy' | 'firm' | 'impossible';
@@ -155,7 +155,7 @@ export function setupBlock(net: Network, X: Float64Array, config: SimConfig = de
   const usePins = pinList.length >= 2;
   let c: number[], n: number[];
   if (usePins) ({ c, n } = pcaPlane(X, nN));
-  else { const m = shapeMetric(X.subarray(0, 3 * nN), net.particleRound.subarray(0, nN), config); c = m.centroid; n = m.axis; }
+  else { const m = networkMetric(net, X, config); c = m.centroid; n = m.axis; }
   // orthonormal in-plane basis (deterministic): e = unit vector of the smallest |n| component
   let kmin = 0;
   for (let d = 1; d < 3; d++) if (Math.abs(n[d]) < Math.abs(n[kmin])) kmin = d;

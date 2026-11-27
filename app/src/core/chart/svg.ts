@@ -19,8 +19,12 @@ export const POINTED_KEY = 'pointed round: pin the tips and valleys out to the d
 
 /** "One repeat of 6 — work it 6 times" (one-arm / one-repeat view). */
 export function wedgeNote(w: Pick<WedgeView, 'kind' | 'order'>): string {
+  if (w.kind === 'corner') return 'Corner detail — all four corners are worked alike';
   return `${w.kind === 'arm' ? 'One arm' : 'One repeat'} of ${w.order} — work it ×${w.order}`;
 }
+
+/** What the chart says about border rounds (worked round a body in rows) instead of flat / cup / ruffle. */
+export const BORDER_NOTE = "border — see the blanket studio's edge and corner checks";
 
 export interface ChartColors {
   bg: string;
@@ -187,7 +191,9 @@ export function chartToSvg(full: ChartLayout, o: SvgOptions = {}): string {
   const anyPointed = layout.mode === 'radial' && layout.rounds.some((r) => r.pointed && r.first >= 0 && r.index <= upto);
   const flatRows = showFlat ? (chartW >= 15 ? 1 : 2.4 + (looseKey ? 0.6 : 0)) : 0;
   const keyLines = anyPointed ? wrapWords(POINTED_KEY, Math.max(20, Math.floor((chartW - 2) / 0.22))) : [];
-  const pointedRows = entries.length ? keyLines.length + 0.4 : 0;
+  const anyBorder = layout.rounds.some((r) => r.border && r.first >= 0 && r.index <= upto);
+  const borderLines = anyBorder && entries.length ? wrapWords(`R1, R2… ${BORDER_NOTE}`, Math.max(20, Math.floor((chartW - 2) / 0.22))) : [];
+  const pointedRows = (entries.length ? keyLines.length + 0.4 : 0) + (borderLines.length ? borderLines.length + 0.3 : 0);
   const titleH = (o.title ? 1.4 : 0) + (W8 ? 0.9 : 0);
   const legendH = entries.length ? 1.0 + rowsN * 1.5 + flatRows * 1.2 + pointedRows * 0.7 : 0;
   const W = chartW, Hh = chartH + titleH + legendH;
@@ -259,6 +265,8 @@ export function chartToSvg(full: ChartLayout, o: SvgOptions = {}): string {
   }
   // legend
   if (entries.length) {
+    // (one-repeat / corner views: the rest of the piece, ghosted, does not run on under the legend)
+    if (W8) out.push(`<rect x="${f(x0)}" y="${f(b.maxY)}" width="${f(W)}" height="${f(y0 + Hh - b.maxY)}" fill="${C.bg}"/>`);
     let y = b.maxY + 0.6;
     const colW = W / cols;
     entries.forEach((e, i) => {
@@ -288,6 +296,10 @@ export function chartToSvg(full: ChartLayout, o: SvgOptions = {}): string {
       const x = x0 + 0.6;
       out.push(`<path d="M${f(x)} ${f(y + 0.22)}h0.6" stroke="${C.ink3}" stroke-width="0.05" stroke-dasharray="0.16 0.1"/>`);
       lines.forEach((l, i) => out.push(`<text class="lg" x="${f(x + 0.8)}" y="${f(y + 0.35 + i * 0.6)}">${esc(l)}</text>`));
+      y += lines.length * 0.6 + 0.3;
+    }
+    if (borderLines.length) {
+      borderLines.forEach((l, i) => out.push(`<text class="lg" data-border-note="1" x="${f(x0 + 0.6)}" y="${f(y + 0.35 + i * 0.6)}">${esc(l)}</text>`));
     }
   }
   out.push('</svg>');

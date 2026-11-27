@@ -14,8 +14,12 @@ export {
   glyph, symbolOf, hatchesOf, legendEntries, legendName, sampleGlyph, magicRingGlyph, SYM,
 } from './symbols';
 export type { SymbolOptions, SymbolSet, ScGlyph, Glyph, LegendEntry } from './symbols';
-export { chartToSvg, DEFAULT_COLORS, POINTED_NOTE, POINTED_KEY, wedgeNote, roundBandPath, bandPath, edgePath, outlinePath, hullPath, roundEdge } from './svg';
-export { wedgeView } from './wedge';
+export { chartToSvg, DEFAULT_COLORS, BORDER_NOTE, POINTED_NOTE, POINTED_KEY, wedgeNote, roundBandPath, bandPath, edgePath, outlinePath, hullPath, roundEdge } from './svg';
+export { wedgeView, cornerView } from './wedge';
+export { offsetFrame, frameOf, framePath, frameHeight, regularCore } from './frames';
+export type { FrameSpec, OffsetFrame } from './frames';
+export { cornerGroups, detectPolygon, detectStadium, borderCornerGroups } from './corners';
+export type { PolygonInfo } from './corners';
 export type { WedgeView, WedgeLabel, WedgeOptions } from './wedge';
 export type { ChartColors, SvgOptions } from './svg';
 export { buildHitIndex, hitTest, roundAt } from './hit';

@@ -153,10 +153,18 @@ export class Placer {
       set(X, i, add(c, [R * dcos(th), R * dsin(th), 0]));
     }
     const byP3 = new Map<number, string>();
+    const o = net.outline;
+    const p9 = !!o && (o.roundKind[r] === 'row' || o.roundKind[r] === 'border' || o.roundKind[r] === 'polygon');
+    const [e1, e2] = p9 ? this.outlineFrame() : [Z, Z];
     for (const i of ids) {
       if (this.ringChain.has(i)) continue;
       const A = net.anchors[i];
-      if (A.length === 1 && A[0] >= nn) {
+      const b9 = p9 && o!.has[i] ? this.outlineBase(i, r) : -1;
+      if (b9 >= 0) {
+        // P9: in the reference layout, relative to a placed reference particle (SPEC_NOTES P9)
+        const dx = o!.qx[i] - o!.qx[b9], dy = o!.qy[i] - o!.qy[b9];
+        set(X, i, add(get(X, b9), add(scale(e1, dx), scale(e2, dy))));
+      } else if (A.length === 1 && A[0] >= nn) {
         // P2
         const p = A[0];
         const s = net.virtualSpace.get(p)!;
@@ -231,6 +239,69 @@ export class Placer {
   }
 
   /**
+   * P9 base of node i: its first anchor particle that has a reference position and is placed, else
+   * the nearest earlier node of its round that has one; −1 if none.
+   */
+  private outlineBase(i: number, r: number): number {
+    const o = this.net.outline!, X = this.X, nn = this.net.nNodes;
+    for (const a of this.net.anchors[i]) if (a < nn && o.has[a] && isPlaced(X, a)) return a;
+    for (let j = i - 1; j >= 0 && this.g.nodes[j].round === r; j--) if (o.has[j] && isPlaced(X, j)) return j;
+    return -1;
+  }
+
+  /**
+   * P9 frame: the orthonormal in-plane frame (e1, e2) of the least-squares affine map from the
+   * reference layout to the placed positions, over every placed node with a reference position
+   * (crolab.sim._outline_frame). Collinear references (the foundation chain alone): e1 along the
+   * fitted direction of the line, e2 = unit(z × e1) (fallback unit(e1 × x)); fewer than two: x, y.
+   */
+  outlineFrame(): [V3, V3] {
+    const o = this.net.outline!, X = this.X;
+    const ps: number[] = [];
+    for (let p = 0; p < this.net.nNodes; p++) if (o.has[p] && isPlaced(X, p)) ps.push(p);
+    if (ps.length < 2) return [[1, 0, 0], [0, 1, 0]];
+    const qx = npMean(ps.map((p) => o.qx[p])), qy = npMean(ps.map((p) => o.qy[p]));
+    const xb: V3 = [npMean(ps.map((p) => X[3 * p])), npMean(ps.map((p) => X[3 * p + 1])), npMean(ps.map((p) => X[3 * p + 2]))];
+    let sxx = 0, sxy = 0, syy = 0;
+    const cx: V3 = [0, 0, 0], cy: V3 = [0, 0, 0];
+    for (const p of ps) {
+      const ux = o.qx[p] - qx, uy = o.qy[p] - qy;
+      sxx += ux * ux; sxy += ux * uy; syy += uy * uy;
+      for (let d = 0; d < 3; d++) { const v = X[3 * p + d] - xb[d]; cx[d] += v * ux; cy[d] += v * uy; }
+    }
+    const tr = sxx + syy;
+    if (!(tr > 0)) return [[1, 0, 0], [0, 1, 0]];
+    const det = sxx * syy - sxy * sxy;
+    let e1: V3, e2: V3;
+    if (det > 1e-9 * tr * tr) {
+      const m1 = scale(add(scale(cx, syy), scale(cy, -sxy)), 1 / det);
+      const m2 = scale(add(scale(cy, sxx), scale(cx, -sxy)), 1 / det);
+      let [u, nu] = unit(m1);
+      if (nu < 1e-12) u = [1, 0, 0];
+      e1 = u;
+      [e2, nu] = unit(sub(m2, scale(e1, dot3(m2, e1))));
+      if (nu < 1e-12) e2 = this.perp(e1);
+    } else {
+      // collinear: q̂ = principal direction of the references, e_q its fitted image
+      let qh: [number, number] = sxx >= syy ? [sxx, sxy] : [sxy, syy];
+      const nq = Math.sqrt(qh[0] * qh[0] + qh[1] * qh[1]);
+      qh = nq > 0 ? [qh[0] / nq, qh[1] / nq] : [1, 0];
+      let [eq, ne] = unit(add(scale(cx, qh[0]), scale(cy, qh[1])));
+      if (ne < 1e-12) eq = [1, 0, 0];
+      const ep = this.perp(eq);
+      e1 = add(scale(eq, qh[0]), scale(ep, -qh[1]));
+      e2 = add(scale(eq, qh[1]), scale(ep, qh[0]));
+    }
+    return [e1, e2];
+  }
+
+  private perp(e: V3): V3 {
+    let [v, nv] = unit(cross(Z, e));
+    if (nv < 1e-9) [v] = unit(cross(e, [1, 0, 0]));
+    return v;
+  }
+
+  /**
    * P7 (crolab.sim._place_spines): every spine of round r whose base is placed is laid out in its
    * reference layout (s, t): x = x_base + s u + t v, u = unit(x_base − centroid before the round)
    * (fallback +x), v = unit(z × u) (fallback unit(u × x)).
@@ -273,6 +344,13 @@ export class Placer {
     }
   }
 
+  private p9Placed(i: number): boolean {
+    const o = this.net.outline;
+    if (!o || !o.has[i]) return false;
+    const k = o.roundKind[this.g.nodes[i].round];
+    return k === 'row' || k === 'border' || k === 'polygon';
+  }
+
   private placeLoops(r: number, ids: number[]) {
     const { net, g, X } = this;
     const idset = new Set(ids);
@@ -280,6 +358,7 @@ export class Placer {
     for (const pl of net.pointedLoops) for (const v of pl.nodes) inLoop.add(v);
     for (const sp of g.spaces) {
       if (sp.kind !== 'chsp' || sp.round !== r || !sp.chains.length || inLoop.has(sp.chains[0])) continue;
+      if (this.p9Placed(sp.chains[0])) continue;   // P9 placed them in the reference layout
       const ch = sp.chains;
       const a = ch[0] - 1, b = ch[ch.length - 1] + 1;
       if (!idset.has(a) || !idset.has(b) || !isPlaced(X, a) || !isPlaced(X, b)) continue;

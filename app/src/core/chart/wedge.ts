@@ -17,7 +17,8 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 export interface WedgeLabel { x: number; y: number; text: string }
 
 export interface WedgeView {
-  kind: 'arm' | 'repeat';
+  /** 'corner': a blanket border's corner detail (cornerView), not a rotational repeat. */
+  kind: 'arm' | 'repeat' | 'corner';
   /** Rotational order n: the wedge is worked n times. */
   order: number;
   /** Axis of the wedge in the original layout (radians, counter-clockwise from 3 o'clock). */
@@ -192,4 +193,57 @@ export function wedgeView(layout: ChartLayout, order: number, o: WedgeOptions = 
   const bounds = { minX: b.minX - pad, minY: b.minY - pad, maxX: b.maxX + pad, maxY: b.maxY + pad };
   const lay: ChartLayout = { ...layout, nodes, rounds, spaces: [], bounds };
   return { kind, order: n, axis, half, rotate, layout: lay, inside, bounds, labels };
+}
+
+/**
+ * "Corner detail" of a body worked in rows with a border worked round it (the way a blanket
+ * pattern charts its border): one bottom corner — a few stitches of each side, the foundation chain
+ * and the first rows, and every border round round the corner — enlarged; the rest ghosted. Null
+ * when the layout has no border. The corner is the bottom one on the side where Row 1 starts (the
+ * rounds' joins and turning chains are at a top corner); all four are worked alike.
+ */
+export function cornerView(layout: ChartLayout, o: { pad?: number } = {}): WedgeView | null {
+  const shape = layout.shape;
+  if (shape?.kind !== 'border' || !layout.nodes.length) return null;
+  const xs = shape.rect.map((p) => p.x), ys = shape.rect.map((p) => p.y);
+  const xL = Math.min(...xs), xR = Math.max(...xs), yT = Math.min(...ys), yB = Math.max(...ys);
+  let out = 0;
+  for (const r of layout.rounds) if (r.border && r.first >= 0) out = Math.max(out, r.rOuter);
+  // the side where the first row starts (its number is on that side)
+  const row1 = layout.rounds.find((r) => r.kind === 'row' && r.first >= 0);
+  const right = row1 ? row1.labelAt.x > (xL + xR) / 2 : true;
+  const wIn = Math.min(7.5, Math.max(3, (xR - xL) * 0.45));
+  const hIn = Math.min(7, Math.max(3, (yB - yT) * 0.6));
+  const box: Bounds = right
+    ? { minX: xR - wIn, maxX: xR + out + 0.3, minY: yB - hIn, maxY: yB + out + 0.3 }
+    : { minX: xL - out - 0.3, maxX: xL + wIn, minY: yB - hIn, maxY: yB + out + 0.3 };
+  const N = layout.nodes.length;
+  const inside = new Uint8Array(N);
+  const tol = 0.6;
+  for (const m of layout.nodes) {
+    const inBox = (p: number) => m.cx >= box.minX - p && m.cx <= box.maxX + p && m.cy >= box.minY - p && m.cy <= box.maxY + p;
+    inside[m.id] = inBox(0) ? 2 : inBox(tol) ? 1 : 0;
+  }
+  const labels: WedgeLabel[] = [];
+  // row numbers beside their rows (outside the box on the inner side when the row starts there)
+  for (const r of layout.rounds) {
+    if (r.first < 0 || r.border) continue;
+    const y = r.labelAt.y;
+    if (y < box.minY + 0.2 || y > box.maxY) continue;
+    const onOuter = right ? r.labelAt.x > (xL + xR) / 2 : r.labelAt.x < (xL + xR) / 2;
+    labels.push({ x: onOuter ? r.labelAt.x : right ? box.minX - 0.5 : box.maxX + 0.5, y, text: r.short });
+  }
+  // border rounds: numbered along the bottom side at the box's inner edge, half-way up each round
+  for (const r of layout.rounds) {
+    if (r.first < 0 || !r.border) continue;
+    labels.push({ x: right ? box.minX - 0.5 : box.maxX + 0.5, y: yB + (r.r0 + r.r) / 2, text: r.short });
+  }
+  const pad = o.pad ?? 0.5;
+  const b: Bounds = { minX: box.minX - pad, minY: box.minY - pad, maxX: box.maxX + pad, maxY: box.maxY + pad };
+  for (const l of labels) {
+    b.minX = Math.min(b.minX, l.x - 0.6); b.maxX = Math.max(b.maxX, l.x + 0.6);
+    b.minY = Math.min(b.minY, l.y - 0.5); b.maxY = Math.max(b.maxY, l.y + 0.5);
+  }
+  const lay: ChartLayout = { ...layout, bounds: b };
+  return { kind: 'corner', order: 4, axis: 0, half: 0, rotate: 0, layout: lay, inside, bounds: b, labels };
 }
