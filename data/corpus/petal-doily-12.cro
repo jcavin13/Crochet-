@@ -1,0 +1,22 @@
+# Original project pattern: twelve-petal doily
+title: Twelve-petal doily (12-fold)
+terms: US
+yarn: crochet cotton no. 10
+hook: 1.5mm
+params: thread-10_1.5mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: A 12-round petal doily with no pineapples. Design intent: a dc centre, a ring of 24 three-treble clusters, then twelve 5-dc shells that are opened into ch-1 fans and closed again as twelve petals of four 3-tr clusters each; the petals are then netted with ch-4 and ch-5 loops (increasing from 5 to 6 loops per repeat) and finished with 36 small 3-dc shells and a picot edge. Exercises beginning cluster ("ch 4, 2-tr cl in same sp"), 3-tr cl in a space, the shell name with its default (5 dc) and with a size ("3-dc shell"), ch-N sp length checks that force explicit "sk next ch-2 sp", groups repeated with xN inside a repeat, a long "*...* x35" repeat, and plain picots. Intended shape: flat.
+
+Rnd 1: mr, ch 3 (counts as dc), 11 dc in ring, join. (12)
+Rnd 2: ch 3 (counts as dc), dc in same st, 2 dc in each st around, join. (24)
+Rnd 3: ch 4 (counts as dc, ch 1), *dc in next st, ch 1* x23, join. (24 dc, 24 ch-1 sps)
+Rnd 4: sl st in next ch-1 sp, ch 4, 2-tr cl in same sp, ch 2, *3-tr cl in next ch-1 sp, ch 2* x23, join. (24 cl, 24 ch-2 sps)
+Rnd 5: sl st in next ch-2 sp, ch 1, sc in same sp, ch 4, *sc in next ch-2 sp, ch 4* x23, join. (24 sc, 24 ch-4 sps)
+Rnd 6: sl st in next ch-4 sp, ch 1, sc in same sp, ch 1, shell in next ch-4 sp, ch 1, *sc in next ch-4 sp, ch 1, shell in next ch-4 sp, ch 1* x11, join. (72 sts, 12 shells, 24 ch-1 sps)
+Rnd 7: ch 1, sc in same st, ch 2, (dc in next dc, ch 1) x4, dc in next dc, ch 2, *sc in next sc, ch 2, (dc in next dc, ch 1) x4, dc in next dc, ch 2* x11, join. (72 sts, 60 dc, 24 ch-2 sps, 48 ch-1 sps)
+Rnd 8: ch 1, sc in same st, *ch 2, sk next ch-2 sp, 3-tr cl in next ch-1 sp, (ch 3, 3-tr cl in next ch-1 sp) x3, ch 2, sc in next sc* x11, ch 2, sk next ch-2 sp, 3-tr cl in next ch-1 sp, (ch 3, 3-tr cl in next ch-1 sp) x3, ch 2, join. (60 sts, 48 cl, 36 ch-3 sps, 24 ch-2 sps)
+Rnd 9: sl st in next ch-2 sp, ch 1, sc in same sp, ch 4, (sc in next ch-3 sp, ch 4) x3, sc in next ch-2 sp, ch 4, *sc in next ch-2 sp, ch 4, (sc in next ch-3 sp, ch 4) x3, sc in next ch-2 sp, ch 4* x11, join. (60 sc, 60 ch-4 sps)
+Rnd 10: sl st in next ch-4 sp, ch 1, sc in same sp, ch 5, (sc in next ch-4 sp, ch 5) x3, sc in next ch-4 sp, ch 5, sc in same sp, ch 5, *(sc in next ch-4 sp, ch 5) x4, sc in next ch-4 sp, ch 5, sc in same sp, ch 5* x11, join. (72 sc, 72 ch-5 sps)
+Rnd 11: sl st in next ch-5 sp, ch 1, sc in same sp, ch 1, 3-dc shell in next ch-5 sp, ch 1, *sc in next ch-5 sp, ch 1, 3-dc shell in next ch-5 sp, ch 1* x35, join. (144 sts, 36 shells, 72 ch-1 sps)
+Rnd 12: ch 1, sc in same st, ch 2, sc in next 2 dc, picot, sc in next dc, ch 2, *sc in next sc, ch 2, sc in next 2 dc, picot, sc in next dc, ch 2* x35, join, fasten off. (144 sc, 36 picot, 72 ch-2 sps)

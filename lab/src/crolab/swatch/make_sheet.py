@@ -13,12 +13,12 @@ import subprocess
 from pathlib import Path
 
 import cv2
-from reportlab.lib.colors import Color, black, white
+from reportlab.lib.colors import Color, black
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
-from .layout import (DICTIONARY, LAYOUT_VERSION, SHEET_DIR, Layout, build_layouts, marker_bits,
-                     render_layout, save_layouts)
+from .layout import (LAYOUT_VERSION, SHEET_DIR, Layout, build_layouts, marker_bits, render_layout,
+                     save_layouts)
 
 GREY = Color(0.62, 0.62, 0.62)
 

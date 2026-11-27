@@ -558,7 +558,7 @@ def save_overlay(an: Analysis, path: Path, dpi=90):
     import matplotlib.pyplot as plt
 
     d, r = an.debug, an.result
-    img, H, fit, lay = d["image"], d["H"], d["fit"], d["layout"]
+    img, H, fit = d["image"], d["H"], d["fit"]
     fig, ax = plt.subplots(2, 2, figsize=(12, 11))
     a = ax[0, 0]
     a.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -628,7 +628,7 @@ def save_overlay(an: Analysis, path: Path, dpi=90):
 
 
 def _spectra_plot(a, tg):
-    from .texture import masked_bandpass, power_spectrum, taper_window, whiten, _effective_support
+    from .texture import _effective_support, power_spectrum, taper_window, whiten
     win = taper_window(tg.rotated_mask, tg.analysis_ppm, 0.75 * max(tg.stitch_pitch_mm, tg.row_pitch_mm))
     sp = power_spectrum(tg.rotated_work * win, tg.analysis_ppm, _effective_support(win))
     for (f, S), lab, col in ((sp.marginal_x(), "stitch dir.", "C0"), (sp.strip_y(), "row dir.", "C1")):
@@ -680,7 +680,8 @@ def main(argv=None):
                     help="rows per texture repeat (2 for turned work whose faces alternate); auto = use prior")
     ap.add_argument("--thickness-mm", type=float, default=0.0,
                     help="swatch thickness: corrects the (small) parallax magnification, approximate")
-    ap.add_argument("--state", default="unblocked", choices=["unblocked", "blocked", "relaxed"])
+    ap.add_argument("--state", default="unblocked", choices=["fresh", "unblocked", "blocked"],
+                    help="fresh (<1 h off the hook), unblocked (>=24 h rest, never wetted), blocked")
     ap.add_argument("--grabcut", default="auto", choices=["auto", "on", "off"])
     ap.add_argument("--no-overlay", action="store_true")
     a = ap.parse_args(argv)

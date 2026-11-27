@@ -100,11 +100,15 @@ class Spectrum:
         f = np.arange(S.size) * self.ppm / M
         return f, S
 
-    def strip_y(self):
-        """Power in a narrow strip around k_x = 0, for k_y > 0 -> (f, S)."""
+    def strip_y(self, half_width_freq: float | None = None):
+        """Power in a strip around k_x = 0, for k_y > 0 -> (f, S). A strip wider than the
+        peak (up to ~0.4 x the stitch frequency) also collects the power of bowed rows, which
+        spreads to small |k_x|, without reaching the lattice peaks at k_x = +-1/p_x."""
         N, M = self.P.shape
         cy, cx = N // 2, M // 2
         d = int(np.ceil(self.peak_halfwidth_bins(1)))
+        if half_width_freq:
+            d = max(d, int(half_width_freq * M / self.ppm))
         S = self.P[cy:, cx - d:cx + d + 1].sum(1)
         f = np.arange(S.size) * self.ppm / N
         return f, S
@@ -352,7 +356,9 @@ def estimate_gauge(gray: np.ndarray, mask: np.ndarray, ppm: float, *, prior_px: 
         spec = power_spectrum(work * win, ppm_a, _effective_support(win))
         total_tilt = tilt
     fxs, Sx = spec.marginal_x()
-    fys, Sy = spec.strip_y()
+    fxs, Sx = spec.marginal_x()
+    fx_pre = fundamental(fxs, Sx, (pmin_x, pmax_x), spec.peak_halfwidth_bins(1), prior_period=prior_px)
+    fys, Sy = spec.strip_y(0.4 / fx_pre.period_mm)
     fx = fundamental(fxs, Sx, (pmin_x, pmax_x), spec.peak_halfwidth_bins(1), prior_period=prior_px)
     rr = 2 if row_repeat == "2" else 1   # rows per texture repeat, if the user knows it
     prior_y = fx.period_mm * prior_ratio * rr if prior_ratio else None
@@ -381,7 +387,10 @@ def estimate_gauge(gray: np.ndarray, mask: np.ndarray, ppm: float, *, prior_px: 
         sp = power_spectrum(work * wk, ppm_a, _effective_support(wk))
         try:
             a = fundamental(*sp.marginal_x(), None, sp.peak_halfwidth_bins(1), near_period=fx.period_mm)
-            b = fundamental(*sp.strip_y(), None, sp.peak_halfwidth_bins(0), near_period=fy.period_mm * rr)
+            b = fundamental(*sp.strip_y(0.4 / fx.period_mm), None, sp.peak_halfwidth_bins(0),
+                            near_period=fy.period_mm * rr)
+            if a.peak_snr < 2.5 or b.peak_snr < 2.5:  # no significant peak near the global estimate
+                continue
             est[k] = {"stitch_pitch_mm": round(a.period_mm, 4), "row_pitch_mm": round(b.period_mm / rr, 4)}
         except ValueError:
             pass
@@ -392,7 +401,7 @@ def estimate_gauge(gray: np.ndarray, mask: np.ndarray, ppm: float, *, prior_px: 
         spread_y = float(np.std(vy, ddof=1) / np.mean(vy))
     else:
         spread_x = spread_y = 1.0
-        notes.append("split-window check failed (swatch too small?)")
+        notes.append("split-window check failed: fewer than 3 of 4 half-swatches show the global period")
     conf = min(_snr_term(fx) * np.exp(-spread_x / 0.04), _snr_term(fy) * np.exp(-spread_y / 0.04))
     if fx.prior_used or fy.prior_used:
         conf *= 0.85
@@ -418,7 +427,6 @@ def _phase_crossings(profile: np.ndarray, valid: np.ndarray, period_px: float):
     ph = np.unwrap(np.angle(z))
     k0, k1 = np.ceil(ph.min() / (2 * np.pi)), np.floor(ph.max() / (2 * np.pi))
     out = []
-    idx = np.arange(n)
     for k in np.arange(k0, k1 + 1):
         target = 2 * np.pi * k
         j = np.nonzero((ph[:-1] < target) & (ph[1:] >= target))[0]

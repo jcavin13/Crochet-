@@ -12,7 +12,7 @@ background, shading) so that failures of the geometry / periodicity code show up
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 
 import cv2
 import numpy as np

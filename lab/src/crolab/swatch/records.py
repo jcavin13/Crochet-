@@ -16,7 +16,7 @@ FITTING_COLUMNS = ["yarn", "hook_mm", "stitch", "n_stitches", "n_rows", "width_m
 EXTRA_COLUMNS = [
     "swatch_id",     # free id, same for repeats of one swatch
     "method",        # ruler | photo-counts | photo-texture | chain-length | mesh
-    "state",         # unblocked | blocked | relaxed (see PROTOCOL.md)
+    "state",         # fresh | unblocked | blocked (see PROTOCOL.md)
     "repeat",        # 1, 2, 3 ... repeated measurement of the same swatch/state
     "width_sd_mm",   # uncertainty of width_mm (1 sd), if known
     "height_sd_mm",

@@ -1,0 +1,14 @@
+# Original project pattern: five-point puff star coaster
+title: Puff star coaster (5-fold)
+terms: US
+yarn: crochet cotton no. 10
+hook: 1.5mm
+params: thread-10_1.5mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: Small 4-round medallion with 5-fold symmetry. Design intent: a ring of 15 puffs separated by ch-1 spaces, gathered into five dc wedges with ch-4 bridges, edged with sc (4 sc over each bridge) and long ch-5 picots at the star points. Exercises magic ring with 15 dc, puff stitches, groups repeated with xN inside a repeat, skipping a chain space, ch-N picot and plain picot. Intended shape: flat.
+
+Rnd 1: mr, ch 3 (counts as dc), 14 dc in ring, join. (15)
+Rnd 2: ch 2, puff in same st, ch 1, *puff in next st, ch 1* x14, join. (15 puff, 15 ch-1 sps)
+Rnd 3: sl st in next ch-1 sp, ch 3 (counts as dc), 2 dc in same sp, 3 dc in next ch-1 sp, ch 4, sk next ch-1 sp, *(3 dc in next ch-1 sp) x2, ch 4, sk next ch-1 sp* x4, join. (30 dc, 5 ch-4 sps)
+Rnd 4: ch 1, sc in same st, sc in next 2 sts, picot, sc in next 3 sts, (2 sc, ch-5 picot, 2 sc) in next ch-4 sp, *sc in next 3 sts, picot, sc in next 3 sts, (2 sc, ch-5 picot, 2 sc) in next ch-4 sp* x4, join, fasten off. (50 sc, 10 picot)

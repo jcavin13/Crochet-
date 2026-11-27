@@ -232,6 +232,7 @@ class Compiler {
       } catch (e) {
         if (!(e instanceof TargetError)) throw e;
         this.err(e.code, e.msg, e.span);
+        this.cur.suppress = true; // the count / unworked checks of this round would be cascades
       }
     }
     this.closeRun();
@@ -331,7 +332,7 @@ class Compiler {
         continue;
       }
       if (actual !== p.n) {
-        const said = u.kind === 'st' && p.text === '' && count.parts.length === 1 ? `(${p.n})` : `${p.n} ${p.text}`;
+        const said = u.kind === 'st' && p.text === '' ? (count.parts.length === 1 ? `(${p.n})` : `${p.n} stitches`) : `${p.n} ${p.text}`;
         const made = u.kind === 'st' ? `${actual} ${actual === 1 ? 'stitch' : 'stitches'}` : `${actual} ${p.text || noun}`;
         this.diag('error', 'E_COUNT_MISMATCH',
           `${c.label}: count mismatch — pattern says ${said} but the round makes ${made}.`,
@@ -497,6 +498,16 @@ class Compiler {
     throw this.noTarget(u, span);
   }
 
+  /**
+   * Unit of a stitch written without a target: the next stitch — or, while working along a
+   * chain ("sc in 2nd ch from hook, 9 sc") with no stitch targets left, the next chain.
+   */
+  defaultUnit(): Unit {
+    const c = this.cur;
+    if (c.chainCursor && c.chainCursor.pos < c.chainCursor.chains.length && this.remaining({ kind: 'st' }) === 0) return { kind: 'ch' };
+    return { kind: 'st' };
+  }
+
   remaining(u: Unit): number {
     const c = this.cur;
     if (u.kind === 'ch') {
@@ -549,10 +560,13 @@ class Compiler {
   }
 
   /** Resolve a place to one or more slots. `single` = all stitches go into one place. */
-  resolve(t: Target): { slots: Anchor[]; single: boolean } {
+  resolve(t: Target, into: Anchor[] = []): { slots: Anchor[]; single: boolean } {
     const c = this.cur;
     const p: Place = t.place;
-    const one = (a: Anchor) => ({ slots: [a], single: true });
+    const one = (a: Anchor) => {
+      into.push(a);
+      return { slots: into, single: true };
+    };
     switch (p.kind) {
       case 'ring': {
         if (this.lastRing === undefined) {
@@ -575,16 +589,18 @@ class Compiler {
         return one(this.fromHook(p.ordinal, t.span));
       case 'next': {
         const n = p.n ?? 1;
-        const slots: Anchor[] = [];
+        const slots = into;
         for (let k = 0; k < n; k++) slots.push(this.take(p.unit, t.span));
         return { slots, single: n === 1 };
       }
       case 'each': {
-        const slots: Anchor[] = [];
+        const slots = into;
         if (p.n !== undefined) {
           for (let k = 0; k < p.n; k++) slots.push(this.take(p.unit, t.span));
         } else {
-          if (this.remaining(p.unit) === 0) this.take(p.unit, t.span); // throws the right error
+          // nothing counted as remaining: take() either throws the right error or (for chains)
+          // enters the next chain space
+          if (this.remaining(p.unit) === 0) slots.push(this.take(p.unit, t.span));
           while (this.remaining(p.unit) > 0) slots.push(this.take(p.unit, t.span));
         }
         return { slots, single: false };
@@ -661,21 +677,23 @@ class Compiler {
         this.compileTog(it, spec, slot, loop);
         continue;
       }
-      let slots: Anchor[];
-      let perSlot: number;
-      if (it.target) {
-        const r = this.resolve(it.target);
-        slots = r.slots;
-        perSlot = it.count ?? 1;
-      } else if (slot) {
-        slots = [slot.anchor];
-        perSlot = it.count ?? 1;
-      } else {
-        slots = [];
-        for (let k = 0; k < (it.count ?? 1); k++) slots.push(this.take({ kind: 'st' }, it.span));
-        perSlot = 1;
+      // Slots are collected first, then worked; if the targets run out part-way, the stitches
+      // that did find a target are still made (so the next round's diagnostics stay meaningful).
+      const slots: Anchor[] = [];
+      let perSlot = it.count ?? 1;
+      try {
+        if (it.target) {
+          this.resolve(it.target, slots);
+        } else if (slot) {
+          slots.push(slot.anchor);
+        } else {
+          perSlot = 1;
+          const u = this.defaultUnit();
+          for (let k = 0; k < (it.count ?? 1); k++) slots.push(this.take(u, it.span));
+        }
+      } finally {
+        for (const a of slots) for (let k = 0; k < perSlot; k++) this.emitUnit(spec, a, loop, it.span);
       }
-      for (const a of slots) for (let k = 0; k < perSlot; k++) this.emitUnit(spec, a, loop, it.span);
     }
   }
 
@@ -689,7 +707,7 @@ class Compiler {
           return;
         }
         if (p.kind === 'next' && (p.n ?? 1) !== 1 && p.n !== spec.n) {
-          this.err('E_SYNTAX', `"${it.name}" needs ${spec.n} stitches but "${p.n} ${this.noun(p.unit)}s" gives ${p.n}.`, it.target.span);
+          this.err('E_SYNTAX', `"${it.name}" works ${spec.n} stitches together but the target names ${p.n} — expected "in next ${spec.n} sts".`, it.target.span);
           return;
         }
         const r = this.resolve(it.target);
@@ -698,7 +716,8 @@ class Compiler {
         legs = Array.from({ length: spec.n }, () => slot.anchor);
       } else {
         legs = [];
-        for (let j = 0; j < spec.n; j++) legs.push(this.take({ kind: 'st' }, it.span));
+        const u = this.defaultUnit();
+        for (let j = 0; j < spec.n; j++) legs.push(this.take(u, it.span));
       }
       const n: Omit<Node, 'id' | 'round'> = { type: spec.base, into: legs };
       if (loop) n.loop = loop;
@@ -866,6 +885,8 @@ class Compiler {
         this.err('E_REPEAT_UNEVEN',
           `${label} does not fit evenly: after ${reps} full repeat${reps === 1 ? '' : 's'} ${left} stitch${left === 1 ? ' is' : 'es are'} left in ${c.prevLabel ?? 'the previous round'}, not enough for another repeat.`,
           span);
+        // the cursor is exhausted: later target errors in this round would be cascades
+        c.suppress = true;
         return;
       }
       reps++;

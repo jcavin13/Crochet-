@@ -204,8 +204,10 @@ class RoundParser {
       if (depth === 0 && (this.isSep(t) || this.isStopper(t, ctx))) return;
       if (this.isPunct(t, '(', '[')) depth++;
       if (this.isPunct(t, ')', ']')) {
-        if (depth === 0) return;
-        depth--;
+        if (depth === 0) {
+          if (ctx.inGroup) return;
+          // a stray closer belongs to the broken item (e.g. "(counts as zz)"): skip it
+        } else depth--;
       }
       this.i++;
     }
@@ -255,8 +257,9 @@ class RoundParser {
     const inner = this.toks.slice(open + 1, end - 1);
     const parts = this.parseCountParts(inner);
     if (!parts) return undefined;
+    const span = this.spanOf(this.toks[open], this.toks[end - 1]);
     this.toks = this.toks.slice(0, open);
-    return { parts, span: this.spanOf(this.toks[open] ?? inner[0], this.toks[end - 1] ?? inner[inner.length - 1]) };
+    return { parts, span };
   }
 
   private parseCountParts(inner: Token[]): CountPart[] | undefined {
@@ -783,6 +786,12 @@ class RoundParser {
       this.i++;
       const u = this.tryUnit();
       if (!u) this.fail('"st", "sp" or "place" after "same"');
+      // filler: "same st as join", "same st as sl st"
+      if (this.isWord(this.peek(), 'as')) {
+        if (this.isWord(this.peek(1), 'join', 'joining')) this.i += 2;
+        else if (this.isWord(this.peek(1), 'sl') && this.isWord(this.peek(2), 'st')) this.i += 3;
+        else if (this.isWord(this.peek(1), 'slst', 'ss')) this.i += 2;
+      }
       return { kind: 'same', unit: u! };
     }
     if (this.isWord(t, 'first')) {
@@ -1014,6 +1023,9 @@ class RoundParser {
       const a = this.peek();
       if (this.isInt(a) && this.isWord(this.peek(1), 'more') && this.isWord(this.peek(2), 'times', 'time')) {
         times = { kind: 'n', n: a!.value! + 1 };
+        this.i += 3;
+      } else if (this.isInt(a) && this.isWord(this.peek(1), 'times', 'time') && this.isWord(this.peek(2), 'more')) {
+        times = { kind: 'n', n: a!.value! + 1 }; // "rep from * 4 times more"
         this.i += 3;
       } else if (this.isInt(a) && this.isWord(this.peek(1), 'times', 'time')) {
         times = { kind: 'n', n: a!.value! };
