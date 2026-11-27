@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/crochet/pattern.schema.json",
+  "title": "Crochet pattern (stitch graph) v0.1",
+  "description": "The shared representation. Node ids equal their index in graph.nodes, which is working (yarn) order: node i is made immediately after node i-1 with the same yarn. Space ids equal their index in graph.spaces.",
+  "type": "object",
+  "required": ["format", "version", "meta", "graph"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "crochet-pattern"},
+    "version": {"const": "0.1"},
+    "meta": {
+      "type": "object",
+      "required": ["title"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {"type": "string"},
+        "terms": {"enum": ["US", "UK"], "description": "Terminology of the notation text. The graph is always US."},
+        "yarn": {"type": "string"},
+        "hook": {"type": "string"},
+        "params": {"type": "string", "description": "id of a set in stitch_params.json"},
+        "source": {"type": "string"},
+        "license": {"type": "string"},
+        "author": {"type": "string"},
+        "year": {"type": "string"},
+        "notes": {"type": "string"},
+        "extra": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "notation": {"type": "string", "description": "Optional: the .cro source text this graph was compiled from."},
+    "graph": {
+      "type": "object",
+      "required": ["nodes", "spaces", "rounds"],
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+        "spaces": {"type": "array", "items": {"$ref": "#/$defs/space"}},
+        "rounds": {"type": "array", "items": {"$ref": "#/$defs/round"}}
+      }
+    }
+  },
+  "$defs": {
+    "stitchType": {"enum": ["ch", "slst", "sc", "hdc", "dc", "tr", "dtr", "puff", "popcorn", "picot"]},
+    "anchor": {
+      "description": "What one leg of a stitch is worked into: exactly one of node (a stitch top or an individual chain) or space (chain space / ring).",
+      "oneOf": [
+        {"type": "object", "required": ["node"], "additionalProperties": false, "properties": {"node": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "required": ["space"], "additionalProperties": false, "properties": {"space": {"type": "integer", "minimum": 0}}}
+      ]
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "type", "round", "into"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "integer", "minimum": 0},
+        "type": {"$ref": "#/$defs/stitchType"},
+        "round": {"type": "integer", "minimum": 0, "description": "index into graph.rounds"},
+        "into": {"type": "array", "items": {"$ref": "#/$defs/anchor"}, "description": "One entry per leg. Empty for ch and picot. Length >= 2 for decreases and clusters (a cluster repeats the same anchor)."},
+        "loop": {"enum": ["flo", "blo", "fp", "bp"], "description": "Omitted = both loops."},
+        "role": {"enum": ["tch"], "description": "tch: chain belonging to a turning chain (not part of a chain space, not part of the round's course)."},
+        "countsAs": {"$ref": "#/$defs/stitchType", "description": "On the top chain of a turning chain that counts as a stitch. That chain's `into` holds the base it stands on."},
+        "tag": {"enum": ["cluster"]},
+        "legs": {"type": "integer", "minimum": 1, "description": "popcorn: number of dc inside (default 5)."},
+        "loops": {"type": "integer", "minimum": 1, "description": "puff: number of loops (default 3)."},
+        "chains": {"type": "integer", "minimum": 1, "description": "picot: number of chains (default 3)."},
+        "group": {
+          "type": "object", "required": ["kind", "id"], "additionalProperties": false,
+          "properties": {"kind": {"enum": ["inc", "shell", "v"]}, "id": {"type": "integer", "minimum": 0}},
+          "description": "Nodes produced by one compound (inc / shell / V-stitch) share a group id (unique per pattern)."
+        },
+        "src": {
+          "type": "object", "required": ["line", "col"], "additionalProperties": false,
+          "properties": {"line": {"type": "integer"}, "col": {"type": "integer"}, "endLine": {"type": "integer"}, "endCol": {"type": "integer"}},
+          "description": "Span in the notation text of the item that produced this node (1-based)."
+        }
+      }
+    },
+    "space": {
+      "type": "object",
+      "required": ["id", "kind", "round", "chains"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "integer", "minimum": 0},
+        "kind": {"enum": ["chsp", "ring"]},
+        "round": {"type": "integer", "minimum": 0},
+        "chains": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Chain node ids in working order. Empty for a magic ring."}
+      }
+    },
+    "round": {
+      "type": "object",
+      "required": ["index", "label", "kind", "first", "last", "stitchCount"],
+      "additionalProperties": false,
+      "properties": {
+        "index": {"type": "integer", "minimum": 0},
+        "label": {"type": "string", "description": "e.g. 'Rnd 3', 'Row 2', 'Foundation'"},
+        "kind": {"enum": ["round", "row", "foundation"]},
+        "joined": {"type": "boolean"},
+        "turned": {"type": "boolean", "description": "true if this round is worked in the opposite direction to the previous one."},
+        "first": {"type": "integer", "description": "id of the first node of the round; -1 if the round has no nodes"},
+        "last": {"type": "integer", "description": "id of the last node of the round (inclusive); -1 if empty"},
+        "stitchCount": {"type": "integer", "minimum": 0, "description": "number of stitch-counting nodes (notation.md 3.8)"},
+        "declaredCount": {"type": "integer", "minimum": 0},
+        "src": {"type": "object", "required": ["line"], "additionalProperties": false, "properties": {"line": {"type": "integer"}, "endLine": {"type": "integer"}}}
+      }
+    }
+  }
+}

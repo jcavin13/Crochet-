@@ -1,0 +1,52 @@
+{
+ "name": "flat_dc_circle",
+ "title": "Flat dc circle (joined rounds)",
+ "rounds": [
+  {
+   "stitches": 12
+  },
+  {
+   "stitches": 24
+  },
+  {
+   "stitches": 36
+  },
+  {
+   "stitches": 48
+  },
+  {
+   "stitches": 60
+  }
+ ],
+ "shape": "flat",
+ "analytic": {
+  "rounds": [
+   {
+    "class": "flat",
+    "excess": 0.0,
+    "stitches_off": 0.0
+   },
+   {
+    "class": "flat",
+    "excess": 0.003,
+    "stitches_off": 0.1
+   },
+   {
+    "class": "flat",
+    "excess": 0.003,
+    "stitches_off": 0.1
+   },
+   {
+    "class": "flat",
+    "excess": 0.004,
+    "stitches_off": 0.2
+   },
+   {
+    "class": "flat",
+    "excess": 0.004,
+    "stitches_off": 0.2
+   }
+  ],
+  "final": "flat"
+ }
+}

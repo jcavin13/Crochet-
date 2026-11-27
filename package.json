@@ -1,0 +1,10 @@
+{
+  "name": "crochet-tools",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm --prefix app install",
+    "dev": "npm --prefix app run dev",
+    "build": "npm --prefix app run build",
+    "test": "npm --prefix app test"
+  }
+}

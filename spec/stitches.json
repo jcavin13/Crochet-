@@ -1,0 +1,30 @@
+{
+  "$comment": "Stitch vocabulary v0.1. Canonical ids are US abbreviations. 'tch' = number of turning chains equal to the stitch height. 'rel' = nominal relative rest width/height in units of one sc width (unfitted defaults; real numbers live in stitch_params.json). 'counts' = counts as a stitch / is a stitch target for the next round. 'cyc' = Craft Yarn Council chart symbol description; 'jis' = note on JIS L 0201 differences (to be verified in docs/literature_review.md).",
+  "version": "0.1",
+  "types": [
+    {"id": "ch",   "name": "chain",                "us": ["ch", "chain"],              "uk": ["ch"],            "tch": 1, "counts": false, "anchors": 0, "rel": {"width": 0.70, "height": 0.35}, "cyc": "open horizontal oval", "jis": "same (oval)"},
+    {"id": "slst", "name": "slip stitch",          "us": ["sl st", "slst", "ss", "sl"], "uk": ["ss", "sl st"],   "tch": 0, "counts": false, "anchors": 1, "rel": {"width": 0.50, "height": 0.20}, "cyc": "filled dot", "jis": "filled oval or dot"},
+    {"id": "sc",   "name": "single crochet",       "us": ["sc"],                        "uk": ["dc"],            "tch": 1, "counts": true,  "anchors": 1, "rel": {"width": 1.00, "height": 0.95}, "cyc": "'+' or 'x'", "jis": "'x' (with short bar variants for inc/dec)"},
+    {"id": "hdc",  "name": "half double crochet",  "us": ["hdc"],                       "uk": ["htr"],           "tch": 2, "counts": true,  "anchors": 1, "rel": {"width": 1.00, "height": 1.30}, "cyc": "'T'", "jis": "'T'"},
+    {"id": "dc",   "name": "double crochet",       "us": ["dc"],                        "uk": ["tr"],            "tch": 3, "counts": true,  "anchors": 1, "rel": {"width": 1.00, "height": 1.90}, "cyc": "'T' with one slash", "jis": "same"},
+    {"id": "tr",   "name": "treble crochet",       "us": ["tr", "trc"],                 "uk": ["dtr"],           "tch": 4, "counts": true,  "anchors": 1, "rel": {"width": 1.00, "height": 2.80}, "cyc": "'T' with two slashes", "jis": "same"},
+    {"id": "dtr",  "name": "double treble crochet","us": ["dtr"],                       "uk": ["trtr", "ttr"],   "tch": 5, "counts": true,  "anchors": 1, "rel": {"width": 1.00, "height": 3.70}, "cyc": "'T' with three slashes", "jis": "same"},
+    {"id": "puff", "name": "puff stitch",          "us": ["puff", "puff st"],           "uk": ["puff"],          "tch": 2, "counts": true,  "anchors": 1, "rel": {"width": 1.20, "height": 1.40}, "cyc": "closed oval of hdc legs joined top and bottom", "jis": "similar; drawn as a filled lens of 3 strokes"},
+    {"id": "popcorn","name": "popcorn",            "us": ["pc", "popcorn", "pop"],      "uk": ["pc", "popcorn"], "tch": 3, "counts": true,  "anchors": 1, "rel": {"width": 1.40, "height": 1.90}, "cyc": "5 dc fanned from one point, closed by an oval/arc on top", "jis": "similar"},
+    {"id": "picot","name": "picot",                "us": ["picot", "p"],                "uk": ["picot", "p"],    "tch": 0, "counts": false, "anchors": 0, "rel": {"width": 0.30, "height": 0.90}, "cyc": "small loop of 3 chains closed with a dot", "jis": "same"}
+  ],
+  "modifiers": {
+    "loop": {"both": "under both loops (default)", "flo": "front loop only — CYC: short arc under symbol opening up", "blo": "back loop only — CYC: short arc under symbol opening down", "fp": "front post — CYC: hook at the foot of the stem, opening to the right", "bp": "back post — CYC: hook at the foot of the stem, opening to the left"}
+  },
+  "compounds": {
+    "$comment": "Sugar that the compiler expands; see notation.md 3.1.",
+    "inc":    {"expands": "2 <base> in one target", "group": "inc", "default_base": "sc"},
+    "dec":    {"expands": "sc2tog"},
+    "tog":    {"pattern": "<base>Ntog", "expands": "one <base> node with N anchors (legs)"},
+    "cl":     {"pattern": "N-<base> cl", "expands": "<base>Ntog into one target", "tag": "cluster", "default": "3-dc"},
+    "bobble": {"expands": "5-dc cl"},
+    "shell":  {"pattern": "N-dc shell", "expands": "N dc in one target", "group": "shell", "default": 5},
+    "v-st":   {"expands": "(dc, ch 1, dc) in one target", "group": "v"}
+  },
+  "uk_to_us": {"dc": "sc", "htr": "hdc", "tr": "dc", "dtr": "tr", "trtr": "dtr", "ttr": "dtr", "ss": "slst", "miss": "sk"}
+}

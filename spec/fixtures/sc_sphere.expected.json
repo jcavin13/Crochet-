@@ -1,0 +1,124 @@
+{
+ "name": "sc_sphere",
+ "title": "Sc sphere",
+ "rounds": [
+  {
+   "stitches": 6
+  },
+  {
+   "stitches": 12
+  },
+  {
+   "stitches": 18
+  },
+  {
+   "stitches": 24
+  },
+  {
+   "stitches": 30
+  },
+  {
+   "stitches": 30
+  },
+  {
+   "stitches": 30
+  },
+  {
+   "stitches": 30
+  },
+  {
+   "stitches": 30
+  },
+  {
+   "stitches": 30
+  },
+  {
+   "stitches": 24
+  },
+  {
+   "stitches": 18
+  },
+  {
+   "stitches": 12
+  },
+  {
+   "stitches": 6
+  }
+ ],
+ "shape": "cup",
+ "analytic": {
+  "rounds": [
+   {
+    "class": "flat",
+    "excess": 0.0,
+    "stitches_off": 0.0
+   },
+   {
+    "class": "flat",
+    "excess": 0.003,
+    "stitches_off": 0.0
+   },
+   {
+    "class": "flat",
+    "excess": 0.003,
+    "stitches_off": 0.1
+   },
+   {
+    "class": "flat",
+    "excess": 0.004,
+    "stitches_off": 0.1
+   },
+   {
+    "class": "flat",
+    "excess": 0.004,
+    "stitches_off": 0.1
+   },
+   {
+    "class": "cup",
+    "excess": -0.163,
+    "stitches_off": -5.8
+   },
+   {
+    "class": "cup",
+    "excess": -0.283,
+    "stitches_off": -11.8
+   },
+   {
+    "class": "cup",
+    "excess": -0.372,
+    "stitches_off": -17.8
+   },
+   {
+    "class": "cup",
+    "excess": -0.442,
+    "stitches_off": -23.8
+   },
+   {
+    "class": "cup",
+    "excess": -0.498,
+    "stitches_off": -29.7
+   },
+   {
+    "class": "cup",
+    "excess": -0.635,
+    "stitches_off": -41.7
+   },
+   {
+    "class": "cup",
+    "excess": -0.749,
+    "stitches_off": -53.7
+   },
+   {
+    "class": "cup",
+    "excess": -0.845,
+    "stitches_off": -65.6
+   },
+   {
+    "class": "cup",
+    "excess": -0.928,
+    "stitches_off": -77.6
+   }
+  ],
+  "final": "cup"
+ }
+}

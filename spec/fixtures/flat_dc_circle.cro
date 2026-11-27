@@ -1,0 +1,13 @@
+# Canonical fixture: Flat dc circle (joined rounds)
+title: Flat dc circle (joined rounds)
+terms: US
+yarn: worsted-4
+hook: 5.0mm
+source: original (project fixture)
+license: CC0-1.0
+
+Rnd 1: mr, ch 3 (counts as dc), 11 dc in ring, join. (12)
+Rnd 2: ch 3 (counts as dc), dc in same st, 2 dc in each st around, join. (24)
+Rnd 3: ch 3 (counts as dc), 2 dc in next st, *dc, 2 dc in next st* x11, join. (36)
+Rnd 4: ch 3 (counts as dc), dc, 2 dc in next st, *2 dc, 2 dc in next st* x11, join. (48)
+Rnd 5: ch 3 (counts as dc), 2 dc, 2 dc in next st, *3 dc, 2 dc in next st* x11, join. (60)

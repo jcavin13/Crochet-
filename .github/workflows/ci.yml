@@ -1,0 +1,26 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Compiled fixtures are up to date
+        run: npm run fixtures --if-present && git diff --exit-code -- ../spec/fixtures
+      - run: npm run build
+  lab:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: lab } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run pytest -q

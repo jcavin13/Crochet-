@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "stitch_params.json v0.1 — produced by lab/, consumed by app/",
+  "type": "object",
+  "required": ["version", "units", "default_set", "sets"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": "0.1"},
+    "units": {"const": "mm"},
+    "default_set": {"type": "string"},
+    "sets": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "yarn_weight", "hook_mm", "status", "stitches"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string"},
+          "label": {"type": "string"},
+          "yarn_weight": {"type": "string", "description": "CYC category 0-7 as 'lace-0'...'jumbo-7', or 'thread-10' etc. for crochet cotton"},
+          "hook_mm": {"type": "number"},
+          "status": {"enum": ["nominal", "fitted"], "description": "nominal = unfitted default; fitted = from swatch measurements"},
+          "provenance": {"type": "string"},
+          "stitches": {
+            "type": "object",
+            "description": "Keyed by stitch type id from stitches.json.",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["width", "height", "stiffness"],
+              "additionalProperties": false,
+              "properties": {
+                "width": {"type": "number", "exclusiveMinimum": 0, "description": "rest length along the course (mm). For ch: length of one chain."},
+                "height": {"type": "number", "exclusiveMinimum": 0, "description": "rest length along the wale: top of the stitch below to top of this stitch (mm)."},
+                "stiffness": {"type": "number", "exclusiveMinimum": 0, "description": "relative stretch stiffness (sc = 1)."},
+                "width_sd": {"type": "number"}, "height_sd": {"type": "number"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

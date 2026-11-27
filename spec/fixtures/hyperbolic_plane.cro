@@ -1,0 +1,14 @@
+# Canonical fixture: Hyperbolic plane (sc, increasing 3/2 per round)
+title: Hyperbolic plane (sc, increasing 3/2 per round)
+terms: US
+yarn: worsted-4
+hook: 5.0mm
+source: original (project fixture)
+license: CC0-1.0
+
+Rnd 1: mr, 6 sc in ring. (6)
+Rnd 2: inc x6. (12)
+Rnd 3: inc x12. (24)
+Rnd 4: *sc, inc* x12. (36)
+Rnd 5: *sc, inc* x18. (54)
+Rnd 6: *sc, inc* x27. (81)

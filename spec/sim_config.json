@@ -1,0 +1,15 @@
+{
+  "version": "0.1",
+  "k_course": 1.0,
+  "k_wale": 1.0,
+  "k_shear": 0.15,
+  "k_bend": 0.05,
+  "perturb_eps": 0.05,
+  "axis_min": 0.25,
+  "tau_flat": 0.10,
+  "agree_rg_rel": 0.10,
+  "agree_abs": 0.12,
+  "block_stretch": 1.05,
+  "block_buckle_strain": 0.10,
+  "flatness": {"tol": 0.10, "chain_slack_min": 0.30, "chain_nominal": 0.85}
+}
