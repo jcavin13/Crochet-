@@ -10,7 +10,7 @@ import { simulate } from '@/core/sim';
 import { createDriver } from './driver';
 import type { SimFrame } from './protocol';
 import { SvgView } from './SvgView';
-import { buildTopology, parseColor, rotationToY, type Palette } from './topology';
+import { buildTopology, parseColor, PICOT_SEGS, picotLoops, rotationToY, type Palette } from './topology';
 
 const fixtures = fileURLToPath(new URL('../../../../spec/fixtures/', import.meta.url));
 const load = (n: string) => JSON.parse(readFileSync(fixtures + n + '.graph.json', 'utf8')) as Pattern;
@@ -71,9 +71,27 @@ describe('render topology and SVG fallback', () => {
   it('one post per (stitch, anchor), yarn through consecutive tops, slack loops marked light', () => {
     const legs = res.network.anchors.reduce((s, a) => s + a.length, 0);
     expect(topo.stitches.count).toBe(legs);
-    expect(topo.yarn.count).toBe(res.network.nNodes - 1);
+    // the yarn runs past picots (each picot is drawn as its own closed loop of chains instead)
+    expect(topo.picots.count).toBeGreaterThan(0);
+    expect(topo.yarn.count).toBe(res.network.nNodes - 1 - topo.picots.count);
+    for (let k = 0; k < topo.picots.count; k++) expect(res.network.graph.nodes[topo.picots.base[k]].type).not.toBe('picot');
     expect(Array.from(topo.yarn.light).some((x) => x === 1)).toBe(true);
     expect(Array.from(topo.stitches.spring).every((s) => s >= 0)).toBe(true);
+  });
+
+  it('picots are closed loops standing off their base stitch, about their chains around', () => {
+    const K = PICOT_SEGS + 1;
+    const buf = picotLoops(topo, Float32Array.from(res.positions), rotationToY([0, 0, 1]), [0, 0, 0], new Float32Array(3 * K * topo.picots.count));
+    for (let k = 0; k < topo.picots.count; k++) {
+      const o = 3 * K * k;
+      // closed: first point = last point = the base stitch
+      expect(Math.hypot(buf[o] - buf[o + 3 * (K - 1)], buf[o + 1] - buf[o + 3 * (K - 1) + 1], buf[o + 2] - buf[o + 3 * (K - 1) + 2])).toBeLessThan(1e-6);
+      let per = 0;
+      for (let j = 0; j + 1 < K; j++) per += Math.hypot(buf[o + 3 * j + 3] - buf[o + 3 * j], buf[o + 3 * j + 4] - buf[o + 3 * j + 1], buf[o + 3 * j + 5] - buf[o + 3 * j + 2]);
+      const C = topo.picots.chains[k] * topo.wch;
+      expect(per / C).toBeGreaterThan(0.6);
+      expect(per / C).toBeLessThan(1.4);
+    }
   });
 
   it('rotationToY takes the axis to +Y', () => {
@@ -90,7 +108,7 @@ describe('render topology and SVG fallback', () => {
       <SvgView topology={topo} positions={Float32Array.from(res.positions)} rotation={rotationToY([0, 0, 1])}
         colors={{ by: 'round', palette }} highlightNode={5} />,
     );
-    expect((html.match(/<line /g) ?? []).length).toBe(topo.stitches.count + topo.yarn.count);
+    expect((html.match(/<line /g) ?? []).length).toBe(topo.stitches.count + topo.yarn.count + topo.picots.count * PICOT_SEGS);
     expect((html.match(/<circle /g) ?? []).length).toBe(topo.nNodes + 1);
     expect(html).not.toMatch(/NaN/);
   });

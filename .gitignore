@@ -10,3 +10,8 @@ __pycache__/
 .DS_Store
 coverage/
 lab/notebooks/*.ipynb
+# Per-preset snowflake screenshot matrix (112 files): regenerate with `npm run screenshots`;
+# the contact sheet in docs/feedback/ is the committed summary.
+docs/screenshots/snowflake-preview-*
+docs/screenshots/snowflake-3d-*-blocked-*
+docs/screenshots/snowflake-3d-*-before-*

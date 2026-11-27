@@ -1,5 +1,5 @@
 /**
- * The spring network of spec/physics.md §1–3 as amended by lab/SPEC_NOTES.md (C1–C5, N1–N4):
+ * The spring network of spec/physics.md §1–3 as amended by lab/SPEC_NOTES.md (C1–C5, N1–N7):
  * a line-by-line port of `lab/src/crolab/network.py` (`variant="metric"`).
  *
  * Particle indexing (C5): particle i < nNodes is node i (the top of the stitch); particles

@@ -47,6 +47,8 @@ import { analyzeFlatness, type RoundFlatness } from '../flatness';
 import { childrenOf, type Graph, type Node } from '../graph';
 import { heightOf, stitchParam, type ParamSet } from '../params';
 import { analyzeSymmetry } from '../symmetry';
+import { borderCornerGroups, detectPolygon, detectStadium } from './corners';
+import { offsetFrame, regularCore, type FrameSpec, type OffsetFrame } from './frames';
 import { solveOrdered } from './solve';
 import { symbolOf } from './symbols';
 import type { Bounds, ChartArm, ChartLayout, ChartNode, ChartNodeKind, ChartRound, ChartSpace, LayoutOptions, Pt } from './types';
@@ -79,6 +81,8 @@ interface Frame {
   course(x: number, y: number): number;
   out(x: number, y: number, s: number): [number, number];
 }
+/** Corner rounding of a polygon worked from the centre: corner arc radius / inradius at the round's top. */
+export const POLY_RC = 0.2;
 const radialFrame: Frame = {
   pos: (s, h) => [h * Math.cos(s), -h * Math.sin(s)],
   height: (x, y) => Math.hypot(x, y),
@@ -101,7 +105,22 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
   const N = graph.nodes.length;
   const mode = opts.mode ?? (graph.rounds.some((r) => r.kind === 'row') ? 'rows' : 'radial');
   const radial = mode === 'radial';
-  const F = radial ? radialFrame : rowFrame;
+  const baseF = radial ? radialFrame : rowFrame;
+  // the frame of the round being laid out (offset / polygon rounds get their own)
+  let F: Frame = baseF;
+  // Shape of the piece beyond circles and rows (frames.ts):
+  //  - border rounds of a piece worked in rows: round the body's rectangle;
+  //  - a piece worked round both sides of a foundation chain: a stadium round the chain;
+  //  - a polygon worked from the centre (corners unambiguous, corners.ts): concentric polygons.
+  const shapes = opts.shapes !== false;
+  const borderStart = !radial && shapes ? graph.rounds.findIndex((r, k) => k > 0 && r.kind === 'round' && graph.rounds[k - 1].kind === 'row') : -1;
+  const stadium = radial && shapes && detectStadium(graph);
+  const poly = radial && shapes && !stadium && opts.symmetric !== false ? detectPolygon(graph) : null;
+  const cornerOfNode = new Map<number, number[]>(); // node id -> its corner group (border / polygon rounds)
+  if (borderStart > 0) for (const groups of borderCornerGroups(graph).values()) for (const gr of groups) for (const id of gr) cornerOfNode.set(id, gr);
+  if (poly) for (const groups of poly.groups.values()) for (const gr of groups) for (const id of gr) cornerOfNode.set(id, gr);
+  let rect: FrameSpec | undefined; // the body's rectangle (border) / the chain (stadium)
+  let polyPhase = NaN;
   const minGap = opts.minRoundGap ?? 0.8;
   const fill = opts.fill ?? 0.96;
   const start = opts.startAngle ?? Math.PI / 2;
@@ -196,6 +215,20 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         return { x, y, ramp: 0, resolved: false };
       }
       if (!placed[t]) return null;
+      if (rect) {
+        // a row end: beside the row, at its mid-height, on the body's edge; the unused loop of a
+        // foundation chain: just under the chain (so it belongs to the bottom side)
+        if (a.part === 'side') { const p = rowEndPoint(t); return { x: p.x, y: p.y, ramp: 0, resolved: true }; }
+        if (graph.nodes[t].type === 'ch' && graph.nodes[t].round === 0 && stadium) {
+          // the chains at the ends of the core: round the end (the corner's bisector); else the top
+          // loops above the chain, the unused loops below it
+          const c = rect.core;
+          if (Math.abs(TX[t] - c[0].x) < 1e-6) return { x: TX[t] - 0.02, y: TY[t], ramp: 0, resolved: true };
+          if (Math.abs(TX[t] - c[1].x) < 1e-6) return { x: TX[t] + 0.02, y: TY[t], ramp: 0, resolved: true };
+          return { x: TX[t], y: TY[t] + (a.part === 'base' ? 0.02 : -0.02), ramp: 0, resolved: true };
+        }
+        if (a.part === 'base') return { x: TX[t], y: TY[t] + 0.02, ramp: 0, resolved: true };
+      }
       return { x: TX[t], y: TY[t], ramp: ramp[t], resolved: true };
     }
     const sp = graph.spaces[a.space];
@@ -218,6 +251,15 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     return { x: X[c0] + (X[c1] - X[c0]) * f, y: Y[c0] + (Y[c1] - Y[c0]) * f, ramp: ramp[c0] + (ramp[c1] - ramp[c0]) * f, resolved: true };
   };
 
+  /** Row end of the row whose edge stitch is t (border rounds): on the body's edge, at the row's mid-height. */
+  const rowEndPoint = (t: number): Pt => {
+    const R = roundsOut[graph.nodes[t].round];
+    const core = rect!.core;
+    const xL = Math.min(...core.map((p) => p.x)), xR = Math.max(...core.map((p) => p.x));
+    const x = X[t] < (xL + xR) / 2 ? xL : xR;
+    const y = R ? -(R.r0 + R.r) / 2 : Y[t];
+    return { x, y };
+  };
   const spacesOut: ChartSpace[] = [];
   const roundsOut: ChartRound[] = [];
   let prevTop = firstRing ? ringR[firstRing.id] : 0;
@@ -270,6 +312,74 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     const ids: number[] = [];
     for (let i = first; i <= last; i++) ids.push(i);
 
+    // --- the round's frame
+    const isBorder = borderStart > 0 && k >= borderStart && R.kind === 'round';
+    const isStad = stadium && k >= 1;
+    const isPoly = !!poly && k >= poly.from;
+    /** closed round on a course (circle, polygon, rounded rectangle, stadium) */
+    const closed = radial || isBorder;
+    /** centre-based round (rings, hubs, arms, symmetry, spirals, the flatness radius) */
+    const circular = radial && !isStad;
+    let OF: OffsetFrame | null = null;
+    if (stadium && k === 0) {
+      // the foundation chain of a piece worked round both its sides: a straight line, one stitch
+      // width per chain, the hook end on the right
+      const m = ids.length;
+      ids.forEach((id, j) => {
+        const x = j - (m - 1) / 2;
+        place(id, x, 0, 0); kind[id] = 'chain'; S[id] = x; course[id] = 1;
+      });
+      // the core runs between the end chains round 1 works into (not a skipped chain at the hook end)
+      let lo = Infinity, hi = -Infinity;
+      const R1 = graph.rounds[1];
+      for (let id = R1.first; id >= 0 && id <= R1.last; id++) for (const an of graph.nodes[id].into) if ('node' in an && an.node >= first && an.node <= last) { lo = Math.min(lo, an.node); hi = Math.max(hi, an.node); }
+      if (!(hi > lo)) { lo = first; hi = last; }
+      const x0 = X[lo], x1 = X[hi];
+      rect = { kind: 'offset', core: [{ x: x0, y: 0 }, { x: x1, y: 0 }], a: 0 };
+      const b = emptyB();
+      for (const id of ids) growPt(b, X[id], Y[id], 0.45);
+      roundsOut.push({
+        index: k, label: R.label, short: shortLabel(R.label), kind: R.kind, r: 0, r0: 0, rOuter: 0.2,
+        dir: 1, joined: !!R.joined, labelAt: { x: x0 - 0.9, y: 0 }, first, last, bounds: b, flat: fl, spiral: 0, s0: start, frame: rect,
+      });
+      prevTop = 0; prevDir = 1;
+      continue;
+    }
+    if (isBorder && !rect) {
+      // the body's rectangle: everything worked so far
+      let xL = Infinity, xR = -Infinity, yT = Infinity, yB = -Infinity;
+      for (let id = 0; id < first; id++) {
+        if (!placed[id]) continue;
+        for (const [x, y] of [[X[id], Y[id]], [TX[id], TY[id]]]) { xL = Math.min(xL, x); xR = Math.max(xR, x); yT = Math.min(yT, y); yB = Math.max(yB, y); }
+      }
+      if (!Number.isFinite(xL)) { xL = 0; xR = 1; yT = -1; yB = 0; }
+      rect = { kind: 'offset', core: [{ x: xL, y: yB }, { x: xR, y: yB }, { x: xR, y: yT }, { x: xL, y: yT }], a: 0 };
+      prevTop = 0;
+    }
+    if (isBorder || isStad) {
+      OF = offsetFrame(rect!, prevTop + 0.5);
+      F = OF;
+    } else if (isPoly) {
+      if (Number.isNaN(polyPhase)) {
+        // the corners stand over the anchors of this round's corner groups
+        const n = poly!.n;
+        let cx = 0, cy = 0;
+        for (const gr of poly!.groups.get(k) ?? []) {
+          const nd = graph.nodes[gr[Math.floor(gr.length / 2)]];
+          const p = legPoint(nd, 0, undefined);
+          if (!p) continue;
+          const a = Math.atan2(-p.y, p.x) * n;
+          cx += Math.cos(a); cy += Math.sin(a);
+        }
+        polyPhase = cx || cy ? Math.atan2(cy, cx) / n : start;
+      }
+      const a0 = Math.max(0.05, prevTop * (1 - POLY_RC));
+      OF = offsetFrame({ kind: 'offset', core: regularCore(poly!.n, a0, polyPhase), a: a0 }, Math.max(0.05, prevTop * POLY_RC));
+      F = OF;
+    } else F = baseF;
+    /** Course length (in s units) of a length d along the round at height r. */
+    const lenC = (d: number, r: number) => (OF ? (TAU * d) / OF.circ(r) : d / r);
+
     // --- ring chains of rings made in this round
     for (const sp of graph.spaces) {
       if (sp.kind !== 'ring' || sp.round !== k || ringPlaced.has(sp.id) || !sp.chains.length) continue;
@@ -279,7 +389,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       sp.chains.forEach((c, j) => {
         const s = start + (TAU * (j + 0.5)) / n;
         const [x, y] = F.pos(s, r0);
-        place(c, x, y, tangentRot(F, x, y, s, radial));
+        place(c, x, y, tangentRot(F, x, y, s, closed));
         S[c] = s; kind[c] = 'ringch';
       });
       const ring = { x: 0, y: 0 };
@@ -311,7 +421,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     }
 
     // --- arms: chain spines worked back along, long chain loops with a picot at the top
-    const arms: ArmInfo[] = radial && anyPlacedBefore ? detectArms(graph, k, first, last, kids.nodes, hub) : [];
+    const arms: ArmInfo[] = circular && anyPlacedBefore ? detectArms(graph, k, first, last, kids.nodes, hub) : [];
     const armAt = new Int32Array(last - first + 1).fill(-1);
     const armItem: number[] = arms.map(() => -1);
     arms.forEach((a, i) => { for (let id = a.first; id <= a.last; id++) armAt[id - first] = i; });
@@ -436,12 +546,29 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     for (const it of stItems) { const n = graph.nodes[it.rep]; const b = legH(n); natSum += b.h - b.inh + hOf(n); }
     const meanNat = stItems.length ? natSum / stItems.length : prevTop + 0.5;
     let rho: number;
-    if (radial) {
+    if (isPoly) {
+      // a polygon of inradius h has a course κ·2πh long
+      const n = poly!.n;
+      const kap = (2 * n * (1 - POLY_RC) * Math.tan(Math.PI / n)) / TAU + POLY_RC;
+      rho = Math.max(meanNat, prevTop + minGap, totalLin / (TAU * fill * kap), arms.length ? 0 : flatTarget(k) / unit / kap);
+    } else if (OF) {
+      // round a rectangle / a chain: the core's perimeter plus the corner arcs
+      rho = Math.max(meanNat, prevTop + minGap, (totalLin / fill - OF.circ(0)) / TAU);
+    } else if (radial) {
       // a pointed round's arms stand off the circle: its flatness radius (which counts every chain of
       // the arms as circumference) does not apply
       rho = Math.max(meanNat, prevTop + minGap, totalLin / (TAU * fill), arms.length ? 0 : flatTarget(k) / unit);
     } else {
       rho = Math.max(meanNat, prevTop + minGap);
+    }
+    // the round's final frame: corner arcs measured at its top
+    if (isPoly) {
+      const a0 = rho * (1 - POLY_RC);
+      OF = offsetFrame({ kind: 'offset', core: regularCore(poly!.n, a0, polyPhase), a: a0 }, rho * POLY_RC);
+      F = OF;
+    } else if (OF) {
+      OF = offsetFrame(rect!, rho);
+      F = OF;
     }
     // Push-out beyond the natural radius, shared in proportion to stitch height (a sc in a valley
     // stays short while the tall stitches of the round reach the round's radius).
@@ -455,7 +582,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       for (const it of items) {
         const half = it.kind === 'join' || it.kind === 'tchLoose' ? 0 : it.half;
         const c = cum + half;
-        it.t = radial ? start + (dir * TAU * c) / Math.max(tot, 1e-9) : c;
+        it.t = closed ? start + (dir * TAU * c) / Math.max(tot, 1e-9) : c;
         it.w = 1;
         cum += 2 * half;
       }
@@ -463,14 +590,34 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       for (const it of items) {
         if (it.kind === 'st' || it.kind === 'tch') {
           const a = rawLegCourse(graph.nodes[it.rep]);
-          if (a.length) it.t = radial ? circMean(a) : a.reduce((x, y) => x + y, 0) / a.length;
+          if (a.length) it.t = closed ? circMean(a) : a.reduce((x, y) => x + y, 0) / a.length;
         }
       }
-      if (!radial) {
+      if (!closed) {
         // direction of a row from its anchors
         const fin = items.filter((it) => Number.isFinite(it.t));
         if (fin.length >= 2 && Math.abs(fin[fin.length - 1].t - fin[0].t) > 1e-6) dir = fin[fin.length - 1].t > fin[0].t ? 1 : -1;
         else dir = (-prevDir) as 1 | -1;
+      }
+      if (OF && OF.corners >= 3) {
+        // corner groups fan round their corner: centred on the corner's bisector
+        for (const it of items) {
+          if (it.kind !== 'st' || !cornerOfNode.has(it.rep)) continue;
+          const p = legPoint(graph.nodes[it.rep], 0, undefined);
+          if (!p) continue;
+          const c = OF.nearestCorner(p.x, p.y);
+          it.t = OF.cornerS(c.j);
+        }
+      }
+      if (OF && !isPoly) {
+        // round a rectangle / a chain: the working direction from the anchors
+        let sum = 0, prev = NaN;
+        for (const it of items) {
+          if (!Number.isFinite(it.t)) continue;
+          if (Number.isFinite(prev)) sum += mod(it.t - prev + Math.PI, TAU) - Math.PI;
+          prev = it.t;
+        }
+        dir = sum < 0 ? -1 : 1;
       }
       // unwrap (radial) and joins
       const nSt = Math.max(1, stItems.length);
@@ -481,12 +628,12 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
           const n = graph.nodes[it.rep];
           const a = n.into[0];
           const ti = a && 'node' in a ? itemOf[a.node - first] : -1;
-          if (ti >= 0 && Number.isFinite(items[ti].t)) it.t = items[ti].t + (radial ? dir * TAU : 0);
+          if (ti >= 0 && Number.isFinite(items[ti].t)) it.t = items[ti].t + (closed ? dir * TAU : 0);
           if (Number.isFinite(it.t)) ref = it.t;
           continue;
         }
         if (!Number.isFinite(it.t)) continue;
-        if (radial) {
+        if (closed) {
           if (Number.isFinite(ref)) it.t = ref + dir * (mod(dir * (it.t - ref) + eps, TAU) - eps);
         }
         ref = it.t;
@@ -496,9 +643,9 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       let c = 0;
       for (const it of items) { cum.push(c + it.half); c += lin(it); }
       const fins = items.map((it, i) => (Number.isFinite(it.t) ? i : -1)).filter((i) => i >= 0);
-      const toC = (d: number) => (radial ? d / rho : d);
+      const toC = (d: number) => (closed ? lenC(d, rho) : d);
       if (fins.length === 0) {
-        items.forEach((it, i) => { it.t = (radial ? start : 0) + dir * toC(cum[i]); });
+        items.forEach((it, i) => { it.t = (closed ? start : 0) + dir * toC(cum[i]); });
       } else {
         const f0 = fins[0], fL = fins[fins.length - 1];
         for (let i = 0; i < f0; i++) items[i].t = items[f0].t - dir * toC(cum[f0] - cum[i]);
@@ -510,7 +657,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
           }
         }
         if (fL < items.length - 1) {
-          if (radial) {
+          if (closed) {
             const tEnd = items[f0].t + dir * TAU;
             const cEnd = c + cum[f0];
             for (let i = fL + 1; i < items.length; i++) {
@@ -526,17 +673,17 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
 
     // --- solve the course (joins take no room: they sit between the last and the first stitch)
     // (radial: a loose turning chain takes no room either; it is tucked into the seam afterwards)
-    const solveItems = items.filter((it) => it.kind !== 'join' && !(radial && it.kind === 'tchLoose'));
+    const solveItems = items.filter((it) => it.kind !== 'join' && !(closed && it.kind === 'tchLoose'));
     const n = solveItems.length;
     const target = new Float64Array(n), weight = new Float64Array(n), gap = new Float64Array(Math.max(0, n - 1));
     for (let i = 0; i < n; i++) { target[i] = dir * solveItems[i].t; weight[i] = solveItems[i].w; }
-    const toCourse = (d: number) => (radial ? d / rho : d);
+    const toCourse = (d: number) => (closed ? lenC(d, rho) : d);
     for (let i = 0; i + 1 < n; i++) gap[i] = toCourse(solveItems[i].half + solveItems[i + 1].half);
     let wrapGap = n > 1 ? toCourse(solveItems[n - 1].half + solveItems[0].half) : 0;
     // (not round 1 into a ring, already spread evenly by width — sharing there left the slack at the
     // seam; not a pointed round: its stitches sit on their anchors and the chains between the arms
     // are drawn as arcs between them, whatever their place on the circle)
-    if (radial && n > 2 && !arms.length && !central) {
+    if (circular && n > 2 && !arms.length && !central) {
       // Spread a closed round round its circle: share most of the free circumference among the
       // gaps (less between stitches worked into the same place, so fans stay fans); the anchors
       // decide the rest.
@@ -571,15 +718,15 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     }
     const sol = solveOrdered({
       target, weight, gap,
-      maxSpan: radial && n > 1 ? TAU - wrapGap : undefined,
+      maxSpan: closed && n > 1 ? TAU - wrapGap : undefined,
     });
     // exactly n-fold: average each position over its n copies (constraints are preserved: every
     // gap becomes the mean of n gaps that each met it)
-    const nSym = radial && !(R.kind === 'round' && !R.joined) ? symOrder.get(k) ?? 1 : 1;
+    const nSym = circular && !(R.kind === 'round' && !R.joined) ? symOrder.get(k) ?? 1 : 1;
     if (nSym > 1 && n >= nSym && n % nSym === 0) symmetrize(solveItems, sol, nSym);
     for (let i = 0; i < n; i++) for (const id of solveItems[i].ids) { S[id] = dir * sol[i]; course[id] = 1; }
     // loose turning chains: in the seam, just before the stitch they stand beside
-    if (radial) {
+    if (closed) {
       items.forEach((it, i) => {
         if (it.kind !== 'tchLoose') return;
         let a = -1, b = -1;
@@ -592,7 +739,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         const sb = dir * S[items[b].rep] + (b < i ? TAU : 0);
         const sa = dir * S[items[a].rep] - (a > i ? TAU : 0);
         const gapC = Math.max(0, sb - sa);
-        const v = sb - Math.min(0.5 * gapC, 0.34 / Math.max(rho, 0.5));
+        const v = sb - Math.min(0.5 * gapC, lenC(0.34, Math.max(rho, 0.5)));
         for (const id of it.ids) { S[id] = dir * v; course[id] = 1; }
       });
     }
@@ -604,20 +751,20 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       const sa = a >= 0 ? S[items[a].rep] : NaN;
       const a0 = graph.nodes[it.rep].into[0];
       const tgt = a0 && 'node' in a0 && graph.nodes[a0.node]?.round === k ? S[a0.node] : NaN;
-      const sb = b >= 0 ? S[items[b].rep] : Number.isFinite(tgt) ? tgt + (radial ? dir * TAU : 0) : solveItems.length ? S[solveItems[0].rep] + (radial ? dir * TAU : dir * 0.6) : NaN;
+      const sb = b >= 0 ? S[items[b].rep] : Number.isFinite(tgt) ? tgt + (closed ? dir * TAU : 0) : solveItems.length ? S[solveItems[0].rep] + (closed ? dir * TAU : dir * 0.6) : NaN;
       let v = Number.isFinite(sa) && Number.isFinite(sb) ? (sa + sb) / 2 : Number.isFinite(sa) ? sa + dir * 0.3 : Number.isFinite(sb) ? sb - dir * 0.3 : it.t;
       // radial: the join's dot sits just before the top of the stitch it joins into (the seam), not
       // half-way across the gap
-      if (radial && b < 0 && Number.isFinite(tgt) && Number.isFinite(sa)) {
+      if (closed && b < 0 && Number.isFinite(tgt) && Number.isFinite(sa)) {
         const end = tgt + dir * TAU;
         const gapC = Math.max(0, dir * (end - sa));
-        v = end - dir * Math.min(0.24 / Math.max(rho, 0.5), 0.45 * gapC);
+        v = end - dir * Math.min(lenC(0.24, Math.max(rho, 0.5)), 0.45 * gapC);
       }
       for (const id of it.ids) { S[id] = v; course[id] = 1; }
     });
 
     // --- radii and positions of stitches and counting turning chains
-    const spiral = radial && R.kind === 'round' && !R.joined;
+    const spiral = circular && R.kind === 'round' && !R.joined;
     const hBar = stItems.length ? stItems.reduce((a, it) => a + hOf(graph.nodes[it.rep]), 0) / stItems.length : 0.5;
     const gK = spiral ? Math.min(Math.max(minGap, rho - prevTop), Math.max(minGap, hBar)) : 0;
     const s0 = n ? S[items[0].rep] : start;
@@ -887,7 +1034,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         const b = nextStBase(i);
         it.ids.forEach((id, j) => {
           const [x, y] = F.pos(s, b + 0.12 + (j + 0.5) * DIM.tchPitch);
-          place(id, x, y, tangentRot(F, x, y, s, radial));
+          place(id, x, y, tangentRot(F, x, y, s, closed));
           ramp[id] = rampOf(s);
         });
       } else if (it.kind === 'join') {
@@ -896,8 +1043,8 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         const t = a && 'node' in a ? a.node : -1;
         const h = t >= 0 && placed[t] ? H[t] : rho;
         const s = S[it.rep];
-        const [x, y] = F.pos(s, h - (radial ? 0.04 : 0.1));
-        place(it.rep, x, y, tangentRot(F, x, y, s, radial));
+        const [x, y] = F.pos(s, h - (closed ? 0.04 : 0.1));
+        place(it.rep, x, y, tangentRot(F, x, y, s, closed));
         ramp[it.rep] = rampOf(s);
       }
     });
@@ -929,7 +1076,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       } else {
         [x, y] = F.pos(nextS, prevTop + 0.1); s = nextS;
       }
-      place(id, x, y, tangentRot(F, x, y, s, radial));
+      place(id, x, y, tangentRot(F, x, y, s, closed));
       S[id] = s;
     }
     // ring joins: on the ring circle between its last and first chain
@@ -940,7 +1087,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       const r0 = sp ? ringR[sp.id] : DIM.minChainRingR;
       const s = start;
       const [x, y] = F.pos(s, r0);
-      place(id, x, y, tangentRot(F, x, y, s, radial));
+      place(id, x, y, tangentRot(F, x, y, s, closed));
       S[id] = s;
     }
 
@@ -965,19 +1112,19 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       if (pureChain || (central && sp0 < 0)) {
         for (const id of runIds) {
           const [x, y] = F.pos(S[id], prevTop);
-          place(id, x, y, tangentRot(F, x, y, S[id], radial));
+          place(id, x, y, tangentRot(F, x, y, S[id], closed));
         }
       } else {
         const P = endpoint(runIds[0] - 1, first, last, true);
         const Q = endpoint(runIds[runIds.length - 1] + 1, first, last, false);
         // a pointed round's chains between the arms are valley bridges: drawn pinned out (a V to a pin), not a scallop
         let arc: { pts: { x: number; y: number; rot: number }[]; d: string; apex: number; step?: number };
-        if (arms.length && radial) {
+        if (arms.length && circular) {
           // from arm base to arm base: a V to its pin; to / from a valley anchor stitch: a shallow arc
           const anchored = !isArmBase(i - 1, -1) || !isArmBase(j + 1, 1);
           arc = bridgeArc(P, Q, runIds.length, anchored ? 0.34 : 0.4);
           bridges.push({ ids: runIds, anchored, pin: (arc as ReturnType<typeof bridgeArc>).pin });
-        } else arc = chainArc(F, radial, P, Q, runIds.length, S[runIds[0]], dir);
+        } else arc = chainArc(F, closed, P, Q, runIds.length, S[runIds[0]], dir);
         // chains closer than their length: smaller ovals, so they do not overlap
         const shrink = arc.step !== undefined ? Math.max(0.6, Math.min(1, arc.step / (2 * SYM_CH_RX + 0.06))) : 1;
         runIds.forEach((id, q) => { const c = arc.pts[q]; place(id, c.x, c.y, c.rot); ramp[id] = rampOf(S[id]); if (shrink < 1) gScale[id] = shrink; });
@@ -1012,12 +1159,12 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     for (const id of ids) if (placed[id]) rOuter = Math.max(rOuter, H[id] + (kind[id] === 'picot' ? 0.5 * gScale[id] * (gScale[id] > 1 ? 1.4 : 1) : 0.2));
     for (const sp of spacesOut) if (sp.round === k) rOuter = Math.max(rOuter, sp.apex);
     const rMean = rc ? rs / rc : (ids.filter((id) => placed[id]).reduce((a, id) => a + H[id], 0) / Math.max(1, ids.filter((id) => placed[id]).length)) || rho;
-    const r0band = roundsOut.length ? roundsOut[roundsOut.length - 1].r : 0;
+    const r0band = isBorder && k === borderStart ? 0 : roundsOut.length ? roundsOut[roundsOut.length - 1].r : 0;
     // label just before the first course symbol, half-way up the round
     let labelAt: Pt;
-    if (radial) {
+    if (closed) {
       const mid = Math.max(0.45, (prevTop + rMean) / 2);
-      const [x, y] = F.pos(s0 - (dir * 0.62) / Math.max(mid, 0.5), mid);
+      const [x, y] = F.pos(s0 - dir * lenC(0.62, Math.max(mid, 0.5)), mid);
       labelAt = { x, y };
     } else {
       const [x, y] = F.pos(s0 - dir * 0.9, (prevTop + rMean) / 2);
@@ -1029,6 +1176,8 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     roundsOut.push({
       index: k, label: R.label, short: shortLabel(R.label), kind: R.kind, r: rMean, r0: r0band, rOuter: Math.max(rOuter, rMean),
       dir, joined: !!R.joined, labelAt, first, last, bounds: b, flat: fl, spiral: gK, s0,
+      ...(OF ? { frame: OF.spec } : {}),
+      ...(isBorder ? { border: true } : {}),
       ...(armsOut.length ? { pointed: true, outline: outlineOf(ids, rMean), arms: armsOut, hull: hullOf(armsOut, bridges, dir) } : {}),
     });
     prevTop = rMean;
@@ -1068,8 +1217,20 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
   if (firstRing) growPt(bounds, 0, 0, ringR[firstRing.id] + 0.3);
   if (!Number.isFinite(bounds.minX)) Object.assign(bounds, { minX: -1, minY: -1, maxX: 1, maxY: 1 });
 
+  if (poly && opts.startAngle === undefined && Number.isFinite(polyPhase)) {
+    // a polygon sits on a side (a square's sides level, a hexagon flat at the bottom): turn the
+    // whole piece by starting round 1 elsewhere (everything after follows its anchors)
+    const step = TAU / poly.n;
+    const want = -Math.PI / 2 + Math.PI / poly.n;
+    const d = mod(want - polyPhase + step / 2, step) - step / 2;
+    if (Math.abs(d) > 1e-9) return layoutChart(graph, params, { ...opts, startAngle: start + d });
+  }
+  const shape: ChartLayout['shape'] = poly ? { kind: 'polygon', n: poly.n, from: poly.from }
+    : stadium ? { kind: 'stadium', from: 1 }
+    : borderStart > 0 && rect ? { kind: 'border', from: borderStart, rect: rect.core } : undefined;
   return {
     mode, unit, nodes, spaces: spacesOut, rounds: roundsOut,
+    ...(shape ? { shape } : {}),
     ring: firstRing ? { kind: firstRing.chains.length ? 'chain' : 'magic', r: ringR[firstRing.id], space: firstRing.id } : undefined,
     bounds,
   };

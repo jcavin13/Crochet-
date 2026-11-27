@@ -7,6 +7,7 @@
  */
 import type { LoopMod, StitchType } from '../graph';
 import type { RoundFlatness } from '../flatness';
+import type { FrameSpec } from './frames';
 
 export type Pt = { x: number; y: number };
 
@@ -116,6 +117,14 @@ export interface ChartRound {
   pointed?: boolean;
   /** Pointed rounds: the outer outline, a radius per angle (`outlineN` points at angles 2πi/N, counter-clockwise from 3 o'clock). */
   outline?: number[];
+  /**
+   * The round's course is not a circle / a row (frames.ts): a polygon round from the centre, a
+   * round round a foundation chain (stadium) or a border round round a body worked in rows. Its
+   * band and edge are drawn as this shape at heights r0..r.
+   */
+  frame?: FrameSpec;
+  /** A border round worked round a body in rows (notation.md 3.9). */
+  border?: boolean;
   /** Pointed rounds: the arms (base angle, base radius and tip radius) in working order. */
   arms?: ChartArm[];
   /**
@@ -152,6 +161,12 @@ export interface ChartLayout {
   /** Centre ring (radial): magic ring or chain ring. */
   ring?: { kind: 'magic' | 'chain'; r: number; space: number };
   bounds: Bounds;
+  /**
+   * Shape beyond circles and rows: a polygon from the centre (n corners, rounds `from`… drawn as
+   * polygons), a piece worked round a foundation chain (stadium), or a body in rows with a border
+   * worked round it (`rect` = the body's rectangle, rounds `from`… are border rounds).
+   */
+  shape?: { kind: 'polygon'; n: number; from: number } | { kind: 'stadium'; from: number } | { kind: 'border'; from: number; rect: Pt[] };
 }
 
 export interface LayoutOptions {
@@ -165,4 +180,10 @@ export interface LayoutOptions {
   mode?: 'radial' | 'rows';
   /** Lay closed rounds of an n-fold piece out exactly n-fold (core/symmetry). Default true. */
   symmetric?: boolean;
+  /**
+   * Polygons, stadiums and borders (frames.ts): cornered pieces from the centre drawn as polygons,
+   * pieces worked round a foundation chain as stadiums, border rounds round a body in rows as
+   * rounded rectangles. Default true; false draws every closed round as a circle / a row.
+   */
+  shapes?: boolean;
 }

@@ -235,6 +235,44 @@ export const ROUTES = [
       },
     ];
   })(),
+  // every preset and three random designs (5, 8, 12 points), blocked (template overlaid) and before
+  // blocking, light + dark: docs/screenshots/snowflake-3d-<id>-<state>[-dark]-<viewport>.png, and the
+  // Preview star of each (snowflake-preview-<id>-<viewport>.png) to compare proportions
+  ...(() => {
+    const designs = [
+      ['simple-star', 'Simple star'], ['fern', 'Fern'], ['trefoil', 'Trefoil points'], ['lacy-hexagon', 'Lacy hexagon'],
+      ['double-pointed', 'Double-pointed'], ['tiny', 'Tiny ornament'], ['bold-star', 'Bold eight-point star'],
+      ['random-5', null, 5, 21], ['random-8', null, 8, 7], ['random-12', null, 12, 3],
+    ];
+    const pick = ([, label, points, seed]) => async (page) => {
+      const t = page.getByRole('tab', { name: 'Design' }); if (await t.isVisible().catch(() => false)) await t.click();
+      if (label) await page.getByRole('button', { name: label, exact: true }).first().click();
+      else {
+        await page.locator('button.dz-toggle', { hasText: new RegExp(`^${points}$`) }).first().click();
+        await page.waitForTimeout(300);
+        await page.locator('#sf-seed').fill(String(seed));
+      }
+      await page.waitForTimeout(600);
+      const r = page.getByRole('tab', { name: 'Snowflake' }); if (await r.isVisible().catch(() => false)) await r.click();
+    };
+    const ready = async (page) => { await page.waitForSelector('.sf-sim .sim-stage[data-state="ready"]', { timeout: 120_000 }); await page.waitForTimeout(800); };
+    const toSim = async (page) => { await page.locator('.sf-sim').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - (window.innerWidth < 900 ? 60 : 8))); await page.waitForTimeout(300); };
+    const relaxed = async (page) => { await page.getByRole('radio', { name: 'Before blocking' }).click(); };
+    const out = [];
+    for (const d of designs) {
+      const id = d[0];
+      for (const scheme of ['light', 'dark']) {
+        const sfx = scheme === 'dark' ? '-dark' : '';
+        out.push({ name: `snowflake-3d-${id}-blocked${sfx}`, path: '/designer?kind=snowflake&view=3d', wait: '.sf-sim', scheme, prepare: async (page) => { await pick(d)(page); await ready(page); await toSim(page); } });
+        out.push({ name: `snowflake-3d-${id}-before${sfx}`, path: '/designer?kind=snowflake&view=3d', wait: '.sf-sim', scheme, prepare: async (page) => { await pick(d)(page); await ready(page); await relaxed(page); await ready(page); await toSim(page); } });
+      }
+      out.push({
+        name: `snowflake-preview-${id}`, path: '/designer?kind=snowflake&view=preview', wait: '.sf-stage .sf-preview',
+        prepare: async (page) => { await pick(d)(page); await page.locator('.sf-stage').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - (window.innerWidth < 900 ? 60 : 8))); await page.waitForTimeout(400); },
+      });
+    }
+    return out;
+  })(),
   // the standalone Chart page of a saved snowflake: arms laid out as radial spines (core/chart pointed rounds)
   ...(() => {
     // view: 'arm' / 'all' switches the chart's Whole / One arm buttons (the page's default otherwise)

@@ -4,6 +4,7 @@
  * Pure string building — renders the same outside the app.
  */
 import type { Terms } from '../graph';
+import { framePath } from './frames';
 import { boundsUpto } from './layout';
 import { glyph, legendEntries, magicRingGlyph, sampleGlyph, type SymbolOptions } from './symbols';
 import type { ChartLayout, ChartRound } from './types';
@@ -131,6 +132,12 @@ export function bandPath(layout: ChartLayout, k: number): string {
   }
   let prev: ChartRound | undefined;
   for (let j = k - 1; j >= 0; j--) if (layout.rounds[j].first >= 0) { prev = layout.rounds[j]; break; }
+  if (r.frame || prev?.frame) {
+    // a polygon / stadium round: its band has the round's shape
+    const outer = r.frame ? framePath(r.frame, r.r) : ringPath(r.r);
+    const inner = !prev || prev.r <= 1e-6 ? '' : prev.frame ? framePath(prev.frame, prev.r) : ringPath(prev.r);
+    return outer + inner;
+  }
   if (!r.spiral && !prev?.spiral) return roundBandPath(prev ? prev.r : 0, r.r);
   const seams = [r.s0, ...(prev ? [prev.s0] : [])];
   const angles = turnAngles(r.s0 + 2e-4 * r.dir, r.dir, seams).slice(0, -1);
@@ -140,6 +147,7 @@ export function bandPath(layout: ChartLayout, k: number): string {
 
 /** The top edge of a round (circle, or spiral segment). */
 export function edgePath(r: ChartRound): string {
+  if (r.frame) return framePath(r.frame, r.r);
   if (!r.spiral) return roundBandPath(0, r.r);
   return poly(r, turnAngles(r.s0 + 2e-4 * r.dir, r.dir, []).slice(0, -1), false, false);
 }
