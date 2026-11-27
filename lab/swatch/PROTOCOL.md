@@ -14,7 +14,8 @@ Two routes give the same CSV rows: **by hand** (ruler, §4) and **photo** (print
 validated **only on synthetic images** (see `README.md`).
 
 Contents: 1 equipment · 2 which swatches · 3 making and conditioning · 4 measuring by hand ·
-5 uncertainty · 6 recording (CSV) · 7 photo procedure · 8 printable data sheet.
+5 uncertainty · 6 recording (CSV) · 7 photo procedure · 8 printable data sheet ·
+9 yarn consumption (weighing a swatch to calibrate yarn estimates).
 
 ---
 
@@ -287,3 +288,62 @@ Flat circle (k incs/round):  k=___ cups/flat/ruffles  diam ___ mm  waves ___
                              k=___ cups/flat/ruffles  diam ___ mm  waves ___
 Notes: __________________________________________________________
 ```
+
+## 9. Yarn consumption: weighing a swatch (calibrates the yarn estimates)
+
+The app's yarn estimates (`spec/yarn.md`) are **nominal** until calibrated: their coefficients are
+derived from how stitches are built, not measured, and tension varies between crocheters by
+10–20 %. One weighed swatch fixes that for one yarn, one hook and one pair of hands.
+
+### 9.1 Equipment
+
+* A scale reading **0.1 g** (a jewellery / pocket scale). A 1 g kitchen scale is too coarse for a
+  10 g swatch (±5 % from rounding alone); if that is all you have, make the swatch 4× bigger.
+* The ball band: **metres (or yards) per ball and grams per ball** → m/100 g = metres ÷ grams × 100.
+* Sharp scissors. Optional: a tape measure for the frog-and-measure check.
+
+### 9.2 Making the swatch
+
+1. Work flat, in one stitch, with the yarn and hook of the project, at your usual tension:
+   foundation chain of `n + t`, then `r` rows of `n` stitches, each row after the first starting
+   with a turning chain of `t` that does **not** count as a stitch (t = 1 sc, 2 hdc, 3 dc, 4 tr).
+   Suggested: 20 sc × 20 rows, or 20 dc × 12 rows (about 10 × 10 cm in worsted).
+2. Fasten off. **Cut both tails flush** with the fabric (the model does not count tails).
+3. Weigh it (§9.3). Do not block or wash it first: yarn mass does not change with blocking, but a
+   damp swatch weighs more.
+4. Optional, for a split calibration: a second swatch in a stitch of a different height (sc and
+   dc are a good pair). Two stitches let the fit separate how big your loops are from how far you
+   pull them up (`k_w`, `k_h` in `spec/yarn.md` §4).
+
+### 9.3 Weighing
+
+* Tare the scale, weigh the swatch three times (lift it off between readings), record the mean.
+* Yarn absorbs moisture: weigh it in the room where the ball has been kept, not straight after a
+  steam iron.
+* Optional cross-check: unravel ("frog") the swatch and measure the yarn with a tape (stretch it
+  just straight, not taut). This avoids any error in the ball band's m/100 g and is the better
+  number when you have it; enter it as `meters`.
+
+### 9.4 Recording and fitting
+
+In the app: Yarn panel → *Calibrate with a swatch*, or *About & settings → My yarns*. In the lab,
+one row per swatch in a CSV:
+
+    yarn,stitch,n_stitches,n_rows,grams,meters,m_per_100g,params
+    merino-worsted,sc,20,20,10.4,,180,worsted-4_5.0mm
+    merino-worsted,dc,20,12,12.0,,180,
+    cotton-10,sc,30,30,,15.1,,thread-10_1.5mm
+
+    cd lab && uv run python -m crolab.yarn calibration.csv
+
+`crolab.yarn.fit_calibration(csv)` computes, per yarn, the same numbers as the app
+(`calibrationFromSwatches`): the single factor `k = Σ measured / Σ model`, and with two or more
+stitch types the split factors from a least-squares fit on relative error. `params` is the
+stitch-parameter set the model is compared against (default: the file's default set); the factor
+then also absorbs the difference between your gauge and that set's. Both implementations are pinned
+to `spec/yarn_golden.json` (regenerate with `uv run python -m crolab.yarn --write-golden` only after
+a deliberate model change).
+
+**Reading the factor:** 1.00 = the nominal model matched you; 1.15 = you use 15 % more yarn
+(looser loops, or a smaller gauge than the set); below 0.85 or above 1.3, re-check the counts, the
+ball band figure and whether the tails were cut.

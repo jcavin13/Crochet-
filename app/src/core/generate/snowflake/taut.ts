@@ -20,8 +20,8 @@
  *    lengths, chains × block_stretch) bent at the chains the members attach to (the network's anchor
  *    rule, physics.md §3 + SPEC_NOTES N7) with equal turning angles, i.e. the funicular shape of a
  *    loop pulled outwards equally at each attachment (a V for one stitch, an arc for many); h
- *    further out radially. Between the two sc either side of an arm the loop spans at most their
- *    width side by side (`together`);
+ *    further out radially. Between the two sc either side of an arm the loop spans at most the
+ *    width of the arm's foot (`together`);
  *  * nothing stretches but the chains (block_stretch): stitches keep their height.
  * Rounds are not forced onto circles: the construction is exact for the n-fold symmetric graph.
  */
@@ -78,12 +78,13 @@ export function funicular(A: V2, B: V2, ell: number[], away: V2): V2[] {
 
 /**
  * Positions (mm, centre at the origin, round 1 counter-clockwise) of the nodes of rounds 0..upto, taut.
- * `together`: sets of nodes worked into one space that the next round holds side by side — the two
- * sc either side of an arm (`(sc, <arm>, sc) in next sp`): between their chains the loop spans at
- * most their width side by side (the rest of that stretch hangs slack), so a long loop under an arm
- * blocks to a V-like point, a short one to the usual polygon.
+ * `together`: sets of nodes worked into one space that the next round holds close together — the
+ * two sc either side of an arm (`(sc, <arm>, sc) in next sp`) are at most `gap` apart (the arm's
+ * foot: sc → first chain, the return row's height, last return stitch → sc): between their chains
+ * the loop spans at most that (the rest hangs slack), so a long loop under an arm blocks to a
+ * V-like point, a short one to the usual polygon.
  */
-export function tautPositions(g: Graph, params: ParamSet, upto: number, stretch = simConfig.block_stretch, together: number[][] = []): (V2 | null)[] {
+export function tautPositions(g: Graph, params: ParamSet, upto: number, stretch = simConfig.block_stretch, together: { nodes: number[]; gap: number }[] = []): (V2 | null)[] {
   const n = g.nodes.length;
   const pos: (V2 | null)[] = new Array(n).fill(null);
   const w0 = courseWidths(g, params);
@@ -94,7 +95,7 @@ export function tautPositions(g: Graph, params: ParamSet, upto: number, stretch 
   const anchors = resolveAnchorParticles(g, new Map(), seamSlipStitches(g, armBases(g, findPointedLoops(g, w0))));
   const loops = new Map<number, Map<number, V2> | null>();
   const groupOf = new Map<number, number>();
-  together.forEach((set, k) => { for (const v of set) groupOf.set(v, k); });
+  together.forEach((set, k) => { for (const v of set.nodes) groupOf.set(v, k); });
   const radial = (p: V2, d: number): V2 => { const R = Math.hypot(p[0], p[1]) || 1; return [p[0] + (d * p[0]) / R, p[1] + (d * p[1]) / R]; };
 
   // round 0: on a circle, by course position
@@ -143,13 +144,12 @@ export function tautPositions(g: Graph, params: ParamSet, upto: number, stretch 
     }
     const V = [...vs.values()].sort((x, y) => x.at - y.at);
     const ell: number[] = [];
-    let prev = 0, prevSet = -2, prevW = 0;
+    let prev = 0, prevSet = -2;
     for (const v of V) {
       let piece = Math.max(0, v.at - prev);
-      const wv = v.members.reduce((acc, m) => Math.max(acc, w[m]), 0);
-      if (v.set >= 0 && v.set === prevSet) piece = Math.min(piece, 0.5 * (prevW + wv));
+      if (v.set >= 0 && v.set === prevSet) piece = Math.min(piece, together[v.set].gap);
       ell.push(piece);
-      prev = v.at; prevSet = v.set; prevW = wv;
+      prev = v.at; prevSet = v.set;
     }
     ell.push(Math.max(0, cum[cum.length - 1] - prev));
     const A = pos[a]!, B = pos[b]!;

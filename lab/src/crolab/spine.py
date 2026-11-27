@@ -178,3 +178,116 @@ def _layout(g, sp: Spine, w, h, w_ch: float, Lc) -> None:
         bs, bt = pos[base]
         pos[p] = (bs + reach * math.cos(a), bt + sign * reach * math.sin(a))
         run += 1
+
+
+# ------------------------------------------------------------------------------------------
+# N6: pointed loops (`ch >= 4, picot(s), ch >= 4` off one stitch, nothing worked into them)
+# ------------------------------------------------------------------------------------------
+#: shortest chain run on either side of the picot (the chart's LOOP_MIN)
+POINTED_LOOP_MIN = 4
+
+
+@dataclass
+class PointedLoop:
+    """SPEC_NOTES N6 (TypeScript `PointedLoop`): the two chain runs are whole chain spaces of the
+    same round split by picot(s), nothing is worked into either space or their chains, `base` is the
+    node before the first run and `close` the node after the second. `pos`: node -> (s, t), base at
+    the origin, close at (0, d), d = (w_base + w_close) / 2; the path base -> a -> picots -> b ->
+    close (course rest lengths, total S) folded into an isosceles triangle with legs S/2."""
+    base: int
+    close: int
+    a: list[int]
+    picots: list[int]
+    b: list[int]
+    pos: dict[int, tuple[float, float]] = field(default_factory=dict)
+
+    @property
+    def nodes(self) -> list[int]:
+        return self.a + self.picots + self.b
+
+
+def pointed_loop(base, a, picots, b, close, w) -> PointedLoop:
+    pl = PointedLoop(base=base, close=close, a=list(a), picots=list(picots), b=list(b))
+    path = [base] + pl.nodes + [close]
+    cum = [0.0]
+    for k in range(1, len(path)):
+        cum.append(cum[k - 1] + 0.5 * (float(w[path[k - 1]]) + float(w[path[k]])))
+    S = cum[-1]
+    d = 0.5 * (float(w[base]) + float(w[close]))
+    half = S / 2
+    H = math.sqrt(max(0.0, half * half - 0.25 * d * d))
+    for v, l in zip(path, cum):
+        if l <= half:
+            f = l / half if half > 0 else 0.0
+            pl.pos[v] = (f * H, f * 0.5 * d)
+        else:
+            f = (S - l) / half
+            pl.pos[v] = (f * H, d - f * 0.5 * d)
+    return pl
+
+
+def find_pointed_loops(g, w) -> list[PointedLoop]:
+    n = g.n
+    space_of = {c: s["id"] for s in g.spaces if s["kind"] == "chsp" for c in s["chains"]}
+    used: set = set()
+    for nd in g.nodes:
+        for a in nd["into"]:
+            if "node" in a:
+                used.add(a["node"])
+            else:
+                used.add(-1 - a["space"])
+
+    def free(s: int) -> bool:
+        sp = g.spaces[s]
+        return (-1 - s) not in used and all(c not in used and g.nodes[c].get("role") != "tch" for c in sp["chains"])
+
+    out: list[PointedLoop] = []
+    for s1 in g.spaces:
+        if s1["kind"] != "chsp" or len(s1["chains"]) < POINTED_LOOP_MIN or not free(s1["id"]):
+            continue
+        a = s1["chains"]
+        base = a[0] - 1
+        p = a[-1] + 1
+        picots = []
+        while p < n and g.nodes[p]["type"] == "picot" and g.nodes[p]["round"] == s1["round"]:
+            picots.append(p)
+            p += 1
+        if not picots or p >= n or base < 0:
+            continue
+        s2 = space_of.get(p)
+        if s2 is None or g.spaces[s2]["chains"][0] != p or g.spaces[s2]["round"] != s1["round"]:
+            continue
+        b = g.spaces[s2]["chains"]
+        if len(b) < POINTED_LOOP_MIN or not free(s2):
+            continue
+        close = b[-1] + 1
+        if (close >= n or g.nodes[close]["round"] != s1["round"] or g.nodes[base]["round"] != s1["round"]
+                or g.nodes[base]["type"] == "ch" or g.nodes[close]["type"] == "ch"):
+            continue
+        out.append(pointed_loop(base, a, picots, b, close, w))
+    return out
+
+
+def arm_bases(g, loops: list[PointedLoop]) -> set[int]:
+    """Bases of arms from the graph alone (TypeScript `armBases`): the node before a spine's first
+    chain and the base of every pointed loop. Used by the seam rule N7."""
+    n = g.n
+    out = {pl.base for pl in loops}
+    back = set()
+    for nd in g.nodes:
+        for a in nd["into"]:
+            c = a.get("node")
+            if c is not None and c < nd["id"] and _free_chain(g, c) and g.nodes[c]["round"] == nd["round"]:
+                back.add(c)
+    i = 0
+    while i < n:
+        if not _free_chain(g, i):
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and _free_chain(g, j + 1) and g.nodes[j + 1]["round"] == g.nodes[i]["round"]:
+            j += 1
+        if any(c in back for c in range(i, j + 1)) and i >= 1:
+            out.add(i - 1)
+        i = j + 1
+    return out

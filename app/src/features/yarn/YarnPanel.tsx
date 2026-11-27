@@ -92,7 +92,7 @@ export function YarnPanel(props: YarnPanelProps) {
     <div className="yn-body">
       <p className="yn-range">
         likely <b>{formatRange(est.net.metersLow, est.net.metersHigh, units)}</b>
-        <span className="muted"> · plus {Math.round(yarn.allowance * 100)} % allowance ({formatLength(est.total.meters - est.net.meters, units)}) for tails, swatch and tension drift → buy <b>{buy.balls} × {ballWord}</b> ({buy.exact.toFixed(1)})</span>
+        <span className="muted"> · plus {Math.round(yarn.allowance * 100)} % allowance ({formatLength(est.total.meters - est.net.meters, units)}) for tails, swatch and tension drift → buy <b>{buy.balls} × {ballWord}</b> ({buy.exact < 0.1 ? 'under 0.1' : buy.exact.toFixed(1)} balls' worth)</span>
       </p>
 
       <YarnInputs y={y} yarn={yarn} />

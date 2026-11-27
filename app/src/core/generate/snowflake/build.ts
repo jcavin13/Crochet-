@@ -370,8 +370,10 @@ function tautArmRound(spec: SnowflakeSpec, planned: SnowPlannedRound[], st: ArmS
   if (g) {
     const last = g.rounds.length - 1;
     const groups = armGroups(g, last);
-    const pos = tautPositions(g, params, last, simConfig.block_stretch, groups.filter((x) => x.last !== x.first).map((x) => [x.first, x.last]));
     const A = probe.anchors.length;
+    const together = groups.map((x, q) => ({ x, kind: probe.anchors[q % A]?.kind })).filter((y) => y.x.last !== y.x.first)
+      .map((y) => ({ nodes: [y.x.first, y.x.last], gap: tautMode(footGap(y.kind === 'minor' ? spec.minor : null, spec.arm, params), params) }));
+    const pos = tautPositions(g, params, last, simConfig.block_stretch, together);
     if (groups.length === n * A) {
       const rep = n > 1 ? 1 : 0;
       const anchors = probe.anchors.map((a, q) => {
@@ -386,6 +388,24 @@ function tautArmRound(spec: SnowflakeSpec, planned: SnowPlannedRound[], st: ArmS
   tautCache.set(key, out);
   return out;
 }
+
+/**
+ * Largest distance between the two sc either side of an arm (its foot), at rest: sc → first spine
+ * chain, the return row standing on it (its height), last return stitch → sc; a pointed loop's feet
+ * stand side by side; a minor picot spans sc → picot → sc.
+ */
+function footGap(minor: MinorSpec | null, arm: ArmSpec, params: ParamSet): number {
+  const w = (t: string) => stitchParam(params, t as 'sc').width;
+  const back = arm.back === 'sc' ? 'sc' : 'slst';
+  const spine = 0.5 * (w('sc') + w('ch')) + stitchParam(params, back).height + 0.5 * (w(back) + w('sc'));
+  if (minor) return minor.style === 'picot' ? w('sc') + w('picot') : spine;
+  return arm.tip === 'loop' ? w('sc') : spine;
+}
+
+const tautMode = (foot: number, params: ParamSet) => {
+  const m = (globalThis as { __TAUT?: string }).__TAUT ?? 'foot';
+  return m === 'fun' ? 1e9 : m === 'wsc' ? stitchParam(params, 'sc').width : m === 'v' ? 0 : foot;
+};
 
 /** Groups of the arm round (round r): an arm's `sc … sc` worked into one place, or a lone sc; first/last stitch ids. */
 export function armGroups(g: Graph, r: number): { first: number; last: number }[] {

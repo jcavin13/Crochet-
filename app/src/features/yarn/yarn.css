@@ -9,7 +9,7 @@
   display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: var(--tap);
   padding: var(--s-1) var(--s-2); margin: 0 calc(-1 * var(--s-2));
   border: 0; border-radius: var(--radius-sm); background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .yn-line:hover { background: var(--surface-2); }
 .yn-line:focus-visible { outline: none; box-shadow: var(--focus); }

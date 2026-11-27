@@ -269,12 +269,18 @@ export function setupBlock(net: Network, X: Float64Array, config: SimConfig = de
     if (usePins) {
       const owner = new Map<number, number>();
       net.spines.forEach((sp, si) => { for (const v of sp.nodes) owner.set(v, si); });
+      // N6 pointed loops count as arms; turning chains (N3: not fabric) are left out — at a round's
+      // seam the spring model ties `sl st, ch 1` to fixed chains where the real stitches slide along
+      // the loop, so their stretch is an artefact of the attachment, not thread the template asks for
+      net.pointedLoops.forEach((pl, li) => { for (const v of pl.nodes) owner.set(v, net.spines.length + li); });
+      const g = net.graph;
+      const tch = (i: number) => i < net.nNodes && g.nodes[i].role === 'tch' && !g.nodes[i].countsAs;
       pinStretch = { spines: 0, chains: 0, body: 0 };
       for (const q of sel) {
         const st = strain[q];
         // thread lengths only (course and wale springs): bend and shear springs measure a change of
         // shape or a skewed stitch, not stretched thread
-        if (!(st > 0) || (net.kind[q] !== COURSE && net.kind[q] !== WALE)) continue;
+        if (!(st > 0) || (net.kind[q] !== COURSE && net.kind[q] !== WALE) || tch(net.I[q]) || tch(net.J[q])) continue;
         const oi = owner.get(net.I[q]);
         const part: keyof PinStretch = oi !== undefined && oi === owner.get(net.J[q]) ? 'spines' : net.slack[q] ? 'chains' : 'body';
         pinStretch[part] = Math.max(pinStretch[part], st);

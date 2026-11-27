@@ -265,6 +265,8 @@ class _Placer:
             k += len(run)
         # P7 spines: radially outward from their base, in their reference layout
         self.place_spines(r)
+        # P8 pointed loops: likewise, a narrow outward loop with the picot at its apex
+        self.place_pointed_loops(r)
         # P4' chain-space loops: on an outward arc between the nodes either side of the loop
         self.place_loops(r, ids)
         # P6 perturbation
@@ -294,8 +296,9 @@ def _arc_angle(ratio: float) -> float:
 def _place_loops(self, r: int, ids: list[int]) -> None:
     net, g, X = self.net, self.g, self.X
     idset = set(ids)
+    in_loop = {v for pl in net.pointed_loops for v in pl.nodes}
     for sp in g.spaces:
-        if sp["kind"] != "chsp" or sp["round"] != r or not sp["chains"]:
+        if sp["kind"] != "chsp" or sp["round"] != r or not sp["chains"] or sp["chains"][0] in in_loop:
             continue
         ch = sp["chains"]
         a, b = ch[0] - 1, ch[-1] + 1
@@ -353,6 +356,29 @@ def _place_spines(self, r: int) -> None:
 
 
 _Placer.place_spines = _place_spines
+
+
+def _place_pointed_loops(self, r: int) -> None:
+    """P8: every pointed loop (N6) of round r whose base and close are placed is laid out like a
+    spine (P7), x = x_base + s u + sigma t v, with sigma = -1 when (x_close - x_base) . v < 0."""
+    X = self.X
+    for pl in self.net.pointed_loops:
+        if self.g.nodes[pl.base]["round"] != r or np.isnan(X[pl.base, 0]) or np.isnan(X[pl.close, 0]):
+            continue
+        o = X[pl.base].copy()
+        u, nu = _unit(o - self.round_centroid)
+        if nu < 1e-9:
+            u = np.array([1.0, 0.0, 0.0])
+        t, nt = _unit(np.cross([0.0, 0.0, 1.0], u))
+        if nt < 1e-9:
+            t, _ = _unit(np.cross(u, [1.0, 0.0, 0.0]))
+        sg = -1.0 if float(np.dot(X[pl.close] - o, t)) < 0 else 1.0
+        for v in pl.nodes:
+            s_, t_ = pl.pos[v]
+            X[v] = o + s_ * u + sg * t_ * t
+
+
+_Placer.place_pointed_loops = _place_pointed_loops
 
 
 def simulate(pattern: dict, params: StitchParams | None = None, upto_round: int | None = None,

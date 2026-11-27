@@ -70,6 +70,35 @@ export interface SimViewProps {
   table?: boolean;
   /** Explicit pins `{node, x, y}` (mm, any rigid frame) for the blocked state. Default: physics.md §6. */
   pins?: BlockPin[];
+  /**
+   * Line segments [x1, y1, x2, y2] in the pins' frame (e.g. the blocking template's outline), drawn
+   * faintly under the blocked piece, placed by the same rigid fit as the pins. Shown when blocked.
+   */
+  overlay?: number[][];
+}
+
+/**
+ * Map the pins' frame onto the blocked piece: the 3D positions of the pinned nodes are an exact
+ * rigid image of the pins (the solver fixes them there), so p = c + x·a + y·b by least squares.
+ */
+export function overlayToPiece(pins: BlockPin[], positions: ArrayLike<number>, segs: number[][]): Float32Array | null {
+  const P = pins.filter((p) => Number.isFinite(positions[3 * p.node]));
+  if (P.length < 3) return null;
+  // normal equations of [1 x y] → xyz
+  const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], Y = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (const p of P) {
+    const r = [1, p.x, p.y];
+    for (let i = 0; i < 3; i++) { for (let j = 0; j < 3; j++) M[i][j] += r[i] * r[j]; for (let d = 0; d < 3; d++) Y[i][d] += r[i] * positions[3 * p.node + d]; }
+  }
+  const det = (m: number[][]) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const D = det(M);
+  if (Math.abs(D) < 1e-9) return null;
+  const sol = [0, 1, 2].map((d) => [0, 1, 2].map((i) => det(M.map((row, r) => row.map((v, c) => (c === i ? Y[r][d] : v)))) / D));
+  const out = new Float32Array(segs.length * 6);
+  segs.forEach((sg, k) => {
+    for (let e = 0; e < 2; e++) for (let d = 0; d < 3; d++) out[6 * k + 3 * e + d] = sol[d][0] + sol[d][1] * sg[2 * e] + sol[d][2] * sg[2 * e + 1];
+  });
+  return out;
 }
 
 let webglCache: boolean | null = null;
@@ -167,9 +196,11 @@ export function SimView(props: SimViewProps) {
 
   const fitKey = `${network ? network.nNodes : 0}|${resetViewKey ?? ''}|${blocked}|${done ? 'done' : 'live'}|${axis.join(',')}|${elev}`;
   const positions = frame?.positions ?? null;
-  const svg = topology && <SvgView topology={topology} positions={positions} rotation={rotation} colors={colors} highlightNode={highlightNode} elevation={elev} />;
+  const overlay3 = useMemo(() => (blocked && done && positions && props.overlay?.length && props.pins?.length ? overlayToPiece(props.pins, positions, props.overlay) : null), [blocked, done, positions, props.overlay, props.pins]);
+  const svg = topology && <SvgView topology={topology} positions={positions} rotation={rotation} colors={colors} highlightNode={highlightNode} elevation={elev} overlay={overlay3} />;
   const solving = !error && !done;
-  const label = phase === 'blocking' ? 'Blocking…' : phase === 'relaxing' ? 'Relaxing…' : 'Solving…';
+  const prog = frame?.step.progress;
+  const label = phase === 'blocking' ? `Pinning out…${prog !== undefined ? ` ${Math.round(prog * 100)} %` : ''}` : phase === 'relaxing' ? 'Relaxing…' : 'Solving…';
 
   return (
     <div className={['sim-view', controls && 'sim-view--controls', className].filter(Boolean).join(' ')} style={style}>
@@ -181,7 +212,7 @@ export function SimView(props: SimViewProps) {
             <GlBoundary fallback={svg} onError={() => setGlFailed(true)}>
               <Suspense fallback={svg}>
                 <Scene3D topology={topology} positions={positions} rotation={rotation} colors={colors} highlightNode={highlightNode}
-                  fitKey={fitKey} autoFit elevation={elev} onContextLost={() => setGlFailed(true)} />
+                  fitKey={fitKey} autoFit elevation={elev} onContextLost={() => setGlFailed(true)} overlay={overlay3} />
               </Suspense>
             </GlBoundary>
           ) : svg

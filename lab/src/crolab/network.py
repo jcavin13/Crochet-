@@ -27,7 +27,7 @@ import numpy as np
 
 from .graph import Graph
 from .params import StitchParams, load_sim_config, select_set
-from .spine import find_spines
+from .spine import arm_bases, find_pointed_loops, find_spines
 
 COURSE, WALE, SHEAR, BEND_COURSE, BEND_WALE = range(5)
 KIND_NAMES = ("course", "wale", "shear", "bend_course", "bend_wale")
@@ -52,6 +52,7 @@ class Network:
     params: StitchParams = field(repr=False)
     slack: np.ndarray = None  # bool [m]: tension-only springs (chain-space chains, SPEC_NOTES N4)
     spines: list = field(default_factory=list)  # crolab.spine.Spine per spine (SPEC_NOTES N5)
+    pointed_loops: list = field(default_factory=list)  # crolab.spine.PointedLoop (SPEC_NOTES N6)
 
     @property
     def m(self) -> int:
@@ -65,12 +66,37 @@ class Network:
         return np.nonzero(self.kind == kind)[0]
 
 
-def resolve_anchor_particles(g: Graph, space_particle: dict[int, int]) -> list[list[int]]:
-    """Per node: distinct anchor particles (physics.md 'Anchor -> particle'), in leg order."""
+def seam_slip_stitches(g: Graph, bases: set[int]) -> dict[int, int]:
+    """SPEC_NOTES N7 (TypeScript `seamSlipStitches`): space id -> its seam slip stitch, for chain
+    spaces that carry an arm (a member is in `bases`) and whose first member is a slip stitch with
+    only slip stitches before it in its round."""
+    out: dict[int, int] = {}
+    for s in g.spaces:
+        if s["kind"] != "chsp":
+            continue
+        mem = g.nodes_in_space(s["id"])
+        if len(mem) < 2 or not any(v in bases for v in mem):
+            continue
+        f = mem[0]
+        nd = g.nodes[f]
+        if nd["type"] != "slst":
+            continue
+        rd = g.rounds[nd["round"]]
+        if all(g.nodes[i]["type"] == "slst" for i in range(rd["first"], f)):
+            out[s["id"]] = f
+    return out
+
+
+def resolve_anchor_particles(g: Graph, space_particle: dict[int, int], seam: dict[int, int] | None = None) -> list[list[int]]:
+    """Per node: distinct anchor particles (physics.md 'Anchor -> particle'), in leg order. N7: the
+    seam slip stitch of an arm space (`seam`) attaches to the first chain and takes no share."""
+    seam = seam or {}
     # position j (1-based) of each node among the distinct nodes anchored in each space
     order_in_space: dict[int, dict[int, int]] = {}
     for s in g.spaces:
-        order_in_space[s["id"]] = {nid: idx + 1 for idx, nid in enumerate(g.nodes_in_space(s["id"]))}
+        sl = seam.get(s["id"])
+        mem = [v for v in g.nodes_in_space(s["id"]) if v != sl]
+        order_in_space[s["id"]] = {nid: idx + 1 for idx, nid in enumerate(mem)}
     out: list[list[int]] = []
     for nd in g.nodes:
         ps: list[int] = []
@@ -82,8 +108,10 @@ def resolve_anchor_particles(g: Graph, space_particle: dict[int, int]) -> list[l
                 sp = g.spaces[s]
                 chains = sp["chains"]
                 m = len(order_in_space[s])
-                jj = order_in_space[s][nd["id"]]
-                if sp["kind"] == "ring" and not chains:
+                jj = order_in_space[s].get(nd["id"], 1)
+                if seam.get(s) == nd["id"]:
+                    p = chains[0]
+                elif sp["kind"] == "ring" and not chains:
                     p = space_particle[s]
                 elif sp["kind"] == "ring":
                     n = len(chains)
@@ -350,7 +378,9 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
         virtual_space[p] = s
         prounds.append(g.spaces[s]["round"])
     n_particles = n + len(space_particle)
-    anchors = resolve_anchor_particles(g, space_particle)
+    metric0 = variant == "metric"
+    pointed = find_pointed_loops(g, w) if metric0 else []
+    anchors = resolve_anchor_particles(g, space_particle, seam_slip_stitches(g, arm_bases(g, pointed)) if metric0 else None)
 
     metric = variant == "metric"
     # magic-ring rest lengths
@@ -457,6 +487,25 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
                     k = kc * min(s_course[v] for v in trip)
             gen[idx] = (a, b, L, k, t)
 
+    # N6: pointed loops are starched open loops: every spring between two nodes of one loop (feet
+    # included) takes its rest length from the loop's layout and is two-sided; course bends along
+    # the loop get course stiffness
+    loop_owner: dict[int, int] = {}
+    for li, pl in enumerate(pointed):
+        for v in pl.pos:
+            loop_owner[v] = li
+    if pointed:
+        for idx, (a, b, L, k, t) in enumerate(gen):
+            la, lb = loop_owner.get(a), loop_owner.get(b)
+            if la is None or la != lb:
+                continue
+            pa, pb = pointed[la].pos[a], pointed[la].pos[b]
+            L = math.hypot(pa[0] - pb[0], pa[1] - pb[1])
+            if t == BEND_COURSE:
+                lo = min(a, b)
+                k = kc * min(s_course[v] for v in (lo, lo + 1, lo + 2))
+            gen[idx] = (a, b, L, k, t)
+
     best: dict[tuple[int, int], int] = {}
     for idx, (a, b, L, k, t) in enumerate(gen):
         if a == b:
@@ -471,6 +520,9 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
     def is_slack(a, b, t):
         if not metric or t not in (COURSE, BEND_COURSE):
             return False
+        la = loop_owner.get(a)
+        if la is not None and la == loop_owner.get(b):
+            return False
         lo, hi = min(a, b), max(a, b)
         return bool(chsp_chain[lo:hi + 1].any())
     I = np.array([min(a[0], a[1]) for a in arr], dtype=np.int64)
@@ -482,5 +534,5 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
         particle_round=np.array(prounds, dtype=np.int64), virtual_space=virtual_space,
         space_particle=space_particle, anchor_particles=anchors, width=w, height=h, graph=g,
         params=params, slack=np.array([is_slack(a[0], a[1], a[4]) for a in arr], dtype=bool),
-        spines=spines,
+        spines=spines, pointed_loops=pointed,
     )

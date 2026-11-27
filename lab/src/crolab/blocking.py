@@ -109,11 +109,21 @@ def block(res: SimResult, config: dict | None = None, gtol: float = 1e-8, pins=N
     pin_stretch = None
     if use_pins:
         owner = {v: si for si, sp in enumerate(net.spines) for v in sp.pos}
+        # N6 pointed loops count as arms; turning chains (N3) are left out (the TypeScript `block`)
+        for li, pl in enumerate(net.pointed_loops):
+            for v in pl.nodes:
+                owner[v] = len(net.spines) + li
+        g = net.graph
+
+        def tch(i: int) -> bool:
+            return i < net.n_nodes and g.nodes[i].get("role") == "tch" and not g.nodes[i].get("countsAs")
         pin_stretch = {"spines": 0.0, "chains": 0.0, "body": 0.0}
         for q in range(net.m):
             if strain[q] <= 0 or net.kind[q] not in (0, 1):
                 continue
             a, b = int(net.i[q]), int(net.j[q])
+            if tch(a) or tch(b):
+                continue
             part = "spines" if a in owner and owner[a] == owner.get(b) else ("chains" if net.slack[q] else "body")
             pin_stretch[part] = max(pin_stretch[part], float(strain[q]))
     return {

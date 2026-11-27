@@ -332,9 +332,10 @@ export const ROUTES = [
           const d = dlg(page);
           await d.getByLabel('Weight, tails trimmed').fill('10.4');
           await d.getByRole('button', { name: 'Add a swatch in another stitch' }).click();
-          await d.getByLabel('Weight, tails trimmed').nth(1).fill('10.9');
+          await d.getByLabel('Weight, tails trimmed').nth(1).fill('12.0');
           await d.getByLabel('Ball band').fill('180');
           await d.getByLabel('Name').fill('Merino worsted, teal');
+          await d.locator('.ui-dialog__body').evaluate((el) => { el.scrollTop = el.scrollHeight; });
           await page.waitForTimeout(300);
         },
       },
@@ -374,6 +375,18 @@ export const ROUTES = [
           await d.getByRole('button', { name: 'Save calibration' }).click();
           await page.waitForTimeout(3600);
           await page.locator('#yarns').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 80));
+          await page.waitForTimeout(300);
+        },
+      },
+      {
+        name: 'yarn-gauge', path: '/amigurumi?tab=gauge', wait: '.ami-gauge', only: 'desktop',
+        prepare: async (page) => {
+          // a blanket-sized rectangle: estimated from counts (too big to compile), several balls
+          await page.getByLabel('Width').first().fill('120');
+          await page.getByLabel('Height').first().fill('150');
+          await page.waitForTimeout(400);
+          await page.locator('.ami-yarnline .yn-line').first().click();
+          await page.locator('.ami-yarnline').first().evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 160));
           await page.waitForTimeout(300);
         },
       },

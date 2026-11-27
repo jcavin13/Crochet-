@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three/examples/jsm/controls/OrbitControls.js';
-import { boundsOf, nodeColor, segmentColor, type ColorInputs, type Segments, type Topology } from './topology';
+import { boundsOf, nodeColor, picotLoops, PICOT_SEGS, roundColor, mix, type ColorInputs, type Segments, type Topology } from './topology';
 
 export interface Scene3DProps {
   topology: Topology;
@@ -21,6 +21,28 @@ export interface Scene3DProps {
   /** Camera elevation above the piece's plane, degrees. */
   elevation?: number;
   onContextLost?: () => void;
+  /** Faint line segments (piece coordinates, 6 numbers each), e.g. the blocking template. */
+  overlay?: Float32Array | null;
+}
+
+function Overlay({ segs, rotation, color }: { segs: Float32Array; rotation: number[]; color: [number, number, number] }) {
+  const invalidate = useThree((s) => s.invalidate);
+  const geom = useMemo(() => {
+    const R = rotation, out = new Float32Array(segs.length);
+    for (let q = 0; q < segs.length; q += 3) {
+      const x = segs[q], y = segs[q + 1], z = segs[q + 2];
+      out[q] = R[0] * x + R[1] * y + R[2] * z; out[q + 1] = R[3] * x + R[4] * y + R[5] * z - 0.05; out[q + 2] = R[6] * x + R[7] * y + R[8] * z;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(out, 3));
+    return g;
+  }, [segs, rotation]);
+  useEffect(() => { invalidate(); return () => geom.dispose(); }, [geom, invalidate]);
+  return (
+    <lineSegments geometry={geom} renderOrder={-1}>
+      <lineBasicMaterial color={new THREE.Color().setRGB(color[0], color[1], color[2], THREE.SRGBColorSpace)} transparent opacity={0.45} depthWrite={false} />
+    </lineSegments>
+  );
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -55,6 +77,35 @@ function writeSegments(mesh: THREE.InstancedMesh, s: Segments, pos: Float32Array
   mesh.computeBoundingSphere();
 }
 
+/** Cylinder instance matrix from A to B, radius r, into arr at offset o. */
+function cyl(arr: Float32Array, o: number, A: ArrayLike<number>, a: number, B: ArrayLike<number>, b: number, r: number) {
+  const dx = B[b] - A[a], dy = B[b + 1] - A[a + 1], dz = B[b + 2] - A[a + 2];
+  const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (!Number.isFinite(len) || len < 1e-9) { arr.fill(0, o, o + 16); return; }
+  const ux = dx / len, uy = dy / len, uz = dz / len;
+  let ex: number, ey: number, ez: number;
+  if (Math.abs(uy) < 0.9) { ex = uz; ey = 0; ez = -ux; } else { ex = 0; ey = -uz; ez = uy; }
+  const en = Math.hypot(ex, ey, ez); ex /= en; ey /= en; ez /= en;
+  const fx = ey * uz - ez * uy, fy = ez * ux - ex * uz, fz = ex * uy - ey * ux;
+  arr[o] = ex * r; arr[o + 1] = ey * r; arr[o + 2] = ez * r; arr[o + 3] = 0;
+  arr[o + 4] = dx; arr[o + 5] = dy; arr[o + 6] = dz; arr[o + 7] = 0;
+  arr[o + 8] = fx * r; arr[o + 9] = fy * r; arr[o + 10] = fz * r; arr[o + 11] = 0;
+  arr[o + 12] = (A[a] + B[b]) / 2; arr[o + 13] = (A[a + 1] + B[b + 1]) / 2; arr[o + 14] = (A[a + 2] + B[b + 2]) / 2; arr[o + 15] = 1;
+}
+
+/** Picots as closed chain loops (topology.picotLoops), PICOT_SEGS cylinders each. */
+function writePicots(mesh: THREE.InstancedMesh, t: Topology, pos: Float32Array, R: number[], buf: Float32Array) {
+  const b = boundsOf(pos, t.nParticles, R);
+  picotLoops(t, pos, R, b ? b.c : [0, 0, 0], buf);
+  const arr = mesh.instanceMatrix.array as Float32Array;
+  const K = PICOT_SEGS + 1, r = 0.075 * t.wbar;
+  for (let k = 0; k < t.picots.count; k++) {
+    for (let j = 0; j < PICOT_SEGS; j++) cyl(arr, 16 * (k * PICOT_SEGS + j), buf, 3 * (K * k + j), buf, 3 * (K * k + j + 1), r);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.computeBoundingSphere();
+}
+
 function writeNodes(mesh: THREE.InstancedMesh, t: Topology, pos: Float32Array, R: number[]) {
   const arr = mesh.instanceMatrix.array as Float32Array;
   for (let i = 0; i < t.nNodes; i++) {
@@ -83,6 +134,8 @@ function Piece({ topology: t, positions, rotation, colors, highlightNode }: Omit
   const stitchRef = useRef<THREE.InstancedMesh>(null);
   const yarnRef = useRef<THREE.InstancedMesh>(null);
   const nodeRef = useRef<THREE.InstancedMesh>(null);
+  const picotRef = useRef<THREE.InstancedMesh>(null);
+  const picotBuf = useMemo(() => new Float32Array(3 * (PICOT_SEGS + 1) * Math.max(1, t.picots.count)), [t]);
   const hlRef = useRef<THREE.Mesh>(null);
   const invalidate = useThree((s) => s.invalidate);
   const geo = useMemo(() => ({
@@ -103,6 +156,7 @@ function Piece({ topology: t, positions, rotation, colors, highlightNode }: Omit
     if (stitchRef.current) writeSegments(stitchRef.current, t.stitches, positions, rotation);
     if (yarnRef.current) writeSegments(yarnRef.current, t.yarn, positions, rotation);
     if (nodeRef.current) writeNodes(nodeRef.current, t, positions, rotation);
+    if (picotRef.current && t.picots.count) writePicots(picotRef.current, t, positions, rotation, picotBuf);
     if (hlRef.current) {
       const i = highlightNode ?? -1;
       const ok = i >= 0 && i < t.nNodes && Number.isFinite(positions[3 * i]);
@@ -114,11 +168,20 @@ function Piece({ topology: t, positions, rotation, colors, highlightNode }: Omit
       }
     }
     invalidate();
-  }, [positions, rotation, t, highlightNode, invalidate]);
+  }, [positions, rotation, t, highlightNode, invalidate, picotBuf]);
 
   useLayoutEffect(() => {
     if (stitchRef.current) colorSegments(stitchRef.current, t.stitches, t.nRounds, colors, false);
     if (yarnRef.current) colorSegments(yarnRef.current, t.yarn, t.nRounds, colors, true);
+    if (picotRef.current && t.picots.count) {
+      const col = new THREE.Color();
+      for (let k = 0; k < t.picots.count; k++) {
+        const base = colors.by === 'strain' ? colors.palette.neutral : mix(roundColor(t.picots.round[k], t.nRounds, colors.palette), colors.palette.ink, 0.25);
+        col.setRGB(base[0], base[1], base[2], THREE.SRGBColorSpace);
+        for (let j = 0; j < PICOT_SEGS; j++) picotRef.current.setColorAt(k * PICOT_SEGS + j, col);
+      }
+      if (picotRef.current.instanceColor) picotRef.current.instanceColor.needsUpdate = true;
+    }
     if (nodeRef.current) {
       const col = new THREE.Color();
       for (let i = 0; i < t.nNodes; i++) {
@@ -135,6 +198,7 @@ function Piece({ topology: t, positions, rotation, colors, highlightNode }: Omit
     <group>
       <instancedMesh key={`s${t.stitches.count}`} ref={stitchRef} args={[geo.cyl, mat.stitch, Math.max(1, t.stitches.count)]} frustumCulled={false} />
       <instancedMesh key={`y${t.yarn.count}`} ref={yarnRef} args={[geo.cyl, mat.yarn, Math.max(1, t.yarn.count)]} frustumCulled={false} />
+      {t.picots.count > 0 && <instancedMesh key={`p${t.picots.count}`} ref={picotRef} args={[geo.cyl, mat.yarn, t.picots.count * PICOT_SEGS]} frustumCulled={false} />}
       <instancedMesh key={`n${t.nNodes}`} ref={nodeRef} args={[geo.sphere, mat.node, Math.max(1, t.nNodes)]} frustumCulled={false} />
       <mesh ref={hlRef} geometry={geo.hl} visible={false}>
         <meshStandardMaterial color={new THREE.Color().setRGB(hl[0], hl[1], hl[2], THREE.SRGBColorSpace)} transparent opacity={0.55} emissive={new THREE.Color().setRGB(hl[0], hl[1], hl[2], THREE.SRGBColorSpace)} emissiveIntensity={0.4} depthWrite={false} />
@@ -226,6 +290,7 @@ export default function Scene3D(props: Scene3DProps) {
       <hemisphereLight args={[palette.dark ? 0xc8ccd8 : 0xffffff, palette.dark ? 0x3a3128 : 0xb8a58a, palette.dark ? 1.5 : 1.7]} />
       <directionalLight position={[40, 80, 60]} intensity={palette.dark ? 1.4 : 1.6} />
       <directionalLight position={[-60, -20, -40]} intensity={0.35} />
+      {props.overlay && <Overlay segs={props.overlay} rotation={props.rotation} color={props.colors.palette.flat} />}
       <Piece topology={props.topology} positions={props.positions} rotation={props.rotation} colors={props.colors} highlightNode={props.highlightNode} />
       <CameraRig topology={props.topology} positions={props.positions} rotation={props.rotation} fitKey={props.fitKey} autoFit={props.autoFit} elevation={props.elevation} />
       <Controls damping={!reduced} />

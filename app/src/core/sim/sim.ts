@@ -64,6 +64,8 @@ export interface StepResult {
   /** Rounds relaxed so far (growth progress), and the round being shown. */
   roundsGrown: number;
   shownRound: number;
+  /** Blocking: fraction of the pinned solve done (pin continuation stages), 0…1. */
+  progress?: number;
 }
 
 export interface SimHandle {
@@ -156,7 +158,7 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
     const br = blockJob.setup.finish();
     lastEnergy = br.energy;
     show(br.positions);
-    if (st === 'running') return res(false, 'blocking');
+    if (st === 'running') return { ...res(false, 'blocking'), progress: blockJob.setup.opt.progress() };
     blockCache.set(target, br);
     blockJob = null;
     return res(true, 'ready');
