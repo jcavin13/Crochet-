@@ -13,7 +13,9 @@
     "fixtures": "tsx scripts/fixtures.ts",
     "check": "tsx scripts/check.ts",
     "screenshots": "node scripts/screenshots.mjs",
-    "icons": "node scripts/icons.mjs"
+    "icons": "node scripts/icons.mjs",
+    "sim:corpus": "tsx scripts/sim-corpus.ts",
+    "offline:check": "node scripts/offline-check.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

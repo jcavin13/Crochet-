@@ -20,5 +20,7 @@ export { shapeMetric } from './metrics';
 export type { ShapeMetric } from './metrics';
 export { block, setupBlock, blockVerdict } from './blocking';
 export type { BlockResult, BlockVerdict } from './blocking';
-export { createSim } from './sim';
+export { createSim, FAST_TOLERANCES, AUTO_REFERENCE_MAX_NODES } from './sim';
+export { surveyPattern } from './survey';
+export type { SurveyRow, SurveyOptions } from './survey';
 export type { SimHandle, StepResult, SimPhase, BlockSummary, CreateSimOptions } from './sim';

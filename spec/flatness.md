@@ -47,11 +47,51 @@ fabric C^min = C^max = Σw and this reduces to "N_k versus 2πρ_k / w" — abou
 g_k = (C_k − C_{k−1}) / (2π·(ρ_k − ρ_{k−1})) − 1, which says whether *this round's increases* are
 right for flat regardless of earlier rounds (g = −1: a tube; g = −0.5: a 60° cone).
 
-The message format the UI uses: `Rnd 7 will ruffle: about 4 stitches over flat (+11%).`
+### Flags and messages
+
+The classification and the numeric fields above (`class`, `eMin`, `eMax`, `e`, `rho`, `r`,
+`stitchesOff`, `g`, …) are what the lab mirror and `expected.json` compare. Two extra per-round
+flags, and one extra number, only change how a round is *described*:
+
+* `stitchesNominal` = (C_k − 2πρ_k) / w̄ at the nominal course length, signed, for every
+  classified round (`stitchesOff` stays 0 for flat rounds).
+* `slackOnly` — the round is classified **flat only thanks to chain compliance**: its nominal
+  excess e is outside ±tol, but the chain-slack band [e_min, e_max] reaches back inside it. Such a
+  round lies flat only if its loops sag (e > tol) or are pulled taut (e < −tol). The chart band
+  draws it hatched over the flat tint, labelled **flat (loose loops)**, and the designer's solver
+  ranks such candidates after every truly flat one.
+* `closing` — a cupping round that is far beyond "add a few stitches": its stitch count is lower
+  than the previous round's (the shape is closing, as in a ball) or e_max < −50 % (`CLOSING_E`;
+  a tube, cone or deep bowl). The absolute deficit is meaningless to a crocheter there.
+
+Messages the UI uses (one per round, the first that applies):
+
+| case | message |
+|---|---|
+| flat, \|e\| ≤ tol | `Rnd 7 lies flat.` or, when round(stitchesNominal) ≠ 0, `Rnd 7 lies flat (+3 sts, within tolerance).` |
+| flat, slackOnly, e > 50 % | `Rnd 4 lies flat only if its chain loops take up the slack (+123% at nominal loop length) — expect long, floppy loops.` |
+| flat, slackOnly, tol < e ≤ 50 % | `Rnd 4 lies flat only if its chain loops sag a little (+14% at nominal loop length).` |
+| flat, slackOnly, e < −tol | `Rnd 6 lies flat only if its chain loops are pulled taut (−22% at nominal loop length) — expect tight, strained loops.` |
+| cup, closing, decreasing | `Rnd 14 closes the shape (far under flat) — this is a 3D form, not a flat piece.` |
+| cup, closing, e_max < −50 % | `Rnd 20 is far under flat (−60%) — this is a 3D form (tube, cone or deep bowl), not a flat piece.` |
+| cup | `Rnd 7 will cup: about 4 stitches under flat (−11%).` |
+| ruffle | `Rnd 7 will ruffle: about 4 stitches over flat (+11%).` |
+
+`tol` is 10 %, so an sc circle that is +3 at round 7 is flat — the message shows the +3 so the
+crocheter can still see it.
+
+### Golden file
+
+`npm run fixtures` (app) writes `spec/fixtures/<name>.flatness.json` — every round's `class`,
+`e_min`, `e_max`, `e`, `rho`, `r` (6 decimals) from this implementation; the lab's
+`test_flatness_matches_typescript_golden` pins the Python mirror to it.
 
 ## Known approximations
 
 Rounds are treated as circles (square and polygonal motifs read as "over" at corners — the UI
 says so when a round has a 4- or 6-fold corner structure); scalloped rounds use a mean height;
-tall stitches are assumed upright; blocking tolerance is not modelled beyond `tol`. The physics
-sim is the second opinion.
+tall stitches are assumed upright; blocking tolerance is not modelled beyond `tol`. Chain slack
+down to `chain_slack_min` plus the arc rise make lace rounds hard to fail; `slackOnly` says so
+instead of hiding it. The physics sim is a second model with a different sensitivity (it reacts to
+mismatches of a few percent and has no stuffing, gravity or collision) — a tendency, not a verdict;
+`docs/sim_corpus_report.md` lists where the two disagree.

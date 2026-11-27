@@ -69,7 +69,7 @@ export function TallyScreen() {
           </button>
         </div>
 
-        <div className="ctr-tap ctr-tap--tally" {...tap} role="button" tabIndex={-1} aria-label={`Add one to ${active?.name}`}>
+        <div className="ctr-tap ctr-tap--tally" {...tap} role="button" tabIndex={0} aria-label={`Add one to ${active?.name}`}>
           <p className="ctr-tally__name">{active?.name}</p>
           <p className="ctr-tally__value" aria-live="polite">{active?.value ?? 0}</p>
           <p className="ctr-hint">Tap anywhere for +1 · swipe → for −1</p>

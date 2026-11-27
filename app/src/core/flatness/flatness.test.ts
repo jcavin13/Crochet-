@@ -89,3 +89,12 @@ describe('honest messages (review R4, R7)', () => {
     expect(r7.message).toBe('Rnd 7 lies flat (+3 sts, within tolerance).');
   });
 });
+
+describe('slackOnly wording tiers', () => {
+  it('a mildly long lace round "sags a little", not "floppy"', () => {
+    const { pattern } = compilePattern(readFileSync(dir + 'simple_doily.cro', 'utf8'));
+    const r4 = analyzeFlatness(pattern!.graph, paramsFor(pattern)).rounds[3];
+    expect(r4.slackOnly).toBe(true);
+    expect(r4.message).toMatch(/^Rnd 4 lies flat only if its chain loops sag a little \(\+1\d% at nominal loop length\)\.$/);
+  });
+});

@@ -3,7 +3,7 @@ import { memoryKV, setKVBackends, kv } from './kv';
 import { useLibrary, sortedRecords } from './library';
 import { getPersistent, loadPersistent, resetPersistentCache, setPersistent } from './persistentState';
 import { exportCro, exportGraphJson, parseImport, slugify } from './io';
-import { declaredCounts, extractTitle, readHeaders, setTitleInText } from './text';
+import { declaredCounts, extractTitle, forkTitle, readHeaders, setTitleInText } from './text';
 import type { PatternRecord } from './types';
 
 let patterns: ReturnType<typeof memoryKV>;
@@ -181,5 +181,21 @@ describe('text helpers', () => {
   it('reads declared counts, expanding ranges and continuation lines', () => {
     const t = `title: s\nRnd 1: mr, 6 sc in ring. (6)\nRnds 2-3: sc in each st\n  around. (6)\nRnd 4: ch 4 (counts as dc, ch 1), *dc, ch 1* x15, join. (16 dc, 16 ch-1 sps)\nRnd 5: no count`;
     expect(declaredCounts(t)).toEqual([6, 6, 6, 16, null]);
+  });
+});
+
+describe('forkTitle (review R14)', () => {
+  const builtin = { text: 'title: Simple doily (16-fold, no pineapples)\nRnd 1: mr, 6 sc in ring.', title: 'Simple doily (16-fold, no pineapples)' };
+  it('a small edit keeps the built-in title (its header is still there)', () => {
+    expect(forkTitle(builtin.text + '\nRnd 2: inc x6.', builtin)).toBe('Simple doily (16-fold, no pineapples)');
+  });
+  it('a pasted pattern follows its own title header', () => {
+    expect(forkTitle('title: Review roundtrip ×\nRnd 1: mr, 6 sc in ring.', builtin)).toBe('Review roundtrip ×');
+  });
+  it('a pasted pattern without a header is untitled', () => {
+    expect(forkTitle('Rnd 1: mr, 6 sc in ring.', builtin)).toBe('Untitled pattern');
+  });
+  it('a built-in without a title header keeps its file-name title', () => {
+    expect(forkTitle('Rnd 1: mr, 8 sc in ring.', { text: 'Rnd 1: mr, 6 sc in ring.', title: 'sc cone' })).toBe('sc cone');
   });
 });

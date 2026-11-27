@@ -80,6 +80,7 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
 
   const worst = flat.worst;
   const loose = flat.rounds.filter((r) => r.slackOnly);
+  const looseList = loose.length > 4 ? `${loose.slice(0, 3).map((r) => r.label).join(', ')} and ${loose.length - 3} more rounds` : loose.map((r) => r.label).join(', ');
   const nodeCount = useMemo(() => {
     const R = rounds[upto];
     return R && R.last >= 0 ? R.last + 1 : pattern.graph.nodes.length;
@@ -184,12 +185,12 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
                   {worst
                     ? <><ShapeBadge shape={worst.class as 'cup' | 'ruffle'} /> <strong>Worst: {worst.message}</strong></>
                     : loose.length
-                      ? <><ShapeBadge shape="flat">flat (loose loops)</ShapeBadge> Every round passes the count rule, but {loose.map((r) => r.label).join(', ')} only if {loose.length === 1 ? 'its' : 'their'} chain loops take up the slack.</>
+                      ? <><ShapeBadge shape="flat">flat (loose loops)</ShapeBadge> Every round passes the count rule, but {looseList} only if {loose.length === 1 ? 'its' : 'their'} chain loops sag or stretch to take up the difference (hatched in the band).</>
                       : <><ShapeBadge shape="flat" /> Every round lies flat.</>}
                 </p>
                 {worst && loose.length > 0 && (
                   <p className="muted small" style={{ margin: '0 0 var(--s-2)' }}>
-                    Also flat only with loose loops: {loose.map((r) => r.label).join(', ')}.
+                    Also flat only with loose loops: {looseList}.
                   </p>
                 )}
                 <ul className="ch-report">

@@ -106,6 +106,17 @@ always pair colour with a label or pattern). Spacing `--s-1…--s-8` (4 px grid)
 In canvas/WebGL code read them with `getComputedStyle(document.documentElement).getPropertyValue('--shape-flat')`
 and re-read when the theme changes (`useSettings((s) => s.theme)` plus `prefers-color-scheme`).
 
+## Showing the checks honestly (review R1, R4, R7, R12)
+
+* Analytic flatness (`@/core/flatness`): besides `class`, show `slackOnly` rounds as
+  **flat (loose loops)** (the round is flat only because its chain loops may sag or stretch) and use
+  the round's `message`, which already says "closes the shape … 3D form" for `closing` rounds and
+  "(+3 sts, within tolerance)" for flat ones.
+* The sim is a second model with a different sensitivity, not an arbiter: present its class as a
+  tendency ("tends to cup"), never tell the user to trust it over the count rule, and mark a state
+  as approximate when `converged === false` or `accuracy === 'fast'` (see `sim/explain.ts`).
+  Without stuffing a closed piece relaxes like an empty bag; say so wherever a closed shape is shown.
+
 ## Conventions
 
 * Feature CSS: a plain `.css` file imported by your `index.tsx`, classes prefixed with a short

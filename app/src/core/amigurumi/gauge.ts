@@ -70,7 +70,7 @@ export interface RectangleInput {
   gauge: Gauge;
   widthCm: number;
   heightCm: number;
-  /** Positive ease makes it bigger, negative smaller (percent). */
+  /** Positive ease makes it wider, negative narrower (percent); the height is not eased. */
   easePct?: number;
   stitch?: AmiStitch;
   /** Stitch-pattern repeat: the stitch count must be k·multiple + plus. */
@@ -98,7 +98,8 @@ export function rectangle(i: RectangleInput): RectangleResult {
   const stitch = i.stitch ?? 'sc';
   const ease = 1 + (i.easePct ?? 0) / 100;
   const stitches = Math.max(1, nearestCount((i.widthCm * ease * i.gauge.stitches) / 10, i.multiple, i.plus));
-  const rows = Math.max(1, Math.round((i.heightCm * ease * i.gauge.rows) / 10));
+  // ease applies across the width only, as for tube() (review N11): the length is worked to measure
+  const rows = Math.max(1, Math.round((i.heightCm * i.gauge.rows) / 10));
   const t = TCH[stitch];
   const foundationChain = stitches + t;
   const title = i.title ?? `Rectangle ${fmt(i.widthCm)} × ${fmt(i.heightCm)} cm`;

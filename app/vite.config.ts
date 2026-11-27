@@ -38,6 +38,10 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
+        // take control of the page on the first visit, so lazy chunks (3D view, worker) come from
+        // the precache once "Ready to work offline" is shown (review R13)
+        clientsClaim: true,
+        skipWaiting: true,
       },
       devOptions: { enabled: false },
     }),

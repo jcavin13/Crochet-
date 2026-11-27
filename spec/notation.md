@@ -46,7 +46,7 @@ Rnd 3: *sc, inc* x6. (18)
 ```
 pattern     = { header } , round , { round } ;
 header      = KEY , ":" , TEXT , NEWLINE ;
-round       = label , ":" , sequence , [ count ] ;
+round       = label , ":" , sequence , [ count ] , [ SEP ] , [ fasten , [ SEP ] ] ;
 label       = ( "Rnd" | "Round" | "R" | "Row" | "Rnds" | "Rounds" | "Rows" ) , INT , [ "-" , INT ]
             | "Foundation" | "Start" | "Setup" ;
 
@@ -59,7 +59,7 @@ repeat      = "*" , sequence , "*" , times                       (* *sc, inc* x6
 group       = ( "(" , sequence , ")" | "[" , sequence , "]" ) , [ target ] , [ times ] ;
 times       = ( "x" | "×" ) , INT | INT , "times" | "around" | "across" | "to" , "end" ;
 reptail     = INT , "more" , "times"        (* total = INT + 1 *)
-            | INT , "times"                 (* total = INT, vintage usage "repeat from * 5 times" means 5 more: see 3.7 *)
+            | INT , "times"                 (* total = INT (not INT more): see 3.7 *)
             | "around" | "across" | "to" , "end" ;
 
 stitch      = [ INT ] , stname , [ loopmod ] , [ target ]        (* 2 dc in next st *)
@@ -74,7 +74,7 @@ join        = "join" , [ "with" , "sl st" ] , [ target ]
             | "form ring" ;
 ring        = "mr" | "magic ring" | "magic circle" ;
 turn        = "turn" ;
-fasten      = "fasten off" | "fo" | "finish off" ;
+fasten      = ( "fasten off" | "fo" | "finish off" ) , [ "and weave in" , [ "yarn" ] , "ends" ] ;
 
 target      = ( "in" | "into" | "around" | "on" ) , [ loopmod , "of" ] , place ;
 place       = "ring"
@@ -90,13 +90,22 @@ unit        = "st" | "sts" | "stitch" | "stitches"
             | "ch-sp" | "ch-sps"
             | "ch" | "chs" | "chain" | "chains" ;
 loopmod     = "flo" | "blo" ;
-count       = "(" , INT , [ countunit ] , { "," , INT , countunit } , ")" ;   (* last item of the round only *)
+count       = "(" , INT , [ countunit ] , { "," , INT , countunit } , ")" ;   (* last item of the round; only fasten may follow *)
 ```
 
 Articles (`the`, `a`, `an`) and the filler words `of`, `next` where optional are ignored.
 `ORDINAL` is `2nd`, `3rd`, `4th`, … or `second`, `third`, `fourth`, `fifth`, `sixth`.
 
 A parenthesised item at the very end of a round that matches `count` is a count annotation, never a group.
+"The very end" ignores a trailing `fasten off`: `Rnd 9: inc x6. (12) Fasten off.` is a count followed by
+fasten off. A bare count such as `(6)` anywhere else in a round is `E_SYNTAX` ("a count annotation
+… must come last in the round"), not an empty group.
+
+A line that says only `Fasten off.` (or `Finish off.`, `FO.`, optionally "… and weave in ends") ends
+the last round, wherever it stands after the first round — on its own line, after the count, or
+after a header line such as `notes:` that follows the rounds. Before the first round it is
+`E_SYNTAX`. A round with no items (`Rnd 2: .` or `Rnd 2: (12)`) is `E_SYNTAX` ("the round has no
+instructions").
 
 ## 3. Semantics
 
@@ -147,16 +156,18 @@ When a round is finished it exposes an ordered **target list** for the next roun
 Entries are in working order. For a `Row`, or after `turn`, the next round walks the list in
 reverse.
 
-The next round keeps a **cursor** into the list, starting before the first entry (for a joined
-round that is the stitch the join was made into; for a spiral it is the first stitch of the
-previous round).
+The next round keeps a **cursor** into the list. It starts just before the first entry, and that
+first entry is, for a joined round, the stitch the join was made into, and for a spiral, the first
+stitch of the previous round. So at the start of a joined round `next st` / `next dc` may be the
+join stitch itself (4a).
 
 * `next st` moves the cursor to the next *stitch* target (silently passing over space targets) and
   consumes it. `next dc` moves to the next stitch target whose type is `dc` (passing over anything
   else).
 * `next ch-sp` / `next sp` / `next loop` moves to the next *space* target (silently passing over
-  stitch targets). `next ch-3 sp` additionally requires the space to have 3 chains: if the next
-  space has a different length this is error `E_SPACE_LENGTH`.
+  stitch targets). `next ch-3 sp` moves to the next space *of 3 chains*, passing over spaces of
+  other lengths; only when no ch-3 sp is left but some other space is, it is error
+  `E_SPACE_LENGTH` ("the next space is a ch-5 sp").
 * `same st` / `same sp` is the target most recently used in this round (does not move the cursor).
   At the start of a joined round, before any target has been used, `same st` is the first stitch
   target (the one the join landed in) and it becomes consumed.
@@ -168,11 +179,15 @@ previous round).
   one), counting back from the hook. After it, `next ch` / `each ch across` continue along that
   chain away from the hook. Chains skipped at the hook end are a turning chain.
 * Running out of targets is error `E_NO_TARGET` ("Rnd 4 needs a stitch to work into but Rnd 3 has
-  none left").
+  none left"; "has none" / "made none" when the previous round never had that kind of target).
 * `*…* around` / `across` / `to end` repeats the body until the stitch and space targets the body
   uses are exhausted. If the last repetition cannot complete: `E_REPEAT_UNEVEN`.
-* At the end of a round, stitch targets that were never consumed or passed over produce warning
-  `W_UNWORKED` (rounds only; in rows a trailing unworked turning chain is normal and is an info).
+* At the end of a round, targets after the cursor that were never consumed or passed over produce
+  warning `W_UNWORKED`: every stitch target, and every space target whose chain length is one this
+  round worked into (a round that works into ch-3 sps and leaves the last ch-3 sps unworked is
+  warned; ch-1 sps that a round of `sc in next st` passes over everywhere are not). This applies to
+  rows too; when all that is left in a row is a counting turning chain it is info
+  `I_UNWORKED_TCH` instead. A closing chain arc may span a few trailing targets (4a).
 
 ### 3.4 Chain spaces, rings and turning chains
 
@@ -205,7 +220,9 @@ Spaces are first-class graph entities (`graph.spaces`).
 * `join` = `sl st in first st`. A round that ends with a join is a *joined* round
   (`rounds[i].joined = true`); otherwise it is a spiral round or a row.
 * The join slip stitch is not a stitch target and is not counted.
-* `fasten off` ends the pattern; nothing may follow except comments.
+* `fasten off` ends the pattern. It may stand inside the last round, after its count annotation,
+  or on a line of its own (section 2). After it, only comments and header lines may follow; a
+  further round is `E_AFTER_FASTEN_OFF` (reported once, with no cascade of count errors).
 
 ### 3.6 Groups
 
@@ -215,9 +232,10 @@ A group followed by `xN` repeats. Groups may nest inside `*…*`; `*…*` does n
 
 ### 3.7 Repeats
 
-`*A* xN` performs A exactly N times in total. `*A; rep from * N more times` performs A N+1 times.
-For transcribing vintage patterns, where "repeat from * 5 times" is ambiguous, the notation defines
-`rep from * N times` as N *total*; the transcriber resolves the ambiguity against the stitch count.
+`*A* xN` performs A exactly N times in total. `*A; rep from * N more times` (also `N times more`)
+performs A N+1 times. `rep from * N times` performs A N times **in total**. Vintage patterns often
+mean "5 more" by "repeat from * 5 times"; the notation does not guess — the transcriber resolves the
+ambiguity against the stitch count and writes `N more times` where that is meant.
 
 ### 3.8 Count annotations
 
@@ -241,13 +259,15 @@ language, e.g.
 ```
 Rnd 3, line 9 col 9: count mismatch — pattern says (18) but the round makes 17 stitches.
 Rnd 4, line 10 col 24: repeat "*" opened here is never closed.
-Rnd 5, line 11 col 18: "next ch-3 sp" — the next space is a ch-5 sp.
+Rnd 5, line 11 col 18: "next ch-3 sp" — the next space is a ch-5 sp (no ch-3 sp is left in Rnd 4).
 ```
 
 Codes: `E_SYNTAX`, `E_UNKNOWN_STITCH`, `E_UNCLOSED_REPEAT`, `E_UNCLOSED_GROUP`, `E_ROUND_NUMBER`,
 `E_NO_TARGET`, `E_NO_SPACE`, `E_SPACE_LENGTH`, `E_NO_RING`, `E_NO_CHAIN`, `E_REPEAT_UNEVEN`,
 `E_COUNT_MISMATCH`, `E_AFTER_FASTEN_OFF`, `W_UNWORKED`, `W_UNKNOWN_HEADER`, `I_COUNT_UNVERIFIED`,
-`I_REDUNDANT_TURN`. The compiler recovers per round where it can so that several errors are
+`I_REDUNDANT_TURN`, `I_UNWORKED_TCH`. A pattern that grows past 50 000 nodes (e.g. a mistyped
+`ch 200000`) is `E_SYNTAX`: the largest crochet object on record has about 25 500 stitches, and a
+graph that size would freeze the chart and the 3D view. The compiler recovers per round where it can so that several errors are
 reported in one pass; a graph is emitted only if there are no errors.
 
 ## 4a. Clarifications adopted during implementation
@@ -255,12 +275,19 @@ reported in one pass; a graph is emitted only if there are no errors.
 These refine the sections above (full list: `app/src/core/notation/SPEC_NOTES.md`).
 
 * `next ch-N sp` searches forward past spaces of other lengths; `E_SPACE_LENGTH` fires only when no
-  space of that length remains.
-* A chain arc immediately before the join covers the trailing stitches of the previous round (no
-  `W_UNWORKED`).
+  space of that length remains (3.3).
+* **Closing-arc rule.** A chain arc immediately before the join (or the end of the round) may span
+  the trailing targets of the previous round without `W_UNWORKED` — but only as many as one arc
+  plausibly covers. Let u₁ < … < u_m be the positions in the target list (stitches and spaces) that
+  this round consumed or skipped, n the length of the list. The arc spans the wrap-around stretch
+  n − u_m + u₁; it is accepted when that is at most max(3, the widest step u_{i+1} − u_i used inside
+  the round), i.e. no longer than the round's own widest gap between anchors (and always up to two
+  unworked entries, the usual "…ch 4, join" finish over a stitch and a ch-1 sp). A round that works
+  two of eight loops and joins is warned ("6 stitches and 6 chain spaces of Rnd 1 are left
+  unworked … more than the closing chain arc can span").
 * `W_UNWORKED` applies to rows too; a trailing unworked turning chain in a row is info `I_UNWORKED_TCH`.
-* The cursor of a joined round starts *at* the stitch the join landed in, so `next st` / `next dc`
-  at the start of the round may be that stitch.
+* The cursor of a joined round starts just before the stitch the join landed in, so `next st` /
+  `next dc` at the start of the round may be that stitch (3.3).
 * Foundation chains and hook-addressed chains are plain chains (neither turning chain nor space);
   chains skipped at the hook end get `role: "tch"`.
 * `ch n (counts as S, ch m)` makes n−m turning chains.

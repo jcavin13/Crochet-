@@ -48,7 +48,7 @@ describe('rectangle', () => {
   it('ease and a pattern repeat', () => {
     const r = rectangle({ gauge: g, widthCm: 20, heightCm: 10, easePct: 10, multiple: 6, plus: 1 });
     expect(r.stitches).toBe(37); // 35.2 → nearest 6k+1 is 37
-    expect(r.rows).toBe(20);     // 19.8
+    expect(r.rows).toBe(18);     // 10 cm × 1.8 rows/cm: ease widens, it does not lengthen (review N11)
     clean(r.text);
   });
   it('dc: chain = stitches + 3, first dc in 4th ch from hook', () => {

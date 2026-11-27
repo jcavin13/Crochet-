@@ -101,3 +101,42 @@ describe('render topology and SVG fallback', () => {
     expect(parseColor('nonsense', [1, 2, 3])).toEqual([1, 2, 3]);
   });
 });
+
+describe('3D page wording (review R1/R2/R24)', async () => {
+  const { explainDisagreement, closedShapeNote, SENSITIVITY_NOTE } = await import('./explain');
+  const classes = ['flat', 'cup', 'ruffle'] as const;
+  it('never tells the user to trust one model over the other', () => {
+    for (const s of classes) for (const a of [...classes, 'n/a' as const]) {
+      const t = explainDisagreement(s, a) ?? '';
+      expect(t).not.toMatch(/trust/i);
+      if (s !== a && a !== 'n/a') expect(t).toContain(SENSITIVITY_NOTE);
+    }
+    expect(SENSITIVITY_NOTE).toMatch(/±10 %/);
+    expect(SENSITIVITY_NOTE).toMatch(/tendency, not a verdict/);
+    expect(SENSITIVITY_NOTE).toMatch(/no stuffing/);
+  });
+  it('the ruffle teaching case (sim says cup) explains the shape measure', () => {
+    expect(explainDisagreement('cup', 'ruffle')).toMatch(/strongly ruffled piece/);
+  });
+  it('closed shapes get the empty-bag note', () => {
+    expect(closedShapeNote([{ class: 'flat' }, { class: 'cup', closing: true }], 1)).toMatch(/empty bag/);
+    expect(closedShapeNote([{ class: 'flat' }, { class: 'cup', closing: true }], 0)).toBeNull();
+  });
+});
+
+describe('convergence is reported (review R12)', () => {
+  it('the incremental sim says whether the shown state settled', async () => {
+    const { createSim } = await import('@/core/sim');
+    const pat = load('sc_cone');
+    const h = createSim(pat, paramsFor(pat), { uptoRound: 2 });
+    expect(h.converged()).toBeUndefined();
+    let st = h.step(50);
+    while (!st.done) st = h.step(50);
+    expect(h.converged()).toBe(true);
+    // an iteration cap that cannot be met is reported per round
+    const capped = simulate(pat, paramsFor(pat), { maxIter: 2, uptoRound: 3 });
+    expect(capped.roundsConverged.length).toBe(4);
+    expect(capped.roundsConverged.some((c) => !c)).toBe(true);
+    h.dispose();
+  }, 120_000);
+});

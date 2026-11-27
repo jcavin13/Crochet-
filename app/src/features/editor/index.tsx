@@ -8,6 +8,7 @@ import { patternHref, useCurrentPattern } from '@/app/hooks';
 import { PatternPicker } from '@/app/PatternPicker';
 import { exportPattern } from '@/app/patternActions';
 import { useLibrary } from '@/store/library';
+import { forkTitle } from '@/store/text';
 import { useSettings } from '@/store/settings';
 import { NotationEditor, type NotationEditorHandle } from './NotationEditor';
 import { parse, print } from '@/core/notation';
@@ -61,10 +62,10 @@ function EditorView({ cur, onNew, newDialog }: { cur: ReturnType<typeof useCurre
   const onChange = useCallback((text: string) => {
     if (!cur.readOnly) return cur.setText(text);
     // Typing into a built-in: fork it into My patterns and keep going there.
-    const copy = useLibrary.getState().create({ text, title: rec.title, origin: 'user' });
+    const copy = useLibrary.getState().create({ text, title: forkTitle(text, rec), origin: 'user' });
     navigate(patternHref('editor', copy.id), { replace: true });
     toast('Copied to My patterns — your edits are saved there.');
-  }, [cur, rec.title, navigate]);
+  }, [cur, rec, navigate]);
 
   const jump = useCallback((d: Pick<Diagnostic, 'line' | 'col'> & Partial<Diagnostic>) => {
     setPane('notation');

@@ -52,7 +52,7 @@ export default function SimPage() {
   return <SimScreen key={cur.id} id={cur.id!} pattern={cur.pattern} title={cur.record.title} />;
 }
 
-const CLASS_WORD: Record<'flat' | 'cup' | 'ruffle', string> = { flat: 'lies flat', cup: 'cups', ruffle: 'ruffles' };
+const CLASS_WORD: Record<'flat' | 'cup' | 'ruffle', string> = { flat: 'tends to lie flat', cup: 'tends to cup', ruffle: 'tends to ruffle' };
 
 function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title: string }) {
   const auto = useStitchParams(pattern);

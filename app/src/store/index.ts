@@ -4,7 +4,7 @@ export type { Settings, ThemePref, Terms } from './settings';
 export { usePersistentState, getPersistent, setPersistent, deletePersistent, loadPersistent } from './persistentState';
 export { parseImport, exportCro, exportGraphJson, downloadFile, pickFiles, slugify } from './io';
 export type { ParsedImport, ExportFile } from './io';
-export { extractTitle, readHeaders, declaredCounts, setTitleInText } from './text';
+export { extractTitle, forkTitle, readHeaders, declaredCounts, setTitleInText } from './text';
 export { kv, setKVBackends, memoryKV, idbKV } from './kv';
 export type { KV } from './kv';
 export type { PatternRecord, PatternOrigin } from './types';

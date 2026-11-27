@@ -54,7 +54,10 @@ export interface FlatnessReport {
 export interface FlatnessOptions { tol?: number; chainSlackMin?: number; chainNominal?: number }
 
 const TAU = 2 * Math.PI;
-/** |e| beyond this (as a fraction) on a cupping round is a 3D form, not a fixable flat piece. */
+/**
+ * |e| beyond this (as a fraction): on a cupping round, a 3D form rather than a fixable flat piece;
+ * on a round flat only by chain slack, "long, floppy loops" rather than loops that sag a little.
+ */
 export const CLOSING_E = 0.5;
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
@@ -115,8 +118,10 @@ export function analyzeFlatness(graph: Graph, params: ParamSet, opts: FlatnessOp
     let message: string;
     if (cls === 'flat') {
       const n = Math.round(nominalOff);
-      if (slackOnly && e > 0) {
+      if (slackOnly && e > CLOSING_E) {
         message = `${round.label} lies flat only if its chain loops take up the slack (${pct(e)} at nominal loop length) — expect long, floppy loops.`;
+      } else if (slackOnly && e > 0) {
+        message = `${round.label} lies flat only if its chain loops sag a little (${pct(e)} at nominal loop length).`;
       } else if (slackOnly) {
         message = `${round.label} lies flat only if its chain loops are pulled taut (${pct(e)} at nominal loop length) — expect tight, strained loops.`;
       } else {

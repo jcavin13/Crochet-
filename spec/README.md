@@ -14,4 +14,5 @@ Everything in `app/` (TypeScript) and `lab/` (Python) meets here. Change these f
 | `fixtures/<name>.cro` | Canonical patterns |
 | `fixtures/<name>.expected.json` | Expected stitch counts per round, expected shape class, expected analytic classes |
 | `fixtures/<name>.graph.json` | Graph compiled by the app compiler (`npm run fixtures` in `app/`); CI fails if stale |
+| `fixtures/<name>.flatness.json` | Per-round analytic flatness (class, e_min, e_max, e, rho, r) from the app's `analyzeFlatness`, written by `npm run fixtures`; the lab mirror is pinned to it |
 | `fixtures/<name>.lab.json` | Reference metrics from the lab sim (`make lab-fixtures` at the repo root); the app sim must agree |

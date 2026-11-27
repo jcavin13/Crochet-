@@ -20,6 +20,17 @@ export function extractTitle(text: string, fallback = 'Untitled pattern'): strin
   return readHeaders(text).title || fallback;
 }
 
+/**
+ * Title of the copy made when the user types or pastes into a read-only built-in (review R14):
+ * the new text's `title:` header; without one, "Untitled pattern" — unless the built-in never had
+ * a title header either (its title came from the file name), then that name.
+ */
+export function forkTitle(newText: string, builtin: { text: string; title: string }): string {
+  const t = readHeaders(newText).title;
+  if (t) return t;
+  return readHeaders(builtin.text).title ? 'Untitled pattern' : builtin.title;
+}
+
 /** Replace (or insert) the `title:` header. */
 export function setTitleInText(text: string, title: string): string {
   const lines = text.split('\n');

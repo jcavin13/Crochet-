@@ -271,7 +271,7 @@ function Counter({ id, pattern, title }: { id: string; pattern: Pattern; title: 
             </button>
             <div className="ctr-meta">
               <span>{finished ? 'all rounds done' : `${shownDone} / ${R?.stitchCount ?? 0} sts`}</span>
-              {repeat && !finished && <span className="ctr-rep">repeat {repeat.index} of {repeat.total}</span>}
+              {repeat && !finished && checkpoint === null && <span className="ctr-rep">repeat {repeat.index} of {repeat.total}</span>}
             </div>
             <div className="ctr-piece" role="progressbar" aria-label="Whole piece" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pos.pieceFraction * 100)}>
               <span style={{ width: `${pos.pieceFraction * 100}%` }} />
@@ -300,7 +300,7 @@ function Counter({ id, pattern, title }: { id: string; pattern: Pattern; title: 
           className="ctr-tap"
           {...tap}
           role="button"
-          tabIndex={-1}
+          tabIndex={0}
           aria-label={checkpoint !== null ? 'Continue to the next round' : 'Done — next instruction'}
           data-state={finished ? 'finished' : checkpoint !== null ? 'checkpoint' : 'step'}
         >
@@ -431,6 +431,7 @@ function NoteEditor({ value, onSave, rows = 3 }: { value: string; onSave: (t: st
   return (
     <textarea
       className="ctr-notearea"
+      aria-label="Note for this round"
       value={t}
       placeholder="e.g. changed to the blue ball here"
       rows={rows}
@@ -451,7 +452,7 @@ function NoteDialog({ open, label, value, onClose, onSave }: { open: boolean; la
       sheet
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => { onSave(t); onClose(); }}>Save note</Button></>}
     >
-      <textarea className="ctr-notearea" value={t} onChange={(e) => setT(e.target.value)} rows={4} placeholder="e.g. changed to the blue ball here" autoFocus />
+      <textarea className="ctr-notearea" aria-label={`Note for ${label}`} value={t} onChange={(e) => setT(e.target.value)} rows={4} placeholder="e.g. changed to the blue ball here" autoFocus />
     </Dialog>
   );
 }

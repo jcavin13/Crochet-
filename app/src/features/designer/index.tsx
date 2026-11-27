@@ -34,13 +34,19 @@ function Designer({ state, setState }: { state: DesignerState; setState: (s: Des
   const stale = deferred !== state;
 
   const ensureSaved = () => {
-    if (saved.current?.text === result.text) return saved.current.id;
+    const lib = useLibrary.getState();
+    if (saved.current?.text === result.text && lib.records[saved.current.id]) return saved.current.id;
+    // the ref is lost when the page unmounts (every "Open in…" navigates away): reuse a saved copy
+    // of exactly this design instead of adding another one to My patterns (review N6)
+    const existing = Object.values(lib.records).find((r) => r.origin === 'designer' && r.text === result.text);
+    if (existing) { saved.current = { text: result.text, id: existing.id }; return existing.id; }
     const rec = useLibrary.getState().create({ text: result.text, origin: 'designer' });
     saved.current = { text: result.text, id: rec.id };
     return rec.id;
   };
   const save = () => {
-    const again = saved.current?.text === result.text;
+    const again = saved.current?.text === result.text
+      || Object.values(useLibrary.getState().records).some((r) => r.origin === 'designer' && r.text === result.text);
     const id = ensureSaved();
     toast(again ? 'Already in My patterns' : 'Saved to My patterns', { action: { label: 'Open', onClick: () => navigate(patternHref('editor', id)) } });
   };

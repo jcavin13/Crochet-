@@ -26,11 +26,13 @@ make lab                       # Python env (uv), lab tests, notebooks → lab/r
 Requirements: Node 22+, and [uv](https://docs.astral.sh/uv/) for the lab. Other entry points:
 `make test` (everything), `cd app && npm test`, `cd lab && uv run pytest -q`,
 `cd app && npm run check -- path/to/pattern.cro` (command-line validator),
-`cd app && npm run build && npm run screenshots` (regenerate `docs/screenshots/`).
+`cd app && npm run build && npm run screenshots` (regenerate `docs/screenshots/`),
+`make lab-check` (reports are byte-reproducible), `cd app && npm run sim:corpus` (sim vs count rule on the corpus).
 
 **Without running anything:** the lab results are pre-rendered in
 [`lab/reports/`](lab/reports) (open `index.html`). The app deploys to **GitHub Pages** from `main`
-via `.github/workflows/pages.yml` — enable it once under *Settings → Pages → Source: GitHub
+via `.github/workflows/pages.yml`. **This work is on the branch `claude/new-session-1jt15o`, so
+nothing is published until it is merged to `main`.** Enable Pages once under *Settings → Pages → Source: GitHub
 Actions*; after that every push to `main` publishes the app, which you can open on a phone and
 "Add to Home Screen" (it is an offline-capable PWA).
 
@@ -83,7 +85,8 @@ that compiled fixture graphs are not stale. Start at [`spec/README.md`](spec/REA
   [`data/MANIFEST.csv`](data/MANIFEST.csv).
 * [`docs/architecture.md`](docs/architecture.md), [`docs/decisions.md`](docs/decisions.md),
   [`docs/literature_review.md`](docs/literature_review.md), [`docs/roadmap.md`](docs/roadmap.md)
-  (Phases 2–5), [`docs/review.md`](docs/review.md) (independent review of this build).
+  (Phases 2–5), [`docs/review.md`](docs/review.md) (independent review of this build: 0 blockers,
+  6 majors, 18 minors — the fixable ones were fixed afterwards, the rest are listed below).
 
 ## The notation, in one example
 
@@ -116,13 +119,29 @@ Full grammar: [`spec/notation.md`](spec/notation.md).
   review, including whether JIS L 0201 covers crochet — so the chart's "JIS" symbol set is marked
   unverified.
 
+**Where the two shape checks disagree** (found by the independent review, `docs/review.md` R1–R4)
+
+* The **3D view is a tendency, not a verdict.** On the 16 corpus patterns it agrees with the
+  count rule on 12 ([`docs/sim_corpus_report.md`](docs/sim_corpus_report.md)); it calls three
+  designs the count rule passes as flat "cup" or "ruffle", and it calls the deliberately ruffling
+  teaching doily a cup. The spring network resists stretching far more than bending, so it reacts
+  to mismatches of a few percent, while the count rule tolerates 10%. The flat/non-flat threshold
+  (`tau_flat` = 0.25) was tuned on the seven fixtures. The UI now says all of this next to the result.
+* The **lace flatness check is lenient by construction**: chain loops can take up slack, so a
+  round can be "flat" only if its loops sag. Such rounds are now hatched on the chart and labelled
+  "flat (loose loops)" — and most lace rounds in the corpus carry that label. Treat a hatched
+  round as "probably fine after blocking", not as a guarantee.
+* What ties the two simulators together is that they build the identical spring network (checked
+  spring by spring in CI); agreement of the final shape numbers on the sphere and the hyperbolic
+  plane is fragile, because those shapes have several stable states.
+
 **Approximate**
 
 * *Flatness check*: treats every round as a circle and uses a mean stitch height per round. Square
   and hexagonal motifs, scalloped rounds and tall leaning stitches are outside its assumptions.
   Chain loops are treated as compliant, so the model will accept very long loops as "flat".
 * *Physics*: stitch-level springs, no self-collision (strong ruffles pass through themselves), no
-  gravity, no stuffing. The network resists stretching far more than bending, so the flat/non-flat
+  gravity, no stuffing — the sphere fixture relaxes like an empty bag, not a ball. The network resists stretching far more than bending, so the flat/non-flat
   threshold (`tau_flat`) was tuned on the fixtures — see `docs/decisions.md` 13–14 and
   `lab/SPEC_NOTES.md`. Read the 3D view as "which way will this go", not as a rendering.
 * *Blocking* is a boundary condition (pin the edge flat and stretched), not a change in the yarn.
@@ -134,6 +153,9 @@ Full grammar: [`spec/notation.md`](spec/notation.md).
 rounds, a picot or a ring's individual chains as targets, stitches above dtr, colour changes,
 joining motifs. After a join, `next st` starts at the stitch the join went into, which is not how
 every crocheter reads "sl st in next st" (decision 15).
+
+**Undecided**: the code has **no licence** yet (the corpus is CC0) — that is the owner's call
+(decision 21). Until one is added, others cannot legally reuse the code.
 
 **Stubbed**: stiffness fitting (needs load tests); stitch-level geometry from photos (experimental
 lattice overlay only).

@@ -76,6 +76,8 @@ export const ROUTES = [
       { name: 'sim', path: '/sim', wait: 'main h1', prepare: settle },
       ...['flat_sc_circle', 'flat_dc_circle', 'sc_sphere', 'sc_cone', 'hyperbolic_plane', 'simple_doily', 'chain_space_motif']
         .map((n) => ({ name: `sim-${n}`, path: fx(n), wait: 'main h1', prepare: settle })),
+      // review R1: the count rule says ruffle, the sim's shape measure says cup — shown as a tendency, with the reason
+      { name: 'sim-corpus-teaching-ruffle', path: '/sim/corpus%3Ateaching-ruffle-shell-doily', wait: 'main h1', only: 'desktop', prepare: settle },
       { name: 'sim-simple_doily-blocked', path: fx('simple_doily'), wait: 'main h1', prepare: blockIt },
       { name: 'sim-hyperbolic_plane-blocked', path: fx('hyperbolic_plane'), wait: 'main h1', prepare: blockIt },
       { name: 'sim-chain_space_motif-blocked', path: fx('chain_space_motif'), wait: 'main h1', only: 'desktop', prepare: blockIt },
