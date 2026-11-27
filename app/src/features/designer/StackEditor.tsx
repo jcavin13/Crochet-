@@ -12,22 +12,27 @@ const fmt = (m: MotifId, key: string, v: ParamValue) => {
 };
 
 /** Short human summary of the parameters a round ended up with. */
-export function paramSummary(r: Pick<GeneratedRound, 'motif' | 'params'>): string {
+export function paramSummary(r: Pick<GeneratedRound, 'motif' | 'params' | 'stitches'>): string {
+  const p = r.params;
+  if (r.motif === 'centre') {
+    const ring = p.ring === 'chain' && p.ringCh ? `ch-${p.ringCh} ring` : 'magic ring';
+    return [`${r.stitches} ${p.st}`, p.style === 'spoked' ? `ch ${p.ch} between` : '', ring].filter(Boolean).join(' · ');
+  }
   const m = MOTIFS[r.motif];
   const parts: string[] = [];
   for (const d of m.params) {
-    if (!(d.key in r.params)) continue;
-    const v = r.params[d.key];
-    if (d.key === 'per') { parts.push(`${v}× per repeat`); continue; }
+    if (!(d.key in p)) continue;
+    const v = p[d.key];
+    if (d.key === 'per') { if (v !== 1) parts.push(`${v} per repeat`); continue; }
     if (d.key === 'alt') { if (v) parts.push('sc between'); continue; }
-    if (d.key === 'inc' && v === 0) continue;
-    if (d.key === 'inc') { parts.push(`+${v} per repeat`); continue; }
-    if (d.key === 'fill') { if (r.motif !== 'picot') parts.push(`${v} st per ch`); continue; }
-    if (d.key === 'ring' && r.params.ringCh) { parts.push(`ch-${r.params.ringCh} ring`); continue; }
+    if (d.key === 'inc') { if (v) parts.push(`${v} inc per repeat`); continue; }
+    if (d.key === 'fill') { if (r.motif !== 'picot') parts.push(`${v} st per ch`); else parts.push(fmt(r.motif, d.key, v)); continue; }
     parts.push(fmt(r.motif, d.key, v));
   }
   return parts.join(' · ');
 }
+
+const REASON = { spaces: 'needs chain spaces', stitches: 'needs stitches', fit: 'did not fit the round below' } as const;
 
 export function StackEditor({
   rounds, result, onChange,
@@ -63,7 +68,7 @@ export function StackEditor({
               {auto.map((a) => (
                 <div key={a.number} className="dz-auto" title="Added automatically so the next motif has something to work into">
                   <span className="dz-num">{a.number}</span>
-                  <span>{MOTIFS[a.motif].label} <span className="muted">(added: {MOTIFS[rs.motif].label.toLowerCase()} needs {a.spaces ? 'chain spaces' : 'stitches'})</span></span>
+                  <span>{MOTIFS[a.motif].label} <span className="muted">— added: {MOTIFS[rs.motif].label.toLowerCase()} {REASON[a.autoReason ?? 'spaces']}</span></span>
                   <ShapeBadge shape={a.class === 'n/a' ? 'flat' : a.class} />
                 </div>
               ))}

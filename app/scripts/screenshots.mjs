@@ -72,6 +72,16 @@ export const ROUTES = [
       await page.waitForTimeout(600);
     },
   },
+  {
+    name: 'designer-pattern',
+    path: '/designer',
+    wait: '.dz-controls',
+    only: 'phone',
+    prepare: async (page) => {
+      await page.getByRole('tab', { name: 'Pattern' }).click();
+      await page.waitForTimeout(400);
+    },
+  },
   { name: 'designer-dark', path: '/designer', wait: '.dz-controls', scheme: 'dark', only: 'desktop' },
   // counter: fresh start, mid-round (Rnd 5), the end-of-round check, landing, tally, dark
   ...(() => {
