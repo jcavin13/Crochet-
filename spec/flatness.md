@@ -16,7 +16,8 @@ of its stitches). By Gauss–Bonnet, C_k < 2πρ_k means positive total curvatur
 
 For round k (index from 1; only rounds worked around a centre — for rows the result is `n/a`):
 
-* **Course elements**: stitch-counting nodes (notation.md 3.8) contribute their width w; chain
+* **Course elements**: stitch-counting nodes (notation.md 3.8) contribute their width w (a turning
+  chain that counts as X contributes the width of X); chain
   nodes that belong to a chain space of this round contribute between `chain_slack_min`·w_ch
   (a sagging loop) and w_ch (taut). Turning chains, slip stitches and picots contribute nothing.
   This gives C_k^min, C_k^max, and a nominal C_k using `chain_nominal`·w_ch.

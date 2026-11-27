@@ -25,7 +25,7 @@
  *    then "suppressed": its target/count diagnostics are dropped because they would be cascades.
  */
 import type {
-  BaseType, ChainItem, CountAnn, GroupItem, Item, JoinItem, PatternAst, Place, RepeatItem,
+  ChainItem, CountAnn, GroupItem, Item, JoinItem, PatternAst, Place, RepeatItem,
   RoundAst, SkipItem, Span, StitchItem, StitchSpec, Target, Unit,
 } from '../notation/ast';
 import { KNOWN_HEADERS } from '../notation/parser';
@@ -961,4 +961,3 @@ export function compile(ast: PatternAst, opts: CompileOptions = {}): CompileResu
   return new Compiler(ast).run(opts);
 }
 
-export type { BaseType };

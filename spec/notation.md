@@ -250,6 +250,24 @@ Codes: `E_SYNTAX`, `E_UNKNOWN_STITCH`, `E_UNCLOSED_REPEAT`, `E_UNCLOSED_GROUP`, 
 `I_REDUNDANT_TURN`. The compiler recovers per round where it can so that several errors are
 reported in one pass; a graph is emitted only if there are no errors.
 
+## 4a. Clarifications adopted during implementation
+
+These refine the sections above (full list: `app/src/core/notation/SPEC_NOTES.md`).
+
+* `next ch-N sp` searches forward past spaces of other lengths; `E_SPACE_LENGTH` fires only when no
+  space of that length remains.
+* A chain arc immediately before the join covers the trailing stitches of the previous round (no
+  `W_UNWORKED`).
+* `W_UNWORKED` applies to rows too; a trailing unworked turning chain in a row is info `I_UNWORKED_TCH`.
+* The cursor of a joined round starts *at* the stitch the join landed in, so `next st` / `next dc`
+  at the start of the round may be that stitch.
+* Foundation chains and hook-addressed chains are plain chains (neither turning chain nor space);
+  chains skipped at the hook end get `role: "tch"`.
+* `ch n (counts as S, ch m)` makes n−m turning chains.
+* Round numbers may restart at 1 when a pattern switches between `Row` and `Rnd`.
+* Accepted phrasings beyond the grammar: `same st as join`, `3 ch`, `(counts as dc throughout)`,
+  `rep from * N times more`.
+
 ## 5. Out of scope for v0.1
 
 Colour changes and multiple yarns, working into rounds other than the previous one (spike

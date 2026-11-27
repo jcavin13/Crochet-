@@ -552,7 +552,7 @@ describe('count annotations (3.8)', () => {
 describe('meta and headers', () => {
   it('known headers go to meta, unknown to meta.extra with a warning', () => {
     const r = compilePattern('title: T\nauthor: A\nyear: 1910\nhook: 5mm\ncolour: red\n\nRnd 1: mr, 6 sc in ring. (6)');
-    expect(r.pattern).toBeUndefined; // warnings do not block
+    // warnings do not block the pattern
     const p = r.pattern!;
     expect(p.meta).toEqual({ title: 'T', terms: 'US', hook: '5mm', author: 'A', year: '1910', extra: { colour: 'red' } });
     expect(r.diagnostics.map((d) => d.code)).toEqual(['W_UNKNOWN_HEADER']);
