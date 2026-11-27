@@ -1,0 +1,60 @@
+{
+ "name": "hyperbolic_plane",
+ "title": "Hyperbolic plane (sc, increasing 3/2 per round)",
+ "rounds": [
+  {
+   "stitches": 6
+  },
+  {
+   "stitches": 12
+  },
+  {
+   "stitches": 24
+  },
+  {
+   "stitches": 36
+  },
+  {
+   "stitches": 54
+  },
+  {
+   "stitches": 81
+  }
+ ],
+ "shape": "ruffle",
+ "analytic": {
+  "rounds": [
+   {
+    "class": "flat",
+    "excess": 0.0,
+    "stitches_off": 0.0
+   },
+   {
+    "class": "flat",
+    "excess": 0.003,
+    "stitches_off": 0.0
+   },
+   {
+    "class": "ruffle",
+    "excess": 0.338,
+    "stitches_off": 6.1
+   },
+   {
+    "class": "ruffle",
+    "excess": 0.506,
+    "stitches_off": 12.1
+   },
+   {
+    "class": "ruffle",
+    "excess": 0.807,
+    "stitches_off": 24.1
+   },
+   {
+    "class": "ruffle",
+    "excess": 1.26,
+    "stitches_off": 45.2
+   }
+  ],
+  "final": "ruffle"
+ }
+}

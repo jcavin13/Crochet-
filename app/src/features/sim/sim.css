@@ -1,0 +1,89 @@
+/* 3D sim feature (sim-). Colours come from the theme tokens. */
+
+/* ---------------------------------------------------------------- SimView */
+.sim-view { display: flex; flex-direction: column; gap: var(--s-3); width: 100%; height: 100%; min-height: 0; }
+.sim-stage {
+  position: relative;
+  flex: 1;
+  min-height: 260px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 35%, var(--surface) 0%, var(--surface-2) 70%, var(--bg-sunk) 100%);
+}
+.sim-view:not(.sim-view--controls) .sim-stage { height: 100%; }
+.sim-canvas { position: absolute !important; inset: 0; display: block; }
+.sim-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.sim-msg { padding: var(--s-5); color: var(--error); }
+.sim-note {
+  position: absolute; left: var(--s-3); bottom: var(--s-2); right: var(--s-3);
+  margin: 0; color: var(--ink-3); pointer-events: none;
+}
+.sim-busy {
+  position: absolute; top: var(--s-3); left: var(--s-3);
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-1) var(--s-3);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow-1);
+  pointer-events: none;
+}
+.sim-busy__spin {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--accent-soft); border-top-color: var(--accent);
+  animation: sim-spin 0.9s linear infinite;
+}
+@keyframes sim-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sim-busy__spin { animation-duration: 3s; } }
+
+.sim-controls { display: flex; flex-direction: column; gap: var(--s-3); }
+.sim-controls__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
+.sim-readout { display: inline-flex; align-items: center; gap: var(--s-2); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- page */
+.sim-page .ui-pagehead { margin-bottom: var(--s-4); }
+.sim-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: var(--s-4);
+  align-items: start;
+}
+.sim-main { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
+.sim-main .sim-view { height: min(64vh, 620px); }
+.sim-side { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
+.sim-side .ui-card { display: flex; flex-direction: column; gap: var(--s-3); }
+.sim-side h2 { margin: 0; }
+
+.sim-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
+.sim-toolbar .ui-field { min-width: 0; }
+.sim-roundbar { display: flex; align-items: flex-end; gap: var(--s-3); }
+.sim-roundbar > :last-child { flex: 1; min-width: 0; }
+.sim-play { flex: none; }
+
+.sim-shape { display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-3); align-items: center; }
+.sim-shape dt { color: var(--ink-3); font-size: var(--text-sm); }
+.sim-shape dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); font-variant-numeric: tabular-nums; }
+.sim-explain { margin: 0; color: var(--ink-2); font-size: var(--text-sm); }
+.sim-approx { color: var(--warning); }
+.sim-approx svg { vertical-align: -3px; }
+.sim-verdict { display: flex; align-items: flex-start; gap: var(--s-2); font-size: var(--text-sm); }
+.sim-verdict[data-verdict="easy"] { color: var(--ok); }
+.sim-verdict[data-verdict="firm"] { color: var(--warning); }
+.sim-verdict[data-verdict="impossible"] { color: var(--error); }
+
+.sim-legend { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); font-size: var(--text-sm); color: var(--ink-2); margin: 0; padding: 0; list-style: none; }
+.sim-legend li { display: inline-flex; align-items: center; gap: var(--s-2); }
+.sim-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border); flex: none; }
+.sim-ramp { width: 120px; height: 10px; border-radius: 5px; border: 1px solid var(--border); }
+
+.sim-limits { margin: 0; padding-left: 1.2em; color: var(--ink-2); font-size: var(--text-sm); }
+.sim-limits li + li { margin-top: var(--s-1); }
+
+@media (max-width: 899px) {
+  .sim-layout { grid-template-columns: minmax(0, 1fr); }
+  .sim-main .sim-view { height: 52vh; min-height: 300px; }
+  .sim-page .ui-pagehead { margin-bottom: var(--s-3); }
+}

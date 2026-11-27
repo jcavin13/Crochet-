@@ -1,0 +1,22 @@
+# Original project pattern: ten-spoke spiderweb doily
+title: Spiderweb doily (10-fold)
+terms: US
+yarn: crochet cotton no. 10
+hook: 1.5mm
+params: thread-10_1.5mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: A pineapple-free spiderweb doily of 12 rounds. Design intent: a dc centre opens into ten solid dc wedges; each wedge narrows by dc2tog and dc3tog while the chain loops between them multiply and lengthen, so the "web" carries the growth in circumference; the web is then gathered by an sc mesh and finished with ten 7-dc scallops (written out, not with the shell name), opened into ch-1 lattices, and a picot edge with ch-5 picots at the points. Exercises chain ring, ch 4 (counts as dc, ch 1), dc in a ch-1 sp mixed with dc in sts, dcNtog over stitches, a ch 2 beginning that does not count, passing over sc while seeking the next ch-sp, ch-N sp length checks, shells written out as plain groups ("7 dc in next ch-6 sp"), nested groups inside a repeat, "sc in next sc" passing over spaces, and ch-N picots. Intended shape: flat.
+
+Rnd 1: ch 10, join to form ring, ch 3 (counts as dc), 19 dc in ring, join. (20)
+Rnd 2: ch 4 (counts as dc, ch 1), *dc in next st, ch 1* x19, join. (20 dc, 20 ch-1 sps)
+Rnd 3: sl st in next ch-1 sp, ch 3 (counts as dc), dc in same sp, ch 1, *2 dc in next ch-1 sp, ch 1* x19, join. (40 dc, 20 ch-1 sps)
+Rnd 4: ch 3 (counts as dc), dc in next st, dc in next ch-1 sp, dc in next 2 sts, ch 3, sk next ch-1 sp, *dc in next 2 sts, dc in next ch-1 sp, dc in next 2 sts, ch 3, sk next ch-1 sp* x9, join. (50 dc, 10 ch-3 sps)
+Rnd 5: ch 2, *dc2tog, dc in next st, dc2tog, ch 3, sc in next ch-3 sp, ch 3* x10, join. (40 sts, 20 ch-3 sps)
+Rnd 6: ch 2, *dc3tog, ch 4, sc in next ch-3 sp, ch 4, sc in next ch-3 sp, ch 4* x10, join. (30 sts, 30 ch-4 sps)
+Rnd 7: sl st in next ch-4 sp, ch 1, sc in same sp, ch 5, *sc in next ch-4 sp, ch 5* x29, join. (30 sc, 30 ch-5 sps)
+Rnd 8: sl st in next ch-5 sp, ch 1, sc in same sp, ch 5, sc in next ch-5 sp, ch 5, sc in same sp, ch 5, sc in next ch-5 sp, ch 5, *sc in next ch-5 sp, ch 5, sc in next ch-5 sp, ch 5, sc in same sp, ch 5, sc in next ch-5 sp, ch 5* x9, join. (40 sc, 40 ch-5 sps)
+Rnd 9: sl st in next ch-5 sp, ch 1, sc in same sp, ch 6, *sc in next ch-5 sp, ch 6* x39, join. (40 sc, 40 ch-6 sps)
+Rnd 10: sl st in next ch-6 sp, ch 1, sc in same sp, ch 2, 7 dc in next ch-6 sp, ch 2, sc in next ch-6 sp, ch 5, sc in next ch-6 sp, ch 5, *sc in next ch-6 sp, ch 2, 7 dc in next ch-6 sp, ch 2, sc in next ch-6 sp, ch 5, sc in next ch-6 sp, ch 5* x9, join. (100 sts, 70 dc, 20 ch-2 sps, 20 ch-5 sps)
+Rnd 11: ch 1, sc in same st, ch 1, (dc in next dc, ch 1) x7, sc in next sc, ch 3, sc in next ch-5 sp, ch 3, sc in next sc, ch 3, sc in next ch-5 sp, ch 3, *sc in next sc, ch 1, (dc in next dc, ch 1) x7, sc in next sc, ch 3, sc in next ch-5 sp, ch 3, sc in next sc, ch 3, sc in next ch-5 sp, ch 3* x9, join. (120 sts, 70 dc, 80 ch-1 sps, 40 ch-3 sps)
+Rnd 12: ch 1, sc in same st, (sc in next ch-1 sp, picot) x8, sc in next sc, ch 4, sc in next sc, ch 4, sc in next sc, ch-5 picot, ch 4, sc in next sc, ch 4, *sc in next sc, (sc in next ch-1 sp, picot) x8, sc in next sc, ch 4, sc in next sc, ch 4, sc in next sc, ch-5 picot, ch 4, sc in next sc, ch 4* x9, join, fasten off. (130 sc, 90 picot, 40 ch-4 sps)

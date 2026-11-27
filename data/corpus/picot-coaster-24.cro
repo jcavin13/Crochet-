@@ -1,0 +1,13 @@
+# Original project pattern: three-round picot coaster
+title: Picot ring coaster (24-fold)
+terms: US
+yarn: crochet cotton no. 10
+hook: 1.5mm
+params: thread-10_1.5mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: The smallest pattern in the set: a 3-round dc disc finished with a picot on every stitch. Design intent: the plainest possible picot edge, with a ch-1 after each picot so the edge has enough length to lie flat (sc-only with picots would cup). Exercises magic ring, "2 dc in each st around", plain picot (default ch-3), ch-1 spaces that follow a picot, and the 24-fold count. Intended shape: flat.
+
+Rnd 1: mr, ch 3 (counts as dc), 11 dc in ring, join. (12)
+Rnd 2: ch 3 (counts as dc), dc in same st, 2 dc in each st around, join. (24)
+Rnd 3: ch 1, *sc in next st, picot, ch 1* x24, join, fasten off. (24 sc, 24 picot, 24 ch-1 sps)

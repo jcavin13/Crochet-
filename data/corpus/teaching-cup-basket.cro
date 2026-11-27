@@ -1,0 +1,19 @@
+# Original project pattern -- DELIBERATELY NON-FLAT teaching example (cups)
+title: Teaching example - little sc basket (NOT flat)
+terms: US
+yarn: worsted-4
+hook: 5.0mm
+params: worsted-4_5.0mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: DELIBERATE FLATNESS FAILURE, for teaching and for testing the analytic check and the sim. A flat sc base (six increases per round to 36 sts), then a back-loop-only turning round and five rounds with no increases, finished with a picot rim. Intended behaviour: Rnds 1-6 flat; from Rnd 7 the stitch count stays at 36 while 2*pi*radius keeps growing, so the check should report a growing "cup" (Rnd 7 about -14%, Rnd 12 about -50%, Rnd 13 about -54%; incremental ratio g = -1, i.e. a straight-sided tube), and the real piece stands up into a small basket about 7 cm across and 4 cm tall. Exercises "sc blo in each st around", a range label ("Rnds 8-12") over identical joined rounds, and a picot rim on sc.
+
+Rnd 1: mr, ch 1, 6 sc in ring, join. (6)
+Rnd 2: ch 1, 2 sc in each st around, join. (12)
+Rnd 3: ch 1, *sc in next st, 2 sc in next st* x6, join. (18)
+Rnd 4: ch 1, *sc in next 2 sts, 2 sc in next st* x6, join. (24)
+Rnd 5: ch 1, *sc in next 3 sts, 2 sc in next st* x6, join. (30)
+Rnd 6: ch 1, *sc in next 4 sts, 2 sc in next st* x6, join. (36)
+Rnd 7: ch 1, sc blo in each st around, join. (36)
+Rnds 8-12: ch 1, sc in each st around, join. (36)
+Rnd 13: ch 1, *sc in next 2 sts, picot, sc in next st* x12, join, fasten off. (36 sc, 12 picot)

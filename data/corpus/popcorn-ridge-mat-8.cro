@@ -1,0 +1,17 @@
+# Original project pattern: textured hdc/dc mat with popcorns and post-stitch ribs
+title: Popcorn ridge mat (8-fold)
+terms: US
+yarn: worsted-4
+hook: 5.0mm
+params: worsted-4_5.0mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: A solid, textured 7-round mat. Design intent: an hdc centre (8 increases per round, the textbook hdc rate), a back-loop-only ridge round, a ring of eight popcorns set into a dc round, a front-post dc rib every third stitch, and a front-loop-only sc edge with picots. Exercises "2 hdc in each st around", "2 hdc blo in next st", "dc in flo"-style loop modifiers ("sc flo"), popcorn (default 5 legs), fpdc, ch 2 that does not count as a stitch, and picots on an sc edge. Intended shape: flat. The free back loops left by Rnd 7 would normally take a contrast surface round; notation v0.1 cannot address loops of an earlier round, so that is omitted (see NOTATION_FEEDBACK.md).
+
+Rnd 1: mr, ch 2, 8 hdc in ring, join. (8)
+Rnd 2: ch 2, 2 hdc in each st around, join. (16)
+Rnd 3: ch 2, *hdc blo in next st, 2 hdc blo in next st* x8, join. (24)
+Rnd 4: ch 3 (counts as dc), pc in next st, 2 dc in next st, *dc in next st, pc in next st, 2 dc in next st* x7, join. (32 sts, 8 pc)
+Rnd 5: ch 3 (counts as dc), 2 dc in next st, *dc in next st, 2 dc in next st* x15, join. (48)
+Rnd 6: ch 2, *fpdc around next st, dc in next st, 2 dc in next st* x16, join. (64)
+Rnd 7: ch 1, *sc flo in next 3 sts, sc flo in next st, picot* x16, join, fasten off. (64 sc, 16 picot)

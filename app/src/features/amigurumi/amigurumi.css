@@ -1,0 +1,117 @@
+/* Amigurumi feature (ami-). Tokens only; no hard-coded colours. */
+
+.ami-tabs { margin-bottom: var(--s-4); }
+.ami-body { min-width: 0; }
+
+/* ---- controls */
+.ami-controls__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: var(--s-3) var(--s-4);
+  align-items: start;
+}
+.ami-preset-desc { margin: var(--s-3) 0 0; }
+.ami-explain { margin: calc(-1 * var(--s-2)) 0 var(--s-1) 0; max-width: 62ch; }
+
+/* ---- profile editor */
+.ami-editor-card { display: flex; flex-direction: column; }
+.ami-editor-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--border); background: var(--surface-2);
+}
+.ami-editor {
+  display: block; width: 100%; height: min(58vh, 540px); min-height: 300px;
+  background: var(--surface); touch-action: pan-y; user-select: none; -webkit-user-select: none;
+}
+.ami-editor:focus { outline: none; }
+.ami-editor:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -3px; }
+.ami-grid line { stroke: var(--border); }
+.ami-grid text { fill: var(--ink-3); font-family: var(--font-body); }
+.ami-axis { stroke: var(--ink-3); }
+.ami-axis-label { fill: var(--ink-3); font-family: var(--font-body); }
+.ami-mirror { fill: none; stroke: var(--ink-3); opacity: 0.35; }
+.ami-target { fill: none; stroke: var(--ink); stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
+.ami-target-hit { fill: none; stroke: transparent; cursor: copy; touch-action: none; }
+.ami-realised { fill: none; stroke: var(--accent); stroke-linejoin: round; opacity: 0.85; pointer-events: none; }
+.ami-dim line { stroke: var(--ink-3); }
+.ami-dim text { fill: var(--ink-2); font-family: var(--font-body); }
+.ami-handle { cursor: grab; touch-action: none; }
+.ami-handle:active { cursor: grabbing; }
+.ami-handle__hit { fill: transparent; }
+.ami-handle__dot { fill: var(--surface); stroke: var(--indigo); }
+.ami-handle[data-selected] .ami-handle__dot { fill: var(--indigo); }
+.ami-handle__label { fill: var(--ink); font-family: var(--font-mono); paint-order: stroke; stroke: var(--surface); stroke-width: 0.6px; }
+.ami-legend { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); padding: var(--s-2) var(--s-3) 0; color: var(--ink-2); }
+.ami-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ami-swatch { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--ink); }
+.ami-swatch--real { border-top: 3px solid var(--accent); }
+.ami-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.ami-editor-help { margin: var(--s-2) var(--s-3) var(--s-3); }
+
+/* ---- preview + stats */
+.ami-preview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s-4); align-items: center; }
+.ami-lathe { display: block; width: 100%; }
+.ami-stats, .ami-results { display: grid; gap: var(--s-2); margin: 0; }
+.ami-stats > div, .ami-results > div { display: flex; justify-content: space-between; gap: var(--s-3); border-bottom: 1px dashed var(--border); padding-bottom: var(--s-1); }
+.ami-stats dt, .ami-results dt { color: var(--ink-3); font-size: var(--text-sm); }
+.ami-stats dd, .ami-results dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) {
+  .ami-preview { grid-template-columns: 1fr; }
+  .ami-lathe { max-height: 190px; }
+}
+
+/* ---- count strip */
+.ami-strip { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 72px; margin-top: var(--s-4); padding-bottom: 20px; }
+.ami-strip__col { flex: 1 1 0; height: 100%; display: flex; align-items: flex-end; min-width: 2px; }
+.ami-strip__bar { width: 100%; border-radius: 2px 2px 0 0; min-height: 2px; }
+.ami-strip__bar[data-blo] { outline: 2px dashed var(--ink-2); outline-offset: -2px; }
+.ami-strip__axis { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; }
+
+/* ---- warnings + notes */
+.ami-warnings ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
+.ami-warnings li { display: flex; gap: var(--s-2); align-items: baseline; font-size: var(--text-sm); }
+.ami-warnings li .ui-badge { flex: none; }
+.ami-note p { margin: var(--s-2) 0 0; }
+
+/* ---- pattern output */
+.ami-out { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.ami-out__bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.ami-code {
+  margin: 0; padding: var(--s-3); overflow: auto; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); font-size: var(--text-sm); line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+}
+.ami-problems { margin: 0; color: var(--error); font-size: var(--text-sm); }
+.ami-out__open { gap: var(--s-2); }
+
+.ami-sim { min-height: 320px; height: 420px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+
+/* ---- round table */
+.ami-table > summary { cursor: pointer; padding: var(--s-3) var(--s-4); font-weight: 600; min-height: var(--tap); display: flex; align-items: center; }
+.ami-table__scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+.ami-table table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.ami-table th, .ami-table td { text-align: left; padding: 6px var(--s-3); border-top: 1px solid var(--border); white-space: nowrap; }
+.ami-table th { position: sticky; top: 0; background: var(--surface-2); color: var(--ink-2); font-weight: 600; }
+.ami-table td.mono { white-space: normal; min-width: 16ch; }
+.ami-table tbody tr:hover { background: var(--surface-2); }
+
+/* ---- gauge tab */
+.ami-gauge { display: flex; flex-direction: column; gap: var(--s-4); }
+.ami-gauge__main .ui-card__title { margin-bottom: var(--s-1); }
+.ami-gauge__main > p { margin: 0 0 var(--s-3); }
+.ami-gauge__main .row { margin: var(--s-3) 0; }
+.ami-gauge__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--s-4); align-items: start; }
+.ami-gauge__grid > .ui-card { display: flex; flex-direction: column; gap: var(--s-3); }
+.ami-gauge__grid .ui-card__title { margin: 0; }
+.ami-gauge__grid p { margin: 0; }
+.ami-gauge__wide { grid-column: 1 / -1; }
+.ami-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--s-3); align-items: start; }
+.ami-form__full, .ami-repeat { grid-column: 1 / -1; }
+.ami-repeat__row { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.ami-repeat__row .ui-input { width: 84px; }
+.ami-num__box { position: relative; display: flex; align-items: center; }
+.ami-num__box .ui-input { width: 100%; padding-right: 40px; font-variant-numeric: tabular-nums; }
+.ami-num__unit { position: absolute; right: var(--s-3); color: var(--ink-3); font-size: var(--text-sm); pointer-events: none; }
+.ami-seq { word-break: break-word; }
+.ami-hint { background: var(--info-soft); border-radius: var(--radius); padding: var(--s-2) var(--s-3); }
+.ami-details > summary { cursor: pointer; font-weight: 600; min-height: var(--tap); display: flex; align-items: center; color: var(--accent); }
+.ami-details[open] > summary { margin-bottom: var(--s-2); }

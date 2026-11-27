@@ -1,0 +1,18 @@
+# Original project pattern, written in UK terms
+title: Sixteen-spoke wheel mat (UK terms)
+terms: UK
+yarn: crochet cotton no. 10
+hook: 1.5mm
+params: thread-10_1.5mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: An 8-round wheel written entirely in UK terms (dc = US sc, htr = US hdc, tr = US dc, dtr = US tr; ss = sl st; miss = sk) so that the UK translation path is exercised, including inside counts-as notes ("ch 8 (counts as dtr, ch 4)" uses the UK dtr turning height of 4) and count units ("(16 tr)" is checked as US dc). Design intent: a 16-tr ring, two mesh rounds, long dtr spokes, sixteen picot petals, then (2 tr, ch 3, 2 tr) fans and a ch-7 picot-loop edge. Exercises "ss in first ch to form ring", "ss in top of beg ch" joins, miss, picots inside a group and ch-N picots. Intended shape: flat. Vintage-style designs would anchor the final loops in the petal picots; v0.1 cannot work into a picot (it is not a target), so Rnd 6 works into the petal stitches instead.
+
+Rnd 1: ch 8, ss in first ch to form ring, ch 3 (counts as tr), 15 tr in ring, ss in top of beg ch. (16 tr)
+Rnd 2: ch 5 (counts as tr, ch 2), *tr in next st, ch 2* x15, ss in top of beg ch. (16 tr, 16 ch-2 sps)
+Rnd 3: ss in next ch-2 sp, ch 3 (counts as tr), tr in same sp, ch 1, *2 tr in next ch-2 sp, ch 1* x15, ss in top of beg ch. (32 tr, 16 ch-1 sps)
+Rnd 4: ss in next tr, ss in next ch-1 sp, ch 8 (counts as dtr, ch 4), *dtr in next ch-1 sp, ch 4* x15, ss in top of beg ch. (16 dtr, 16 ch-4 sps)
+Rnd 5: ss in next ch-4 sp, ch 1, (dc, tr, picot, tr, dc) in same sp, ch 1, *(dc, tr, picot, tr, dc) in next ch-4 sp, ch 1* x15, ss in first st. (64 sts, 32 dc, 32 tr, 16 picot, 16 ch-1 sps)
+Rnd 6: ch 1, *dc in next dc, ch 5, miss 2 sts, dc in next dc, ch 2* x16, ss in first st. (32 dc, 16 ch-5 sps, 16 ch-2 sps)
+Rnd 7: ss in next ch-5 sp, ch 3 (counts as tr), tr in same sp, ch 3, 2 tr in same sp, dc in next ch-2 sp, *(2 tr, ch 3, 2 tr) in next ch-5 sp, dc in next ch-2 sp* x15, ss in top of beg ch. (80 sts, 64 tr, 16 dc, 16 ch-3 sps)
+Rnd 8: ss in next tr, ss in next ch-3 sp, ch 1, (dc, ch-4 picot, dc) in same sp, ch 7, *(dc, ch-4 picot, dc) in next ch-3 sp, ch 7* x15, ss in first st, fasten off. (32 dc, 16 picot, 16 ch-7 sps)

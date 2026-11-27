@@ -1,0 +1,15 @@
+# Canonical fixture: Simple doily (16-fold, no pineapples)
+title: Simple doily (16-fold, no pineapples)
+terms: US
+yarn: crochet cotton no. 10
+hook: 1.5mm
+params: thread-10_1.5mm
+source: original (project fixture)
+license: CC0-1.0
+
+Rnd 1: ch 6, join to form ring, ch 3 (counts as dc), 15 dc in ring, join. (16)
+Rnd 2: ch 4 (counts as dc, ch 1), *dc in next st, ch 1* x15, join. (16 dc, 16 ch-1 sps)
+Rnd 3: sl st in next ch-1 sp, ch 3 (counts as dc), dc in same sp, ch 1, *2 dc in next ch-1 sp, ch 1* x15, join. (32 dc, 16 ch-1 sps)
+Rnd 4: sl st in next dc, sl st in next ch-1 sp, ch 1, sc in same sp, ch 4, *sc in next ch-1 sp, ch 4* x15, join. (16 sc, 16 ch-4 sps)
+Rnd 5: sl st in next ch-4 sp, ch 5 (counts as dc, ch 2), dc in same sp, ch 1, *(dc, ch 2, dc) in next ch-4 sp, ch 1* x15, join. (32 dc, 16 ch-2 sps, 16 ch-1 sps)
+Rnd 6: sl st in next ch-2 sp, ch 1, (sc, picot, sc) in same sp, ch 4, *(sc, picot, sc) in next ch-2 sp, ch 4* x15, join, fasten off. (32 sc, 16 picot, 16 ch-4 sps)

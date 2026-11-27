@@ -1,0 +1,18 @@
+# Original project pattern written with "rep from *" repeats
+title: Eight-petal rosette mat (rep-from-star forms)
+terms: US
+yarn: crochet cotton no. 10
+hook: 1.5mm
+params: thread-10_1.5mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: An 8-round rosette whose every repeat uses the "*...; rep from *" form instead of "*...* xN", covering each tail: "6 more times" (total 7 after the opening sc; Rnd 2), "around" (Rnd 3, 5), "7 more times" (Rnd 4, 8), "to end" (Rnd 6) and the ambiguous vintage "rep from * 8 times" (Rnd 7), which by notation rule 3.7 means 8 in total; the count (64 sts) confirms that reading. Design intent: hdc centre, eight graduated sc-hdc-dc petals, ch-6 loops from the petal tips, 7-dc fans thickened into tr wedges, shaped points (sc, hdc, dc, (tr, ch 3, tr), dc, hdc, sc) and an sc edge with a ch-4 picot at each point. Also exercises "sc in next dc" passing over other stitch types and a trailing "sk 2 sts" before the join. Intended shape: flat.
+
+Rnd 1: mr, ch 2, 16 hdc in ring, join. (16)
+Rnd 2: ch 1, sc in same st, ch 4, sk 1 st, *sc in next st, ch 4, sk 1 st; rep from * 6 more times, join. (8 sc, 8 ch-4 sps)
+Rnd 3: sl st in next ch-4 sp, ch 1, (sc, hdc, dc, hdc, sc) in same sp, *(sc, hdc, dc, hdc, sc) in next ch-4 sp; rep from * around, join. (40)
+Rnd 4: sl st in next 2 sts, ch 1, *sc in next dc, ch 6; rep from * 7 more times, sk 2 sts, join. (8 sc, 8 ch-6 sps)
+Rnd 5: sl st in next ch-6 sp, ch 3 (counts as dc), 6 dc in same sp, *7 dc in next ch-6 sp; rep from * around, join. (56 dc)
+Rnd 6: ch 4 (counts as tr), tr in next 6 sts, ch 2, *tr in next 7 sts, ch 2; rep from * to end, join. (56 tr, 8 ch-2 sps)
+Rnd 7: ch 1, *sc in next st, hdc in next st, dc in next st, (tr, ch 3, tr) in next st, dc in next st, hdc in next st, sc in next st, ch 3; rep from * 8 times, join. (64 sts, 16 tr, 16 ch-3 sps)
+Rnd 8: ch 1, *sc in next 4 sts, (sc, ch-4 picot, sc) in next ch-3 sp, sc in next 4 sts, sc in next ch-3 sp; rep from * 7 more times, join, fasten off. (88 sc, 8 picot)

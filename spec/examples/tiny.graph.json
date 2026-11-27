@@ -1,0 +1,324 @@
+{
+ "format": "crochet-pattern",
+ "version": "0.1",
+ "meta": {
+  "title": "Tiny example",
+  "terms": "US"
+ },
+ "graph": {
+  "nodes": [
+   {
+    "id": 0,
+    "type": "sc",
+    "round": 0,
+    "into": [
+     {
+      "space": 0
+     }
+    ]
+   },
+   {
+    "id": 1,
+    "type": "sc",
+    "round": 0,
+    "into": [
+     {
+      "space": 0
+     }
+    ]
+   },
+   {
+    "id": 2,
+    "type": "sc",
+    "round": 0,
+    "into": [
+     {
+      "space": 0
+     }
+    ]
+   },
+   {
+    "id": 3,
+    "type": "sc",
+    "round": 0,
+    "into": [
+     {
+      "space": 0
+     }
+    ]
+   },
+   {
+    "id": 4,
+    "type": "slst",
+    "round": 0,
+    "into": [
+     {
+      "node": 0
+     }
+    ]
+   },
+   {
+    "id": 5,
+    "type": "ch",
+    "round": 1,
+    "into": [],
+    "role": "tch"
+   },
+   {
+    "id": 6,
+    "type": "ch",
+    "round": 1,
+    "into": [],
+    "role": "tch"
+   },
+   {
+    "id": 7,
+    "type": "ch",
+    "round": 1,
+    "into": [
+     {
+      "node": 0
+     }
+    ],
+    "role": "tch",
+    "countsAs": "dc"
+   },
+   {
+    "id": 8,
+    "type": "ch",
+    "round": 1,
+    "into": []
+   },
+   {
+    "id": 9,
+    "type": "dc",
+    "round": 1,
+    "into": [
+     {
+      "node": 1
+     }
+    ]
+   },
+   {
+    "id": 10,
+    "type": "ch",
+    "round": 1,
+    "into": []
+   },
+   {
+    "id": 11,
+    "type": "dc",
+    "round": 1,
+    "into": [
+     {
+      "node": 2
+     }
+    ]
+   },
+   {
+    "id": 12,
+    "type": "ch",
+    "round": 1,
+    "into": []
+   },
+   {
+    "id": 13,
+    "type": "dc",
+    "round": 1,
+    "into": [
+     {
+      "node": 3
+     }
+    ]
+   },
+   {
+    "id": 14,
+    "type": "ch",
+    "round": 1,
+    "into": []
+   },
+   {
+    "id": 15,
+    "type": "slst",
+    "round": 1,
+    "into": [
+     {
+      "node": 7
+     }
+    ]
+   },
+   {
+    "id": 16,
+    "type": "ch",
+    "round": 2,
+    "into": [],
+    "role": "tch"
+   },
+   {
+    "id": 17,
+    "type": "sc",
+    "round": 2,
+    "into": [
+     {
+      "space": 1
+     }
+    ]
+   },
+   {
+    "id": 18,
+    "type": "sc",
+    "round": 2,
+    "into": [
+     {
+      "space": 1
+     }
+    ]
+   },
+   {
+    "id": 19,
+    "type": "sc",
+    "round": 2,
+    "into": [
+     {
+      "space": 2
+     }
+    ]
+   },
+   {
+    "id": 20,
+    "type": "sc",
+    "round": 2,
+    "into": [
+     {
+      "space": 2
+     }
+    ]
+   },
+   {
+    "id": 21,
+    "type": "sc",
+    "round": 2,
+    "into": [
+     {
+      "space": 3
+     }
+    ]
+   },
+   {
+    "id": 22,
+    "type": "sc",
+    "round": 2,
+    "into": [
+     {
+      "space": 3
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "type": "sc",
+    "round": 2,
+    "into": [
+     {
+      "space": 4
+     }
+    ]
+   },
+   {
+    "id": 24,
+    "type": "sc",
+    "round": 2,
+    "into": [
+     {
+      "space": 4
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "type": "slst",
+    "round": 2,
+    "into": [
+     {
+      "node": 17
+     }
+    ]
+   }
+  ],
+  "spaces": [
+   {
+    "id": 0,
+    "kind": "ring",
+    "round": 0,
+    "chains": []
+   },
+   {
+    "id": 1,
+    "kind": "chsp",
+    "round": 1,
+    "chains": [
+     8
+    ]
+   },
+   {
+    "id": 2,
+    "kind": "chsp",
+    "round": 1,
+    "chains": [
+     10
+    ]
+   },
+   {
+    "id": 3,
+    "kind": "chsp",
+    "round": 1,
+    "chains": [
+     12
+    ]
+   },
+   {
+    "id": 4,
+    "kind": "chsp",
+    "round": 1,
+    "chains": [
+     14
+    ]
+   }
+  ],
+  "rounds": [
+   {
+    "index": 0,
+    "label": "Rnd 1",
+    "kind": "round",
+    "joined": true,
+    "turned": false,
+    "first": 0,
+    "last": 4,
+    "stitchCount": 4,
+    "declaredCount": 4
+   },
+   {
+    "index": 1,
+    "label": "Rnd 2",
+    "kind": "round",
+    "joined": true,
+    "turned": false,
+    "first": 5,
+    "last": 15,
+    "stitchCount": 4,
+    "declaredCount": 4
+   },
+   {
+    "index": 2,
+    "label": "Rnd 3",
+    "kind": "round",
+    "joined": true,
+    "turned": false,
+    "first": 16,
+    "last": 25,
+    "stitchCount": 8,
+    "declaredCount": 8
+   }
+  ]
+ }
+}

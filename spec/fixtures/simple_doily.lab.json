@@ -1,0 +1,55 @@
+{
+ "name": "simple_doily",
+ "source": "compiled",
+ "class": "flat",
+ "A": 0.142,
+ "W": 0.0887,
+ "Rg": 20.8308,
+ "outer_radius": 26.5533,
+ "n_nodes": 396,
+ "energy": 0.0158,
+ "per_round": [
+  {
+   "round": 0,
+   "class": "flat",
+   "A": 0.0,
+   "W": 0.1328,
+   "Rg": 5.0013
+  },
+  {
+   "round": 1,
+   "class": "flat",
+   "A": 0.1914,
+   "W": 0.13,
+   "Rg": 8.2773
+  },
+  {
+   "round": 2,
+   "class": "flat",
+   "A": 0.1853,
+   "W": 0.1075,
+   "Rg": 11.4492
+  },
+  {
+   "round": 3,
+   "class": "flat",
+   "A": 0.1636,
+   "W": 0.0976,
+   "Rg": 14.6757
+  },
+  {
+   "round": 4,
+   "class": "flat",
+   "A": 0.1514,
+   "W": 0.0946,
+   "Rg": 17.8655
+  },
+  {
+   "round": 5,
+   "class": "flat",
+   "A": 0.142,
+   "W": 0.0887,
+   "Rg": 20.8313
+  }
+ ]
+}

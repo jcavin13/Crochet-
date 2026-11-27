@@ -1,0 +1,15 @@
+# Original project pattern: five-round granny square
+title: Granny square motif (4-fold)
+terms: US
+yarn: worsted-4
+hook: 5.0mm
+params: worsted-4_5.0mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: A classic-style granny square built from 3-dc groups, written plainly so it is a reference case for corner structure. Design intent: (3 dc, ch 2, 3 dc) corners in ch-2 spaces, 3 dc groups in the ch-1 side spaces, moving to the corner space with slip stitches at the start of each round. Exercises chain ring, slip-stitch travel ("sl st in next 2 sts, sl st in next ch-2 sp"), turning chain counting as dc based in a space, groups worked in a space, and ch-1 / ch-2 space counts. Real squares lie flat; NOTE the analytic flatness check treats every round as a circle, so a 4-fold cornered motif can read as "over" (ruffling) at the corners even though it is flat in practice (with these chain-space corners the current analytic numbers happen to stay inside tolerance).
+
+Rnd 1: ch 4, join to form ring, ch 3 (counts as dc), 2 dc in ring, ch 2, *3 dc in ring, ch 2* x3, join. (12 dc, 4 ch-2 sps)
+Rnd 2: sl st in next 2 sts, sl st in next ch-2 sp, ch 3 (counts as dc), (2 dc, ch 2, 3 dc) in same sp, ch 1, *(3 dc, ch 2, 3 dc) in next ch-2 sp, ch 1* x3, join. (24 dc, 4 ch-2 sps, 4 ch-1 sps)
+Rnd 3: sl st in next 2 sts, sl st in next ch-2 sp, ch 3 (counts as dc), (2 dc, ch 2, 3 dc) in same sp, ch 1, 3 dc in next ch-1 sp, ch 1, *(3 dc, ch 2, 3 dc) in next ch-2 sp, ch 1, 3 dc in next ch-1 sp, ch 1* x3, join. (36 dc, 4 ch-2 sps, 8 ch-1 sps)
+Rnd 4: sl st in next 2 sts, sl st in next ch-2 sp, ch 3 (counts as dc), (2 dc, ch 2, 3 dc) in same sp, ch 1, (3 dc in next ch-1 sp, ch 1) x2, *(3 dc, ch 2, 3 dc) in next ch-2 sp, ch 1, (3 dc in next ch-1 sp, ch 1) x2* x3, join. (48 dc, 4 ch-2 sps, 12 ch-1 sps)
+Rnd 5: sl st in next 2 sts, sl st in next ch-2 sp, ch 3 (counts as dc), (2 dc, ch 2, 3 dc) in same sp, ch 1, (3 dc in next ch-1 sp, ch 1) x3, *(3 dc, ch 2, 3 dc) in next ch-2 sp, ch 1, (3 dc in next ch-1 sp, ch 1) x3* x3, join, fasten off. (60 dc, 4 ch-2 sps, 16 ch-1 sps)

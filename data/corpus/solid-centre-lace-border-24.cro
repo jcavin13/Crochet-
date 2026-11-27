@@ -1,0 +1,20 @@
+# Original project pattern: solid dc circle with a 24-repeat lace border
+title: Solid centre doily with lace border (24-fold border)
+terms: US
+yarn: dk-3
+hook: 4.0mm
+params: dk-3_4.0mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: A solid six-round dc circle (12 increases per round, the textbook dc rate) finished with a four-round 24-repeat lace border. Design intent: show the transition from solid fabric, whose flatness is exact stitch arithmetic, to lace, whose chain spaces absorb the difference. Exercises "dc in next N sts, 2 dc in next st" increase rounds, sk 2 sts with ch-5 loops, a beginning V written out as "ch 4 (counts as dc, ch 1), dc in same st" followed by 23 named v-sts (so the v-sts count is 23, not 24), shells named by size ("3-dc shell") after a written-out beginning shell, "sc in next sc" passing over V legs, and ch-3 picots. Intended shape: flat.
+
+Rnd 1: mr, ch 3 (counts as dc), 11 dc in ring, join. (12)
+Rnd 2: ch 3 (counts as dc), dc in same st, 2 dc in each st around, join. (24)
+Rnd 3: ch 3 (counts as dc), 2 dc in next st, *dc in next st, 2 dc in next st* x11, join. (36)
+Rnd 4: ch 3 (counts as dc), dc in next st, 2 dc in next st, *dc in next 2 sts, 2 dc in next st* x11, join. (48)
+Rnd 5: ch 3 (counts as dc), dc in next 2 sts, 2 dc in next st, *dc in next 3 sts, 2 dc in next st* x11, join. (60)
+Rnd 6: ch 3 (counts as dc), dc in next 3 sts, 2 dc in next st, *dc in next 4 sts, 2 dc in next st* x11, join. (72)
+Rnd 7: ch 1, sc in same st, ch 5, sk 2 sts, *sc in next st, ch 5, sk 2 sts* x23, join. (24 sc, 24 ch-5 sps)
+Rnd 8: ch 4 (counts as dc, ch 1), dc in same st, ch 2, sc in next ch-5 sp, ch 2, *v-st in next sc, ch 2, sc in next ch-5 sp, ch 2* x23, join. (72 sts, 23 v-sts, 24 ch-1 sps, 48 ch-2 sps)
+Rnd 9: sl st in next ch-1 sp, ch 3 (counts as dc), 2 dc in same sp, ch 1, sc in next sc, ch 1, *3-dc shell in next ch-1 sp, ch 1, sc in next sc, ch 1* x23, join. (96 sts, 23 shells, 48 ch-1 sps)
+Rnd 10: ch 1, sc in same st, sc in next dc, ch-3 picot, sc in next dc, ch 2, sk next ch-1 sp, sc in next sc, ch 2, *sc in next 2 dc, ch-3 picot, sc in next dc, ch 2, sk next ch-1 sp, sc in next sc, ch 2* x23, join, fasten off. (96 sc, 24 picot, 48 ch-2 sps)

@@ -1,0 +1,23 @@
+{
+ "name": "chain_space_motif",
+ "title": "Chain-space lace motif (8-fold loops)",
+ "rounds": [
+  {
+   "stitches": 8
+  },
+  {
+   "stitches": 8
+  },
+  {
+   "stitches": 8
+  },
+  {
+   "stitches": 16
+  }
+ ],
+ "shape": "flat",
+ "analytic": {
+  "final": "flat",
+  "note": "lace: per-round values are produced by the implementation; every round must classify flat"
+ }
+}

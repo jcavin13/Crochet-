@@ -1,0 +1,16 @@
+# Canonical fixture: Flat sc circle
+title: Flat sc circle
+terms: US
+yarn: worsted-4
+hook: 5.0mm
+source: original (project fixture)
+license: CC0-1.0
+
+Rnd 1: mr, 6 sc in ring. (6)
+Rnd 2: inc x6. (12)
+Rnd 3: *sc, inc* x6. (18)
+Rnd 4: *2 sc, inc* x6. (24)
+Rnd 5: *3 sc, inc* x6. (30)
+Rnd 6: *4 sc, inc* x6. (36)
+Rnd 7: *5 sc, inc* x6. (42)
+Rnd 8: *6 sc, inc* x6. (48)

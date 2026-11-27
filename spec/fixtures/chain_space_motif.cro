@@ -1,0 +1,13 @@
+# Canonical fixture: Chain-space lace motif (8-fold loops)
+title: Chain-space lace motif (8-fold loops)
+terms: US
+yarn: crochet cotton no. 10
+hook: 1.5mm
+params: thread-10_1.5mm
+source: original (project fixture)
+license: CC0-1.0
+
+Rnd 1: mr, ch 1, 8 sc in ring, join. (8)
+Rnd 2: ch 1, sc in same st, ch 3, *sc in next st, ch 3* x7, join. (8 sc, 8 ch-3 sps)
+Rnd 3: sl st in next ch-3 sp, ch 1, sc in same sp, ch 5, *sc in next ch-3 sp, ch 5* x7, join. (8 sc, 8 ch-5 sps)
+Rnd 4: sl st in next ch-5 sp, ch 1, (sc, ch 3, sc) in same sp, ch 5, *(sc, ch 3, sc) in next ch-5 sp, ch 5* x7, join, fasten off. (16 sc, 8 ch-3 sps, 8 ch-5 sps)

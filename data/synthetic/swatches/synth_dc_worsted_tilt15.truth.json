@@ -1,0 +1,53 @@
+{
+ "H_mm_to_px": [
+  [
+   5.930917391219704,
+   -0.4660557305497232,
+   208.81105421031927
+  ],
+  [
+   1.12157612468375,
+   5.1602848663328515,
+   99.50000000000003
+  ],
+  [
+   0.0007737716619807607,
+   -0.00032844658400748363,
+   1.0
+  ]
+ ],
+ "focal_px": 1700.0,
+ "camera_distance_mm": 317.6186993176427,
+ "tilt_deg": 15,
+ "layout": "A4",
+ "occluded_ids": [],
+ "swatch": {
+  "stitch": "dc",
+  "n_stitches": 18,
+  "n_rows": 9,
+  "pitch_x_mm": 6.7,
+  "pitch_y_mm": 12.6,
+  "yarn_mm": null,
+  "color_bgr": [
+   150,
+   110,
+   50
+  ],
+  "jitter": 0.04,
+  "row_wave_mm": 0.3,
+  "turned": true,
+  "seed": 102
+ },
+ "stitch_pitch_mm": 6.7,
+ "row_pitch_mm": 12.6,
+ "stitches_per_10cm": 14.925373134328359,
+ "rows_per_10cm": 7.936507936507937,
+ "swatch_centre_mm": [
+  105.0,
+  166.5
+ ],
+ "bbox_width_mm": 123.43209683851634,
+ "bbox_height_mm": 116.49121151167881,
+ "generator": "python -m crolab.swatch.synth",
+ "note": "SYNTHETIC image, not a real swatch"
+}

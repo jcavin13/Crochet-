@@ -1,0 +1,5 @@
+# Hand-compiled example: see tiny.graph.json for the exact graph this must compile to.
+title: Tiny example
+Rnd 1: mr, 4 sc in ring, join. (4)
+Rnd 2: ch 4 (counts as dc, ch 1), *dc in next st, ch 1* x3, join. (4 dc, 4 ch-1 sps)
+Rnd 3: ch 1, *2 sc in next ch-1 sp* x4, join. (8)
