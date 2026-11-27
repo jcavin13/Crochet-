@@ -10,7 +10,7 @@ import { Component, Suspense, lazy, useEffect, useMemo, useState, type ReactNode
 import type { Pattern } from '@/core/graph';
 import { analyzeFlatness, type RoundClass } from '@/core/flatness';
 import { paramsFor, type ParamSet } from '@/core/params';
-import type { BlockSummary, SimPhase } from '@/core/sim';
+import type { BlockPin, BlockSummary, SimPhase } from '@/core/sim';
 import { useSettings } from '@/store';
 import { SegmentedControl, ShapeBadge, Slider } from '@/ui';
 import type { MetricSummary } from './protocol';
@@ -62,6 +62,14 @@ export interface SimViewProps {
   resetViewKey?: number | string;
   /** Force the 2D projected rendering (optional; also used when WebGL is unavailable). */
   forceSvg?: boolean;
+  /**
+   * Relaxed state "resting on a table": grown flat, then let go on a table under a weak weight
+   * (core/sim/table.ts). A viewer option for pieces meant to lie flat; it never changes the shape
+   * classification of the plain sim. Default false.
+   */
+  table?: boolean;
+  /** Explicit pins `{node, x, y}` (mm, any rigid frame) for the blocked state. Default: physics.md §6. */
+  pins?: BlockPin[];
 }
 
 let webglCache: boolean | null = null;
@@ -115,7 +123,7 @@ export function SimView(props: SimViewProps) {
   const upto = Math.max(0, Math.min(nRounds - 1, controls ? ownRound : (props.uptoRound ?? nRounds - 1)));
   const blocked = controls ? ownBlocked : !!props.blocked;
 
-  const { network, error, frame, mode } = useSimulation(pattern, params, upto, blocked);
+  const { network, error, frame, mode } = useSimulation(pattern, params, upto, blocked, { table: props.table, pins: props.pins });
   const topology = useMemo(() => (network ? buildTopology(network) : null), [network]);
   const palette = usePalette();
   const [glFailed, setGlFailed] = useState(false);
@@ -130,15 +138,17 @@ export function SimView(props: SimViewProps) {
   useEffect(() => { setAxis([0, 0, 1]); }, [network]);
   const fm = frame?.metric;
   useEffect(() => {
-    if (fm && frame && frame.step.shownRound === nRounds - 1 && !blocked) setAxis(fm.axis);
-  }, [fm, frame, nRounds, blocked]);
+    // on a table the table's normal (+z) is up; the shape metric's axis of a piece that lies flat
+    // can point anywhere in its plane
+    if (fm && frame && frame.step.shownRound === nRounds - 1 && !blocked && !props.table) setAxis(fm.axis);
+  }, [fm, frame, nRounds, blocked, props.table]);
   const rotation = useMemo(() => rotationToY(axis), [axis]);
   // flat pieces (and blocked ones) are best seen from well above, 3D shapes from the side
   const [elevation, setElevation] = useState(55);
   useEffect(() => {
     if (fm && frame && frame.step.shownRound === nRounds - 1) setElevation(fm.class === 'flat' ? 58 : 28);
   }, [fm, frame, nRounds]);
-  const elev = blocked ? 62 : elevation;
+  const elev = blocked ? 62 : props.table ? 58 : elevation;
 
   const [strain, setStrain] = useState<Float32Array | undefined>(undefined);
   useEffect(() => { if (frame?.strain) setStrain(frame.strain); }, [frame]);

@@ -1,0 +1,14 @@
+import { generateSnowflake, SNOWFLAKE_PRESETS, snowflakePins } from '../../src/core/generate/snowflake/index';
+import { paramSetById, simConfig } from '../../src/core/params/index';
+import { createSim, Grower, block } from '../../src/core/sim/index';
+const params = paramSetById('thread-10_1.5mm')!;
+const res = generateSnowflake(SNOWFLAKE_PRESETS[0].spec, params);
+const g = res.pattern!.graph; const pins = snowflakePins(res);
+const sim = createSim(g, params, { table: true, pins, blocked: true });
+let st; do { st = sim.step(1000); } while (!st.done);
+const X = sim.positions;
+for (const i of [87, 119, 151]) console.log(i, X[3*i].toFixed(2), X[3*i+1].toFixed(2), X[3*i+2].toFixed(2));
+const n = sim.network.nNodes; let cx=0, cy=0; for (let i=0;i<n;i++){cx+=X[3*i];cy+=X[3*i+1];} console.log('centroid', cx/n, cy/n);
+const gr = new Grower(sim.network, simConfig, { table: true, gtolRound: 1e-6, gtolFinal: 1e-8 }); gr.advance();
+let zr = 0; for (let i = 0; i < n; i++) zr = Math.max(zr, Math.abs(gr.planar![3*i+2])); console.log('planar zmax', zr);
+const b = block(sim.network, gr.planar!, simConfig, 1e-8, pins); console.log('plane', b.plane);

@@ -22,6 +22,9 @@ Initial placement (physics.md §4 step 1, made precise; see lab/SPEC_NOTES.md §
   P5  spread: a maximal run of m >= 2 consecutive node ids of the round placed by P3 with the
       identical anchor-particle list is spread along the unit course tangent t of its first
       anchor particle: node k (1..m) moves by (k - (m+1)/2) * (wbar_run / 2) * t;
+  P7  spines (chains with stitches worked back along them, crolab.spine): after P5, every node of
+      a spine of this round is put at x_base + s*u + t*v from its reference layout (s, t), with
+      u = unit(x_base - centroid before the round), v = unit(z x u) (SPEC_NOTES P7);
   P6  the perturbation  delta_i = perturb_eps * wbar_r * sin(2.399963*(i+1))  along +z is added to
       every node of round r (wbar_r = mean course width of the nodes of round r).
 
@@ -260,6 +263,8 @@ class _Placer:
                 for q, nid in enumerate(run, start=1):
                     X[nid] = X[nid] + (q - (m + 1) / 2) * (wb / 2) * t
             k += len(run)
+        # P7 spines: radially outward from their base, in their reference layout
+        self.place_spines(r)
         # P4' chain-space loops: on an outward arc between the nodes either side of the loop
         self.place_loops(r, ids)
         # P6 perturbation
@@ -325,6 +330,29 @@ def _place_loops(self, r: int, ids: list[int]) -> None:
 
 
 _Placer.place_loops = _place_loops
+
+
+def _place_spines(self, r: int) -> None:
+    """P7: every spine of round r whose base is placed is laid out in its reference layout
+    (crolab.spine), s along u = unit(x_base - centroid of the piece before this round) (fallback +x),
+    t along unit(z x u) (fallback unit(u x x))."""
+    X = self.X
+    for sp in self.net.spines:
+        if self.g.nodes[sp.stem[0]]["round"] != r or np.isnan(X[sp.base, 0]):
+            continue
+        o = X[sp.base].copy()
+        u, nu = _unit(o - self.round_centroid)
+        if nu < 1e-9:
+            u = np.array([1.0, 0.0, 0.0])
+        t, nt = _unit(np.cross([0.0, 0.0, 1.0], u))
+        if nt < 1e-9:
+            t, _ = _unit(np.cross(u, [1.0, 0.0, 0.0]))
+        for v in sp.nodes:
+            s_, t_ = sp.pos[v]
+            X[v] = o + s_ * u + t_ * t
+
+
+_Placer.place_spines = _place_spines
 
 
 def simulate(pattern: dict, params: StitchParams | None = None, upto_round: int | None = None,

@@ -134,6 +134,23 @@ export interface BlockedShape {
   web: { a: Pt; pin: Pt; b: Pt }[];
   /** Body radii of each centre/body round, mm. */
   rings: number[];
+  /**
+   * Pin points of every anchor of the arm round, in working order (repeat by repeat), for mapping
+   * the template onto stitches (the 3D view's blocked solve): an arm's tip, its trefoil side picots
+   * and its branch picots (pairs, outermost first; each pair [sideways −, sideways +]); a valley
+   * anchor's sc. `web` lists the bridges in the same order.
+   */
+  anchorPins: AnchorPins[];
+}
+
+export interface AnchorPins {
+  kind: 'point' | 'minor' | 'valley';
+  /** Arm tip, or the valley sc. */
+  tip: Pt;
+  /** Trefoil side picots [−, +]. */
+  sides: Pt[];
+  /** Branch picots, pairs outermost first, each [−, +]. */
+  branches: Pt[];
 }
 
 export interface SnowCheckItem {

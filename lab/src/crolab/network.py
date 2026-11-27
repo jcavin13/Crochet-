@@ -27,6 +27,7 @@ import numpy as np
 
 from .graph import Graph
 from .params import StitchParams, load_sim_config, select_set
+from .spine import find_spines
 
 COURSE, WALE, SHEAR, BEND_COURSE, BEND_WALE = range(5)
 KIND_NAMES = ("course", "wale", "shear", "bend_course", "bend_wale")
@@ -50,6 +51,7 @@ class Network:
     graph: Graph = field(repr=False)
     params: StitchParams = field(repr=False)
     slack: np.ndarray = None  # bool [m]: tension-only springs (chain-space chains, SPEC_NOTES N4)
+    spines: list = field(default_factory=list)  # crolab.spine.Spine per spine (SPEC_NOTES N5)
 
     @property
     def m(self) -> int:
@@ -429,6 +431,32 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
             L = ref.wale_bend(i, a, b, h[i], h[a])
         gen.append((i, b, L, kb, BEND_WALE))
 
+    # N5: spines (chains with stitches worked back along them) are doubled cords: every spring
+    # between two nodes of one spine takes its rest length from the spine's flat reference layout,
+    # and the course bends along the stem and along the return row get course stiffness
+    spines = find_spines(g, w, h, params.width("ch")) if metric else []
+    if spines:
+        owner: dict[int, int] = {}
+        stem: set[int] = set()
+        ret: set[int] = set()
+        for si, sp in enumerate(spines):
+            for v in sp.pos:
+                owner[v] = si
+            stem.update(sp.stem)
+            ret.update(sp.ret)
+        for idx, (a, b, L, k, t) in enumerate(gen):
+            sa, sb = owner.get(a), owner.get(b)
+            if sa is None or sa != sb:
+                continue
+            pa, pb = spines[sa].pos[a], spines[sa].pos[b]
+            L = math.hypot(pa[0] - pb[0], pa[1] - pb[1])
+            if t == BEND_COURSE:
+                lo = min(a, b)
+                trip = (lo, lo + 1, lo + 2)
+                if all(v in stem for v in trip) or all(v in ret for v in trip):
+                    k = kc * min(s_course[v] for v in trip)
+            gen[idx] = (a, b, L, k, t)
+
     best: dict[tuple[int, int], int] = {}
     for idx, (a, b, L, k, t) in enumerate(gen):
         if a == b:
@@ -454,4 +482,5 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
         particle_round=np.array(prounds, dtype=np.int64), virtual_space=virtual_space,
         space_particle=space_particle, anchor_particles=anchors, width=w, height=h, graph=g,
         params=params, slack=np.array([is_slack(a[0], a[1], a[4]) for a in arr], dtype=bool),
+        spines=spines,
     )

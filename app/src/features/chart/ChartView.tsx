@@ -12,7 +12,7 @@ import type { Pattern, Terms } from '@/core/graph';
 import { describeNode } from '@/core/graph';
 import { paramsFor, type ParamSet } from '@/core/params';
 import {
-  bandPath, boundsUpto, buildHitIndex, edgePath, glyph, hitTest, layoutChart, magicRingGlyph, roundAt,
+  bandPath, boundsUpto, buildHitIndex, edgePath, glyph, hitTest, layoutChart, magicRingGlyph, outlinePath, roundAt, POINTED_NOTE,
   type ChartLayout, type ScGlyph, type SymbolSet,
 } from '@/core/chart';
 import type { SymmetryReport } from '@/core/symmetry';
@@ -116,10 +116,13 @@ export function ChartView(props: ChartViewProps) {
 
   const bands = useMemo(() => {
     if (layout.mode !== 'radial') return [];
-    return layout.rounds.filter((r) => r.first >= 0 && r.r > r.r0).map((r) => ({
-      index: r.index, d: bandPath(layout, r.index), edge: r.flat && r.flat.class !== 'flat' && r.flat.class !== 'n/a' ? edgePath(r) : '',
-      cls: r.flat?.class ?? 'n/a', message: r.flat?.message ?? '', loose: !!r.flat?.slackOnly,
-    }));
+    return layout.rounds.filter((r) => r.first >= 0 && (r.r > r.r0 || r.pointed)).map((r) => (r.pointed
+      // a pointed round is judged by blocking: its arms' outline, no flat / cup / ruffle verdict
+      ? { index: r.index, d: bandPath(layout, r.index), edge: outlinePath(r), cls: 'pointed', message: POINTED_NOTE, loose: false }
+      : {
+        index: r.index, d: bandPath(layout, r.index), edge: r.flat && r.flat.class !== 'flat' && r.flat.class !== 'n/a' ? edgePath(r) : '',
+        cls: r.flat?.class ?? 'n/a', message: r.flat?.message ?? '', loose: !!r.flat?.slackOnly,
+      }));
   }, [layout]);
 
   const symGeo = useMemo(() => symmetryGeometry(layout, symmetryOverlay, upto), [layout, symmetryOverlay, upto]);
@@ -194,13 +197,13 @@ export function ChartView(props: ChartViewProps) {
     if (id >= 0) {
       const n = graph.nodes[id];
       const R = layout.rounds[n.round];
-      const lines = [showFlatness && R?.flat && R.flat.class !== 'n/a' ? R.flat.message : R?.label ?? ''];
+      const lines = [R?.pointed ? `${R.label}: ${POINTED_NOTE}` : showFlatness && R?.flat && R.flat.class !== 'n/a' ? R.flat.message : R?.label ?? ''];
       return { tip: { ...at, title: describeNode(graph, id, { terms }), lines, pinned }, node: id, round: n.round };
     }
     const r = roundAt(layout, c.x, c.y, upto);
     if (r >= 0) {
       const R = layout.rounds[r];
-      const msg = showFlatness && R.flat && R.flat.class !== 'n/a' ? R.flat.message : '';
+      const msg = R.pointed ? `Pointed round — judged by blocking, not by the flatness rule` : showFlatness && R.flat && R.flat.class !== 'n/a' ? R.flat.message : '';
       return { tip: { ...at, title: R.label, lines: msg ? [msg] : [], pinned }, node: -1, round: r };
     }
     return { tip: null, node: -1, round: -1 };
@@ -465,6 +468,14 @@ const Bands = memo(function Bands({ bands, upto, flatness, hatchId }: {
       )}
       {bands.map((b) => {
         if (b.index > upto) return null;
+        if (b.cls === 'pointed') {
+          return (
+            <g key={b.index}>
+              <path className="ch-band ch-band--pointed" d={b.d} fillRule="evenodd" />
+              {flatness && <path className="ch-edge ch-edge--pointed" d={b.edge} />}
+            </g>
+          );
+        }
         const shape = flatness && b.cls !== 'n/a' ? b.cls : '';
         if (!shape && b.index % 2 === 0) return null;
         return (

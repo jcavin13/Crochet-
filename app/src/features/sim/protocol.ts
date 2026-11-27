@@ -2,7 +2,7 @@
 // on the main thread when Workers are unavailable (client.ts).
 import type { Graph } from '@/core/graph';
 import type { ParamSet, SimConfig } from '@/core/params';
-import type { BlockSummary, StepResult } from '@/core/sim';
+import type { BlockPin, BlockSummary, StepResult } from '@/core/sim';
 
 export interface MetricSummary {
   class: 'flat' | 'cup' | 'ruffle';
@@ -12,7 +12,7 @@ export interface MetricSummary {
 }
 
 export type ToWorker =
-  | { type: 'init'; job: number; graph: Graph; params: ParamSet; config?: SimConfig; uptoRound: number; blocked: boolean }
+  | { type: 'init'; job: number; graph: Graph; params: ParamSet; config?: SimConfig; uptoRound: number; blocked: boolean; table?: boolean; pins?: BlockPin[] }
   | { type: 'upto'; job: number; round: number }
   | { type: 'blocked'; job: number; blocked: boolean }
   | { type: 'dispose'; job: number };

@@ -83,8 +83,15 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
     setTimeout(() => window.print(), 120);
   };
 
-  const worst = flat.worst;
-  const loose = flat.rounds.filter((r) => r.slackOnly);
+  // rounds with arms (snowflake spines, pointed loops) are judged by blocking, not by the circle rule
+  const pointed = useMemo(() => new Set(layout.rounds.filter((r) => r.pointed).map((r) => r.index)), [layout]);
+  const worst = flat.worst && pointed.has(flat.worst.round)
+    ? (() => {
+      const dev = (r: typeof flat.rounds[number]) => (r.class === 'cup' ? -r.eMax : r.class === 'ruffle' ? r.eMin : 0);
+      return flat.rounds.filter((r) => !pointed.has(r.round) && (r.class === 'cup' || r.class === 'ruffle')).sort((a, b) => dev(b) - dev(a))[0] ?? null;
+    })()
+    : flat.worst;
+  const loose = flat.rounds.filter((r) => r.slackOnly && !pointed.has(r.round));
   const looseList = loose.length > 4 ? `${loose.slice(0, 3).map((r) => r.label).join(', ')} and ${loose.length - 3} more rounds` : loose.map((r) => r.label).join(', ');
   const nodeCount = useMemo(() => {
     const R = rounds[upto];
@@ -210,7 +217,9 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
                     ? <><ShapeBadge shape={worst.class as 'cup' | 'ruffle'} /> <strong>Worst: {worst.message}</strong></>
                     : loose.length
                       ? <><ShapeBadge shape="flat">flat (loose loops)</ShapeBadge> Every round passes the count rule, but {looseList} only if {loose.length === 1 ? 'its' : 'their'} chain loops sag or stretch to take up the difference (hatched in the band).</>
-                      : <><ShapeBadge shape="flat" /> Every round lies flat.</>}
+                      : pointed.size
+                        ? <><ShapeBadge shape="flat" /> The rounds before the arms lie flat; the pointed {pointed.size === 1 ? 'round is' : 'rounds are'} judged by blocking.</>
+                        : <><ShapeBadge shape="flat" /> Every round lies flat.</>}
                 </p>
                 {worst && loose.length > 0 && (
                   <p className="muted small" style={{ margin: '0 0 var(--s-2)' }}>
@@ -221,10 +230,11 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
                   {flat.rounds.map((r) => (
                     <li key={r.round} className={worst && worst.round === r.round ? 'is-worst' : undefined}>
                       <button type="button" onClick={() => setUpto(r.round)} aria-label={`Show up to ${r.label}`}>
-                        {r.class === 'n/a' ? <Badge tone="outline">n/a</Badge>
+                        {pointed.has(r.round) ? <Badge tone="outline">Pointed</Badge>
+                          : r.class === 'n/a' ? <Badge tone="outline">n/a</Badge>
                           : r.slackOnly ? <ShapeBadge shape="flat">flat (loose loops)</ShapeBadge>
                           : <ShapeBadge shape={r.class} />}
-                        <span>{r.message}</span>
+                        <span>{pointed.has(r.round) ? `${r.label}: pointed round — judged by blocking (its arms are pinned out, not laid on a circle).` : r.message}</span>
                       </button>
                     </li>
                   ))}

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Pattern } from '@/core/graph';
 import { simConfig, type ParamSet } from '@/core/params';
-import { buildNetwork, type Network } from '@/core/sim';
+import { buildNetwork, type BlockPin, type Network } from '@/core/sim';
 import { createDriver } from './driver';
 import type { FromWorker, SimFrame, ToWorker } from './protocol';
 
@@ -49,7 +49,14 @@ function workerClient(onMsg: (m: FromWorker) => void, onFail: () => void): Clien
   }
 }
 
-export function useSimulation(pattern: Pattern, params: ParamSet, uptoRound: number | undefined, blocked: boolean): SimulationState {
+export interface SimulationOptions {
+  /** Grow flat and rest on a table (viewer option, see core/sim/table.ts). */
+  table?: boolean;
+  /** Explicit pins for the blocked state (see core/sim BlockPin). */
+  pins?: BlockPin[];
+}
+
+export function useSimulation(pattern: Pattern, params: ParamSet, uptoRound: number | undefined, blocked: boolean, opts: SimulationOptions = {}): SimulationState {
   const graph = pattern.graph;
   const { network, error: buildError } = useMemo(() => {
     try {
@@ -67,6 +74,10 @@ export function useSimulation(pattern: Pattern, params: ParamSet, uptoRound: num
   const upto = Math.max(0, Math.min(nRounds - 1, uptoRound ?? nRounds - 1));
   const latest = useRef({ upto, blocked });
   latest.current = { upto, blocked };
+  const table = !!opts.table;
+  const pinsKey = opts.pins?.length ? JSON.stringify(opts.pins) : '';
+  const extra = useRef(opts);
+  extra.current = opts;
 
   useEffect(() => {
     if (!network) return;
@@ -80,7 +91,10 @@ export function useSimulation(pattern: Pattern, params: ParamSet, uptoRound: num
       const { type: _t, ...f } = m;
       setFrame(f);
     };
-    const init = (): ToWorker => ({ type: 'init', job, graph, params, config: simConfig, uptoRound: latest.current.upto, blocked: latest.current.blocked });
+    const init = (): ToWorker => ({
+      type: 'init', job, graph, params, config: simConfig, uptoRound: latest.current.upto, blocked: latest.current.blocked,
+      table, pins: extra.current.pins?.length ? extra.current.pins : undefined,
+    });
     let client: Client | null = null;
     const fallback = () => {
       client?.dispose();
@@ -97,7 +111,7 @@ export function useSimulation(pattern: Pattern, params: ParamSet, uptoRound: num
       client?.dispose();
       clientRef.current = null;
     };
-  }, [network, graph, params]);
+  }, [network, graph, params, table, pinsKey]);
 
   useEffect(() => { clientRef.current?.send({ type: 'upto', job: jobRef.current, round: upto }); }, [upto]);
   useEffect(() => { clientRef.current?.send({ type: 'blocked', job: jobRef.current, blocked }); }, [blocked]);

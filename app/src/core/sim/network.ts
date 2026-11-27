@@ -13,6 +13,7 @@ import { analyzeFlatness } from '../flatness';
 import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../params';
 import { hyp, sq } from './lbfgs';
 import { dsin, npMean } from './detmath';
+import { findSpines, type Spine } from './spine';
 
 export const COURSE = 0, WALE = 1, SHEAR = 2, BEND_COURSE = 3, BEND_WALE = 4;
 export type SpringKind = 0 | 1 | 2 | 3 | 4;
@@ -43,6 +44,8 @@ export interface Network {
   height: Float64Array;
   graph: Graph;
   params: ParamSet;
+  /** Spines (chains with stitches worked back along them), SPEC_NOTES N5. */
+  spines: Spine[];
 }
 
 /** Plain-object view of the springs (for tests and debugging). */
@@ -405,6 +408,31 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
     push(i, b, L, kb, BEND_WALE);
   }
 
+  // N5: every spring between two nodes of one spine takes its rest length from the spine's flat
+  // reference layout; course bends along the stem and along the return row get course stiffness
+  const spines = findSpines(g, w, h, param(params, 'ch', 'width'));
+  if (spines.length) {
+    const owner = new Map<number, number>();
+    const stem = new Set<number>(), ret = new Set<number>();
+    spines.forEach((sp, si) => {
+      for (const v of sp.pos.keys()) owner.set(v, si);
+      for (const v of sp.stem) stem.add(v);
+      for (const v of sp.ret) ret.add(v);
+    });
+    for (let idx = 0; idx < gi.length; idx++) {
+      const a = gi[idx], b = gj[idx];
+      const sa = owner.get(a), sb = owner.get(b);
+      if (sa === undefined || sa !== sb) continue;
+      const pa = spines[sa].pos.get(a)!, pb = spines[sa].pos.get(b)!;
+      gL[idx] = hyp(pa[0] - pb[0], pa[1] - pb[1]);
+      if (gt[idx] === BEND_COURSE) {
+        const lo = Math.min(a, b);
+        const trip = [lo, lo + 1, lo + 2];
+        if (trip.every((v) => stem.has(v)) || trip.every((v) => ret.has(v))) gk[idx] = kc * Math.min(sCourse[lo], sCourse[lo + 1], sCourse[lo + 2]);
+      }
+    }
+  }
+
   // C4: duplicates keep the largest k; on a tie the first generated
   const best = new Map<number, number>();
   for (let idx = 0; idx < gi.length; idx++) {
@@ -430,6 +458,6 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
   return {
     nNodes: n, nParticles, m, I, J, L, k: K, kind, slack, springs,
     particleRound: Int32Array.from(prounds), virtualSpace, spaceParticle, anchors,
-    width: w, height: h, graph: g, params,
+    width: w, height: h, graph: g, params, spines,
   };
 }

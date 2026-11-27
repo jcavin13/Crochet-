@@ -65,6 +65,10 @@ export interface ChartNode {
   fan?: boolean;
   /** For picots: the base point is (x, y); `rot` points outward. */
   role?: 'join' | 'ringjoin' | 'travel';
+  /** Part of a radial arm (a chain spine worked back along, or a pointed chain loop): its place on the arm. */
+  arm?: 'spine' | 'tip' | 'back' | 'branch' | 'loop';
+  /** Glyph size factor (picots on arms are drawn as larger loops). Default 1. */
+  scale?: number;
 }
 
 export interface ChartSpace {
@@ -104,6 +108,31 @@ export interface ChartRound {
   s0: number;
   /** Analytic flatness for this round (radial only). */
   flat?: RoundFlatness;
+  /**
+   * Pointed round (radial): it has arms — chain spines worked back along, or long chain loops with
+   * a picot at the top — that stand far beyond the ring. Such a round is judged by blocking, not by
+   * the circular flatness rule; its band is drawn as `outline` instead of a ring.
+   */
+  pointed?: boolean;
+  /** Pointed rounds: the outer outline, a radius per angle (`outlineN` points at angles 2πi/N, counter-clockwise from 3 o'clock). */
+  outline?: number[];
+  /** Pointed rounds: the arms (base angle, base radius and tip radius) in working order. */
+  arms?: ChartArm[];
+}
+
+export interface ChartArm {
+  kind: 'spine' | 'loop';
+  /** First and last node id of the arm (contiguous in working order). */
+  first: number;
+  last: number;
+  /** Course angle of the arm (radians, counter-clockwise from 3 o'clock). */
+  s: number;
+  /** Radius of the arm's base and of its tip (chart units). */
+  r0: number;
+  r1: number;
+  /** Spine chains (base → tip), the tip loop's chains, and the stitches worked back along the spine. */
+  spine: number[];
+  tip: number[];
 }
 
 export interface Bounds { minX: number; minY: number; maxX: number; maxY: number }

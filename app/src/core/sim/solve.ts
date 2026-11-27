@@ -13,6 +13,7 @@ import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../pa
 import { Lbfgs, springEnergy, now, type SpringSet } from './lbfgs';
 import { buildNetwork, nodesInSpace, roundNodeIds, WALE, type Network } from './network';
 import { dcos, dsin, npMean, npSum } from './detmath';
+import { addTableEnergy, type TableOptions } from './table';
 
 export const GOLDEN = 2.399963;
 
@@ -25,6 +26,12 @@ export interface SolveOptions {
   config?: SimConfig;
   /** Reuse a network built earlier. */
   network?: Network;
+  /**
+   * Viewer-level option (not part of the shared spec): grow the piece flat in the xy-plane, then
+   * let it go resting on a table — see table.ts. Off by default; classification and agreement never
+   * use it.
+   */
+  table?: boolean | TableOptions;
 }
 
 export interface SimResult {
@@ -72,6 +79,13 @@ export class Placer {
   private readonly ringMembers = new Map<number, number[]>();
   private roundCentroid: V3 = [0, 0, 0];
   private readonly g: Graph;
+
+  /**
+   * Viewer-level (table mode only, not the shared spec): the P3 radial fallback points away from
+   * the centroid of the piece *before this round* instead of the running centroid, which the
+   * round's own earlier nodes pull off-centre (a spoked chain-ring centre then starts folded).
+   */
+  radialFromRoundCentroid = false;
 
   constructor(readonly net: Network, private readonly cfg: SimConfig) {
     this.g = net.graph;
@@ -160,7 +174,7 @@ export class Placer {
         let [u, nv] = unit(v);
         if (nv < 1e-9) {
           const t = this.tangent(A[0]);
-          let w = sub(base, this.centroid());
+          let w = sub(base, this.radialFromRoundCentroid ? this.roundCentroid : this.centroid());
           w = sub(w, scale(t, dot3(w, t)));
           [u, nv] = unit(w);
           if (nv < 1e-6) {
@@ -201,6 +215,8 @@ export class Placer {
       }
       k += run.length;
     }
+    // P7 spines: radially outward from their base, in their reference layout
+    this.placeSpines(r);
     // P4' chain-space loops on an outward arc
     this.placeLoops(r, ids);
     // P6 perturbation
@@ -210,6 +226,27 @@ export class Placer {
       for (const i of ids) X[3 * i + 2] += eps * wbar * dsin(GOLDEN * (i + 1));
     }
     return added;
+  }
+
+  /**
+   * P7 (crolab.sim._place_spines): every spine of round r whose base is placed is laid out in its
+   * reference layout (s, t): x = x_base + s u + t v, u = unit(x_base − centroid before the round)
+   * (fallback +x), v = unit(z × u) (fallback unit(u × x)).
+   */
+  private placeSpines(r: number) {
+    const { net, g, X } = this;
+    for (const sp of net.spines) {
+      if (g.nodes[sp.stem[0]].round !== r || !isPlaced(X, sp.base)) continue;
+      const o = get(X, sp.base);
+      let [u, nu] = unit(sub(o, this.roundCentroid));
+      if (nu < 1e-9) u = [1, 0, 0];
+      let [t, nt] = unit(cross(Z, u));
+      if (nt < 1e-9) [t] = unit(cross(u, [1, 0, 0]));
+      for (const v of sp.nodes) {
+        const [s_, t_] = sp.pos.get(v)!;
+        set(X, v, add(add(o, scale(u, s_)), scale(t, t_)));
+      }
+    }
   }
 
   private placeLoops(r: number, ids: number[]) {
@@ -315,7 +352,7 @@ export function springStrain(net: Network, X: Float64Array): Float64Array {
 // ---------------------------------------------------------------------------------------------
 // growth as a resumable state machine
 // ---------------------------------------------------------------------------------------------
-export type GrowPhase = 'round' | 'final' | 'done';
+export type GrowPhase = 'round' | 'final' | 'release' | 'done';
 
 export class Grower {
   readonly placer: Placer;
@@ -336,9 +373,15 @@ export class Grower {
   private readonly gtolFinal: number;
   private readonly maxIter: number;
   private readonly maxIterFinal: number;
+  private readonly table: TableOptions | null;
+  private readonly cfg: SimConfig;
+  /** Table mode: the planar grown state (before the release onto the table). */
+  planar: Float64Array | null = null;
 
-  constructor(readonly net: Network, cfg: SimConfig, opts: { uptoRound?: number; gtolRound?: number; gtolFinal?: number; maxIter?: number; maxIterFinal?: number } = {}) {
+  constructor(readonly net: Network, cfg: SimConfig, opts: { uptoRound?: number; gtolRound?: number; gtolFinal?: number; maxIter?: number; maxIterFinal?: number; table?: boolean | TableOptions } = {}) {
     this.placer = new Placer(net, cfg);
+    this.cfg = cfg;
+    if (opts.table) this.placer.radialFromRoundCentroid = true;
     const R = net.graph.rounds.length;
     this.lastRound = opts.uptoRound === undefined ? R - 1 : Math.min(opts.uptoRound, R - 1);
     this.gtolRound = opts.gtolRound ?? 1e-6;
@@ -347,6 +390,7 @@ export class Grower {
     // the lab allows 20000 for every L-BFGS run; the final gtol 1e-8 pass on the near-isometric
     // flat circles can need ~40000 from a slightly different path
     this.maxIterFinal = opts.maxIterFinal ?? 50000;
+    this.table = opts.table ? (opts.table === true ? {} : opts.table) : null;
     if (this.lastRound < 0) this.phase = 'done';
   }
 
@@ -357,7 +401,24 @@ export class Grower {
     const mask = this.placer.placedMask();
     this.sub = subProblem(this.net, mask);
     const sp = this.sub.springs;
-    this.opt = new Lbfgs((x, g) => springEnergy(sp, x, g), gather(this.placer.X, this.sub.idx), { gtol, maxIter });
+    let fg = (x: Float64Array, g: Float64Array) => springEnergy(sp, x, g);
+    const table = this.table;
+    if (table && this.phase !== 'release') {
+      // table mode, growth: strictly in the xy-plane (z = 0, no z gradient)
+      const X = this.placer.X;
+      for (let p = 0; p < this.net.nParticles; p++) if (mask[p]) X[3 * p + 2] = 0;
+      fg = (x, g) => { const E = springEnergy(sp, x, g); for (let q = 2; q < g.length; q += 3) g[q] = 0; return E; };
+    } else if (table) {
+      // release: a small deterministic lift off the table (P6-like), then gravity + table in 3D
+      const X = this.placer.X, w = this.net.width;
+      const wbar = npMean(Array.from(w));
+      for (let p = 0; p < this.net.nParticles; p++) {
+        if (mask[p]) X[3 * p + 2] = 0.5 * this.cfg.perturb_eps * wbar * (1 + dsin(GOLDEN * (p + 1)));
+      }
+      const opts = { ...table, z0: table.z0 ?? -1e-3 };
+      fg = (x, g) => addTableEnergy(x, g, springEnergy(sp, x, g), opts);
+    }
+    this.opt = new Lbfgs(fg, gather(this.placer.X, this.sub.idx), { gtol, maxIter });
   }
 
   /** Write the optimiser's current iterate into X (for live display). */
@@ -368,7 +429,8 @@ export class Grower {
     while (this.phase !== 'done') {
       if (!this.opt) {
         if (this.phase === 'round') { this.round++; this.placer.placeRound(this.round); this.start(this.gtolRound, this.maxIter); }
-        else this.start(this.gtolFinal, this.maxIterFinal);
+        else if (this.phase === 'final') this.start(this.gtolFinal, this.maxIterFinal);
+        else this.start(this.gtolRound, this.maxIterFinal);
       }
       const opt = this.opt!;
       const st = opt.run(deadline);
@@ -382,8 +444,12 @@ export class Grower {
         this.roundEnergies.push(opt.f);
         this.roundConverged.push(st === 'converged' || opt.gnorm <= 10 * this.gtolRound);
         if (this.round >= this.lastRound) this.phase = 'final';
-      } else {
+      } else if (this.phase === 'final') {
         this.converged = st === 'converged' || opt.gnorm <= 10 * this.gtolFinal;
+        if (this.table) { this.planar = Float64Array.from(this.placer.X); this.phase = 'release'; }
+        else this.phase = 'done';
+      } else {
+        this.converged = this.converged && (st === 'converged' || opt.gnorm <= 10 * this.gtolRound);
         this.phase = 'done';
       }
       if (deadline !== Infinity && now() >= deadline) return this.phase === 'done';

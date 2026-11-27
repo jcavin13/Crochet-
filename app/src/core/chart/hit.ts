@@ -1,4 +1,5 @@
 /** Pointer hit testing on a chart layout (uniform grid over glyph centres). Pure. */
+import { outlineRadius } from './layout';
 import type { ChartLayout } from './types';
 
 export interface HitIndex {
@@ -54,7 +55,9 @@ export function roundAt(layout: ChartLayout, x: number, y: number, upto?: number
   let found = -1;
   for (const r of layout.rounds) {
     if (r.first < 0 || (upto !== undefined && r.index > upto)) continue;
-    if (h >= r.r0 - 1e-9 && h <= r.r + 1e-9) { found = r.index; break; }
+    // a pointed round reaches out to its arms' outline
+    const top = r.pointed ? Math.max(r.r, outlineRadius(r, Math.atan2(-y, x))) : r.r;
+    if (h >= r.r0 - 1e-9 && h <= top + 1e-9) { found = r.index; break; }
   }
   return found;
 }

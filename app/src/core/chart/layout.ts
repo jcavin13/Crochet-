@@ -18,6 +18,21 @@
  *     when the chain is longer than the chord; turning chains stacked radially; picots on top of the
  *     previous stitch; joins between the last and first stitch.
  *
+ * Pointed rounds (snowflake arms, vintage pointed doilies), detected from the graph alone:
+ *  - a spine is a chain run followed straight away by a stitch worked back into one of its chains
+ *    ("sl st in 4th ch from hook"); everything worked into its chains (and into chain branches made
+ *    on the way back) belongs to the arm. Chains beyond the highest chain worked into are the tip
+ *    loop. A long chain loop with a picot at its top (ch ≥ 4, picot, ch ≥ 4, nothing worked into it
+ *    in the round) is a pointed loop.
+ *  - the whole arm takes one place on the course, at its base; after the course is solved it is laid
+ *    straight out along the radius at that angle, one chain length (params) per chain, whatever the
+ *    round's radius: stitches worked back sit beside their chain (one side), picots made on the way
+ *    down are fronds at ±50° (alternating sides), the tip loop closes at the end, a cluster tip stands
+ *    on it, a chain branch worked back along recurses at the branch angle. Chains between arms are
+ *    ordinary arcs between the arms' base stitches. The round is flagged `pointed`, with its arms and
+ *    a star-shaped outline (radius per angle) instead of the flatness ring; a later round attaches to
+ *    the arms' real chain positions.
+ *
  * Rows (any `Row` round): the same machinery with x for the angle and height for the radius.
  */
 import { analyzeFlatness, type RoundFlatness } from '../flatness';
@@ -25,7 +40,7 @@ import { childrenOf, type Graph, type Node } from '../graph';
 import { heightOf, stitchParam, type ParamSet } from '../params';
 import { solveOrdered } from './solve';
 import { symbolOf } from './symbols';
-import type { Bounds, ChartLayout, ChartNode, ChartNodeKind, ChartRound, ChartSpace, LayoutOptions, Pt } from './types';
+import type { Bounds, ChartArm, ChartLayout, ChartNode, ChartNodeKind, ChartRound, ChartSpace, LayoutOptions, Pt } from './types';
 
 const TAU = Math.PI * 2;
 
@@ -46,7 +61,7 @@ export const DIM = {
   hubR: 0.3,
 } as const;
 
-type ItemKind = 'st' | 'tch' | 'tchLoose' | 'ch' | 'join' | 'picot';
+type ItemKind = 'st' | 'tch' | 'tchLoose' | 'ch' | 'join' | 'picot' | 'arm';
 interface Item { ids: number[]; rep: number; kind: ItemKind; half: number; w: number; t: number }
 
 interface Frame {
@@ -97,6 +112,10 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
   const kind: ChartNodeKind[] = new Array(N).fill('stitch');
   const role: (ChartNode['role'] | undefined)[] = new Array(N);
   const legs: Pt[][] = Array.from({ length: N }, () => []);
+  const armRole: ChartNode['arm'][] = new Array(N);
+  const gScale = new Float64Array(N).fill(1);
+  // chain length along an arm (spines are laid out at their real length, not on the round's circle)
+  const pitch = Math.min(0.9, Math.max(0.55, stitchParam(params, 'ch').width / unit || DIM.chainPitch));
 
   const place = (id: number, x: number, y: number, rot: number, tx = x, ty = y) => {
     X[id] = x; Y[id] = y; TX[id] = tx; TY[id] = ty; ROT[id] = rot; placed[id] = 1;
@@ -192,6 +211,28 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     return fl.rho - rise;
   };
 
+  /** Outer outline of a pointed round: per angle, the furthest symbol, falling off sideways (a star hull). */
+  const outlineOf = (ids: number[], rBase: number): number[] => {
+    const pts: [number, number][] = [];
+    for (const id of ids) {
+      if (!placed[id]) continue;
+      let x = X[id], y = Y[id];
+      if (kind[id] === 'picot') { const e = (gScale[id] > 1 ? 2.5 : 2) * picotRadius(graph.nodes[id]) * gScale[id]; x += Math.cos(ROT[id]) * e; y += Math.sin(ROT[id]) * e; }
+      pts.push([Math.atan2(-y, x), Math.hypot(x, y) + 0.35]);
+    }
+    const out: number[] = [];
+    for (let i = 0; i < OUTLINE_N; i++) {
+      const th = (TAU * i) / OUTLINE_N;
+      let r = rBase + 0.35;
+      for (const [a, rr] of pts) {
+        const d = Math.abs(mod(th - a + Math.PI, TAU) - Math.PI);
+        r = Math.max(r, rr - OUTLINE_SLOPE * rr * d);
+      }
+      out.push(Math.round(r * 1000) / 1000);
+    }
+    return out;
+  };
+
   for (const R of graph.rounds) {
     const k = R.index;
     const fl: RoundFlatness | undefined = flat?.rounds[k];
@@ -247,6 +288,12 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       });
     }
 
+    // --- arms: chain spines worked back along, long chain loops with a picot at the top
+    const arms: ArmInfo[] = radial && anyPlacedBefore ? detectArms(graph, k, first, last, kids.nodes, hub) : [];
+    const armAt = new Int32Array(last - first + 1).fill(-1);
+    const armItem: number[] = arms.map(() => -1);
+    arms.forEach((a, i) => { for (let id = a.first; id <= a.last; id++) armAt[id - first] = i; });
+
     // --- classify + build items
     const items: Item[] = [];
     const itemOf = new Int32Array(last - first + 1).fill(-1);
@@ -272,6 +319,16 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         continue;
       }
       flushRun(false);
+      const ai = armAt[id - first];
+      if (ai >= 0) {
+        // the whole arm takes one place on the course, at its base
+        if (armItem[ai] < 0) {
+          items.push({ ids: [id], rep: id, kind: 'arm', half: arms[ai].kind === 'loop' ? 0.42 : 0.34, w: 0.03, t: NaN });
+          armItem[ai] = items.length - 1;
+        }
+        itemOf[id - first] = armItem[ai];
+        continue;
+      }
       if (kind[id] === 'ringch' || hub[id]) continue;
       const push = (it: Omit<Item, 'ids' | 'rep' | 't'>) => {
         items.push({ ids: [id], rep: id, t: NaN, ...it });
@@ -355,7 +412,9 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     const meanNat = stItems.length ? natSum / stItems.length : prevTop + 0.5;
     let rho: number;
     if (radial) {
-      rho = Math.max(meanNat, prevTop + minGap, totalLin / (TAU * fill), flatTarget(k) / unit);
+      // a pointed round's arms stand off the circle: its flatness radius (which counts every chain of
+      // the arms as circumference) does not apply
+      rho = Math.max(meanNat, prevTop + minGap, totalLin / (TAU * fill), arms.length ? 0 : flatTarget(k) / unit);
     } else {
       rho = Math.max(meanNat, prevTop + minGap);
     }
@@ -448,7 +507,10 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     const toCourse = (d: number) => (radial ? d / rho : d);
     for (let i = 0; i + 1 < n; i++) gap[i] = toCourse(solveItems[i].half + solveItems[i + 1].half);
     let wrapGap = n > 1 ? toCourse(solveItems[n - 1].half + solveItems[0].half) : 0;
-    if (radial && n > 2) {
+    // (not round 1 into a ring, already spread evenly by width — sharing there left the slack at the
+    // seam; not a pointed round: its stitches sit on their anchors and the chains between the arms
+    // are drawn as arcs between them, whatever their place on the circle)
+    if (radial && n > 2 && !arms.length && !central) {
       // Spread a closed round round its circle: share most of the free circumference among the
       // gaps (less between stitches worked into the same place, so fans stay fans); the anchors
       // decide the rest.
@@ -545,6 +607,153 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         legs[it.rep] = pts;
       }
     }
+    // --- arms, straight out along the radius at their base angle
+    const armsOut: ChartArm[] = [];
+    const rotV = (p: Pt, a: number): Pt => ({ x: p.x * Math.cos(a) - p.y * Math.sin(a), y: p.x * Math.sin(a) + p.y * Math.cos(a) });
+    const angOf = (p: Pt) => Math.atan2(p.y, p.x);
+    const addV = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + b.x * t, y: a.y + b.y * t });
+    /** Chains on a small closed loop leaving `base` in direction `w` (side `wv`), from the −wv side round to the +wv side. */
+    const loopChains = (ids: number[], base: Pt, w: Pt, wv: Pt, s: number, role: ChartNode['arm']) => {
+      // the loop opens at `base` (a gap of ±LOOP_GAP round its bottom), chains spaced round the rest
+      const rl = Math.max(0.26, (ids.length * pitch * 0.95) / (TAU - 2 * LOOP_GAP));
+      const C = addV(base, w, rl * Math.cos(LOOP_GAP));
+      ids.forEach((c, i) => {
+        const ph = Math.PI + LOOP_GAP + ((i + 0.5) / ids.length) * (TAU - 2 * LOOP_GAP);
+        const p = addV(addV(C, w, rl * Math.cos(ph)), wv, rl * Math.sin(ph));
+        const t = { x: -w.x * Math.sin(ph) + wv.x * Math.cos(ph), y: -w.y * Math.sin(ph) + wv.y * Math.cos(ph) };
+        place(c, p.x, p.y, angOf(t)); kind[c] = 'chain'; S[c] = s; armRole[c] = role;
+      });
+      return rl * (1 + Math.cos(LOOP_GAP));
+    };
+    /**
+     * A chain spine from `O` along `u` (returning stitches on the `v` side): chains of the spine
+     * base → tip, the tip loop, then the nodes `from..to` worked back down it — sl st / sc beside
+     * their chain, picots as side branches at ±50° (alternating sides), a chain branch worked back
+     * along as a nested spine.
+     */
+    const placeSpine = (chains: number[], tip: number[], from: number, to: number, O: Pt, u: Pt, v: Pt, s: number, g0: number) => {
+      const sv = -u.y * v.x + u.x * v.y >= 0 ? 1 : -1; // rotating u by +sv·a turns it towards v
+      const P = chains.map((_, j) => addV(O, u, g0 + (j + 0.5) * pitch));
+      const E = addV(O, u, g0 + chains.length * pitch);
+      const jOf = new Map(chains.map((c, j) => [c, j] as [number, number]));
+      chains.forEach((c, j) => { place(c, P[j].x, P[j].y, angOf(u)); kind[c] = 'chain'; S[c] = s; armRole[c] = 'spine'; });
+      let jCur = chains.length - 1, side = 0, tipLoop = false, id = from;
+      const b0 = from <= to ? graph.nodes[from] : undefined;
+      if (tip.length && b0) {
+        if (b0.type === 'slst' || b0.type === 'sc') {
+          loopChains(tip, E, u, v, s, 'tip');
+          tipLoop = true;
+        } else {
+          // a tall stitch (cluster, bobble) at the hook end: its stem stands on, the skipped chains beside it
+          const h = Math.max(0.9, hOf(b0));
+          const T = addV(E, u, h);
+          legs[b0.id] = b0.into.map(() => ({ x: E.x, y: E.y }));
+          place(b0.id, T.x, T.y, angOf(u)); kind[b0.id] = 'stitch'; S[b0.id] = s; armRole[b0.id] = 'tip';
+          const st = Math.min(pitch, h / Math.max(1, tip.length));
+          tip.forEach((c, i) => {
+            const p = addV(addV(E, u, (i + 0.5) * st + 0.1), v, -0.55);
+            place(c, p.x, p.y, angOf(u)); kind[c] = 'chain'; S[c] = s; armRole[c] = 'tip';
+          });
+          id = from + 1;
+        }
+      } else if (tip.length) {
+        loopChains(tip, E, u, v, s, 'tip');
+      }
+      const nextSide = () => (side++ % 2 === 0 ? -1 : 1);
+      while (id <= to) {
+        const nd = graph.nodes[id];
+        const base = jCur >= 0 ? P[jCur] : O;
+        if (nd.type === 'ch' && nd.role !== 'tch') {
+          let e = id;
+          while (e + 1 <= to && graph.nodes[e + 1].type === 'ch' && graph.nodes[e + 1].role !== 'tch') e++;
+          const run: number[] = [];
+          for (let c = id; c <= e; c++) run.push(c);
+          const sg = nextSide();
+          const w = rotV(u, sg * sv * BRANCH), wv = rotV(v, sg * sv * BRANCH);
+          const a0 = e + 1 <= to ? graph.nodes[e + 1].into[0] : undefined;
+          if (a0 && 'node' in a0 && a0.node >= id && a0.node <= e) {
+            // a chain branch worked back along: a spine of its own at the branch angle
+            const end = armEnd(graph, kids.nodes, k, id, e, to);
+            const jm = workedMax(graph, id, e, e + 1, end);
+            placeSpine(run.slice(0, jm + 1), run.slice(jm + 1), e + 1, end, base, w, wv, s, 0.12);
+            for (let c = id; c <= end; c++) if (armRole[c] === 'spine') armRole[c] = 'branch';
+            id = end + 1;
+          } else {
+            loopChains(run, addV(base, w, 0.1), w, wv, s, 'branch');
+            id = e + 1;
+          }
+          continue;
+        }
+        if (nd.type === 'picot') {
+          const atTip = tipLoop && jCur === chains.length - 1;
+          const w = rotV(u, nextSide() * sv * (atTip ? TIP_BRANCH : BRANCH));
+          // from the gap below the chain (beside its sl st), clear of the chain ovals; at the tip, beside the tip loop
+          const b = atTip ? addV(addV(E, u, -0.12), w, 0.3) : addV(addV(base, u, -pitch / 2), w, 0.1);
+          place(id, b.x, b.y, angOf(w)); kind[id] = 'picot'; S[id] = s; armRole[id] = 'branch'; gScale[id] = ARM_PICOT;
+          id++;
+          continue;
+        }
+        const a = nd.into[0];
+        const j = a && 'node' in a ? jOf.get(a.node) : undefined;
+        if (j !== undefined) jCur = j;
+        const Pj = jCur >= 0 ? P[jCur] : O;
+        if (nd.type === 'slst') {
+          const q = addV(addV(Pj, v, 0.21), u, -0.1);
+          place(id, q.x, q.y, angOf(u)); kind[id] = 'slst';
+        } else {
+          const L = Math.min(1.3, Math.max(0.62, 0.62 + 0.4 * (hOf(nd) - 1)));
+          const q = addV(Pj, v, L);
+          legs[id] = nd.into.map(() => ({ x: Pj.x, y: Pj.y }));
+          place(id, q.x, q.y, angOf(v)); kind[id] = 'stitch';
+        }
+        S[id] = s; armRole[id] = 'back';
+        id++;
+      }
+    };
+    arms.forEach((A, ai) => {
+      const ii = armItem[ai];
+      const s = S[items[ii].rep];
+      const u = { x: Math.cos(s), y: -Math.sin(s) };
+      const v = { x: -dir * Math.sin(s), y: -dir * Math.cos(s) };
+      // base: the tops of the stitches either side of the arm (the group's opening and closing sc)
+      let rb = 0, nb = 0;
+      for (let j = ii - 1; j >= 0; j--) if (items[j].kind === 'st' || items[j].kind === 'tch') { rb += H[items[j].rep]; nb++; break; }
+      for (let j = ii + 1; j < items.length; j++) if (items[j].kind === 'st' || items[j].kind === 'tch') { rb += H[items[j].rep]; nb++; break; }
+      const r0 = nb ? rb / nb : rho;
+      if (A.kind === 'spine') {
+        const O = { x: u.x * r0, y: u.y * r0 };
+        placeSpine(A.spine, A.tip, A.first + A.spine.length + A.tip.length, A.last, O, u, v, s, 0.14);
+      } else {
+        const P0 = endpoint(A.a[0] - 1, first, last, true);
+        const Q0 = endpoint(A.b[A.b.length - 1] + 1, first, last, false);
+        const rB = (Math.hypot(P0.x, P0.y) + Math.hypot(Q0.x, Q0.y)) / 2;
+        const h = Math.min(A.a.length, A.b.length) * pitch * 0.9;
+        const apex = addV({ x: 0, y: 0 }, u, rB + h);
+        const line = (ids: number[], p: Pt, q: Pt) => {
+          const dx = q.x - p.x, dy = q.y - p.y, L = Math.hypot(dx, dy) || 1e-9;
+          const pad = Math.min(DIM.chainEndPad, L * 0.12), st = (L - 2 * pad) / ids.length;
+          ids.forEach((c, i) => {
+            const f = (pad + (i + 0.5) * st) / L;
+            place(c, p.x + dx * f, p.y + dy * f, Math.atan2(dy, dx)); kind[c] = 'chain'; S[c] = s; armRole[c] = 'loop';
+          });
+          const sp = chainSpace[ids[0]];
+          if (sp >= 0) spacesOut.push({ id: sp, round: k, kind: 'chsp', d: `M${r3(p.x)} ${r3(p.y)}L${r3(q.x)} ${r3(q.y)}`, apex: rB + h });
+        };
+        line(A.a, P0, addV(apex, v, -0.24));
+        line(A.b, addV(apex, v, 0.24), Q0);
+        A.picots.forEach((pc, i) => {
+          const w = rotV(u, (i - (A.picots.length - 1) / 2) * 0.6);
+          place(pc, apex.x - u.x * 0.12, apex.y - u.y * 0.12, angOf(w)); kind[pc] = 'picot'; S[pc] = s; armRole[pc] = 'tip'; gScale[pc] = ARM_PICOT;
+        });
+      }
+      let r1 = r0;
+      for (let id = A.first; id <= A.last; id++) if (placed[id]) r1 = Math.max(r1, H[id]);
+      armsOut.push({
+        kind: A.kind, first: A.first, last: A.last, s, r0, r1,
+        spine: A.kind === 'spine' ? A.spine : [...A.a, ...A.b], tip: A.kind === 'spine' ? A.tip : A.picots,
+      });
+    });
+
     // base height for loose turning chains: the anchor of the next stitch
     const nextStBase = (i: number): number => {
       for (let j = i + 1; j < items.length; j++) {
@@ -666,7 +875,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     // --- round summary
     let rs = 0, rc = 0, rOuter = 0;
     for (const it of items) if (it.kind === 'st' || it.kind === 'tch') { rs += H[it.rep]; rc++; }
-    for (const id of ids) if (placed[id]) rOuter = Math.max(rOuter, H[id] + (kind[id] === 'picot' ? 0.5 : 0.2));
+    for (const id of ids) if (placed[id]) rOuter = Math.max(rOuter, H[id] + (kind[id] === 'picot' ? 0.5 * gScale[id] * (gScale[id] > 1 ? 1.4 : 1) : 0.2));
     for (const sp of spacesOut) if (sp.round === k) rOuter = Math.max(rOuter, sp.apex);
     const rMean = rc ? rs / rc : (ids.filter((id) => placed[id]).reduce((a, id) => a + H[id], 0) / Math.max(1, ids.filter((id) => placed[id]).length)) || rho;
     const r0band = roundsOut.length ? roundsOut[roundsOut.length - 1].r : 0;
@@ -681,11 +890,12 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       labelAt = { x, y };
     }
     const b = emptyB();
-    for (const id of ids) if (placed[id]) { growPt(b, X[id], Y[id], 0.45); growPt(b, TX[id], TY[id], 0.45); if (kind[id] === 'picot') { const [ox, oy] = [Math.cos(ROT[id]), Math.sin(ROT[id])]; growPt(b, X[id] + ox * 0.5, Y[id] + oy * 0.5, 0.2); } }
+    for (const id of ids) if (placed[id]) { growPt(b, X[id], Y[id], 0.45); growPt(b, TX[id], TY[id], 0.45); if (kind[id] === 'picot') { const [ox, oy] = [Math.cos(ROT[id]), Math.sin(ROT[id])]; const e = 0.5 * gScale[id] * (gScale[id] > 1 ? 1.4 : 1); growPt(b, X[id] + ox * e, Y[id] + oy * e, 0.2); } }
     growPt(b, labelAt.x, labelAt.y, 0.4);
     roundsOut.push({
       index: k, label: R.label, short: shortLabel(R.label), kind: R.kind, r: rMean, r0: r0band, rOuter: Math.max(rOuter, rMean),
       dir, joined: !!R.joined, labelAt, first, last, bounds: b, flat: fl, spiral: gK, s0,
+      ...(armsOut.length ? { pointed: true, outline: outlineOf(ids, rMean), arms: armsOut } : {}),
     });
     prevTop = rMean;
     prevDir = dir;
@@ -705,7 +915,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       const back = Math.min(0.4, len / 2);
       cx = X[id] - Math.cos(ROT[id]) * back; cy = Y[id] - Math.sin(ROT[id]) * back;
     } else if (k === 'picot') {
-      const rl = picotRadius(nd);
+      const rl = picotRadius(nd) * gScale[id] * (gScale[id] > 1 ? 1.25 : 1);
       cx = X[id] + Math.cos(ROT[id]) * rl; cy = Y[id] + Math.sin(ROT[id]) * rl;
     }
     const out: ChartNode = {
@@ -714,6 +924,8 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     };
     if (role[id]) out.role = role[id];
     if (fan[id]) out.fan = true;
+    if (armRole[id]) out.arm = armRole[id];
+    if (gScale[id] !== 1) out.scale = gScale[id];
     return out;
   });
 
@@ -849,3 +1061,114 @@ export function boundsUpto(layout: ChartLayout, upto?: number, pad = 0.6): Bound
   return { minX: b.minX - pad, minY: b.minY - pad, maxX: b.maxX + pad, maxY: b.maxY + pad };
 }
 
+
+/* ------------------------------------------------------------------ arms (pointed rounds) */
+
+/** Branch picots leave the spine at ±50°, side picots of a trefoil tip at ±88° (beside the tip loop). */
+const BRANCH = (50 * Math.PI) / 180;
+const TIP_BRANCH = (88 * Math.PI) / 180;
+/** Half-angle of the opening at the bottom of a tip loop (where it closes on the spine). */
+const LOOP_GAP = 0.5;
+/** Picots on arms are drawn as larger loops (they are the fronds of the arm). */
+const ARM_PICOT = 1.3;
+/** Shortest chain runs either side of a picot that make a pointed loop. */
+const LOOP_MIN = 4;
+const OUTLINE_N = 240;
+/** How fast the outline of a pointed round falls off sideways from a symbol (per unit of arc). */
+const OUTLINE_SLOPE = 0.9;
+const r3 = (v: number) => String(Math.round(v * 1000) / 1000);
+
+interface ArmInfo {
+  kind: 'spine' | 'loop';
+  first: number;
+  last: number;
+  /** spine: chains base → highest chain worked back into; tip: chains beyond (the tip loop). */
+  spine: number[];
+  tip: number[];
+  /** loop: chains out, picots at the top, chains back. */
+  a: number[];
+  picots: number[];
+  b: number[];
+}
+
+const plainCh = (g: Graph, id: number, hub: Uint8Array) => { const n = g.nodes[id]; return n.type === 'ch' && n.role !== 'tch' && !hub[id]; };
+
+/** Last node of an arm whose chain run is `c0..c1`: everything worked into its chains (or into chains made on the way back) in this round. */
+function armEnd(g: Graph, kids: number[][], k: number, c0: number, c1: number, limit: number): number {
+  let end = c1 + 1;
+  for (let c = c0; c <= end; c++) {
+    if (g.nodes[c].type !== 'ch') continue;
+    for (const x of kids[c]) {
+      if (x <= end || x > limit || g.nodes[x].round !== k) continue;
+      // the round's join into a chain at its start is not part of an arm
+      if (x === g.rounds[k].last && g.nodes[x].type === 'slst') continue;
+      end = x;
+    }
+  }
+  return end;
+}
+
+/** Highest index (0-based within c0..c1) of the run's chains that nodes from..to are worked into. */
+function workedMax(g: Graph, c0: number, c1: number, from: number, to: number): number {
+  let jm = -1;
+  for (let x = from; x <= to; x++) for (const a of g.nodes[x].into) if ('node' in a && a.node >= c0 && a.node <= c1) jm = Math.max(jm, a.node - c0);
+  return jm;
+}
+
+/**
+ * Arms of round k, from the graph alone:
+ *  - spine: a run of chains followed straight away by a stitch worked back into one of them
+ *    ("sl st in 4th ch from hook"); the arm runs to the last node worked into its chains. Chains
+ *    beyond the highest chain worked into are the tip loop.
+ *  - loop: ch ≥ 4, picot(s), ch ≥ 4 with nothing worked into those chains in this round — a long
+ *    pointed chain loop with a picot at its top.
+ */
+function detectArms(g: Graph, k: number, first: number, last: number, kids: number[][], hub: Uint8Array): ArmInfo[] {
+  const out: ArmInfo[] = [];
+  let id = first;
+  while (id <= last) {
+    if (!plainCh(g, id, hub)) { id++; continue; }
+    let e = id;
+    while (e + 1 <= last && plainCh(g, e + 1, hub)) e++;
+    const run: number[] = [];
+    for (let c = id; c <= e; c++) run.push(c);
+    const a0 = e + 1 <= last ? g.nodes[e + 1].into[0] : undefined;
+    if (a0 && 'node' in a0 && a0.node >= id && a0.node <= e) {
+      const end = armEnd(g, kids, k, id, e, last);
+      const jm = workedMax(g, id, e, e + 1, end);
+      out.push({ kind: 'spine', first: id, last: end, spine: run.slice(0, jm + 1), tip: run.slice(jm + 1), a: [], picots: [], b: [] });
+      id = end + 1;
+      continue;
+    }
+    if (run.length >= LOOP_MIN) {
+      let p = e + 1;
+      const pics: number[] = [];
+      while (p <= last && g.nodes[p].type === 'picot') pics.push(p++);
+      if (pics.length && p <= last && plainCh(g, p, hub)) {
+        let f = p;
+        while (f + 1 <= last && plainCh(g, f + 1, hub)) f++;
+        const b: number[] = [];
+        for (let c = p; c <= f; c++) b.push(c);
+        const free = [...run, ...b].every((c) => !kids[c].some((x) => g.nodes[x].round === k));
+        if (b.length >= LOOP_MIN && free) {
+          out.push({ kind: 'loop', first: id, last: f, spine: [], tip: [], a: run, picots: pics, b });
+          id = f + 1;
+          continue;
+        }
+      }
+    }
+    id = e + 1;
+  }
+  return out;
+}
+
+/** Outline radius of a pointed round at angle θ (radians, counter-clockwise from 3 o'clock). */
+export function outlineRadius(r: ChartRound, theta: number): number {
+  const o = r.outline;
+  if (!o || !o.length) return r.rOuter;
+  const M = o.length;
+  const f = (mod(theta, TAU) / TAU) * M;
+  const i = Math.floor(f) % M;
+  const t = f - Math.floor(f);
+  return o[i] * (1 - t) + o[(i + 1) % M] * t;
+}

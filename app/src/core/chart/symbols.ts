@@ -129,7 +129,7 @@ export function glyph(n: ChartNode, o: SymbolOptions = {}): Glyph {
     case 'picot': {
       const out = { x: Math.cos(n.rot), y: Math.sin(n.rot) };
       const chains = n.symbol.size ?? 3;
-      const rl = 0.15 * Math.sqrt(chains / 3);
+      const rl = 0.15 * Math.sqrt(chains / 3) * (n.scale ?? 1);
       const c = add(T, out, rl + 0.02);
       if (set === 'jis') {
         // a ring of small chain ovals closed by a dot (unverified; SYMBOLS.md)
@@ -141,6 +141,15 @@ export function glyph(n: ChartNode, o: SymbolOptions = {}): Glyph {
           s += ellipse(p, Math.min(0.11, (rl * 2.6) / chains), 0.055, a + Math.PI / 2);
         }
         return { stroke: s, fill: circle(T, 0.05) };
+      }
+      if ((n.scale ?? 1) > 1) {
+        // a picot on an arm: a pointed loop standing out from the spine, like the frond it blocks to
+        const q = perpOf(out);
+        const L = rl * 2.5, w = rl * 0.95;
+        const tipP = add(T, out, L);
+        const c1 = add(add(T, out, L * 0.15), q, w * 1.25), c2 = add(add(T, out, L * 0.85), q, w * 0.75);
+        const c3 = add(add(T, out, L * 0.85), q, -w * 0.75), c4 = add(add(T, out, L * 0.15), q, -w * 1.25);
+        return { stroke: `M${P(T)}C${P(c1)} ${P(c2)} ${P(tipP)}C${P(c3)} ${P(c4)} ${P(T)}Z`, fill: circle(T, 0.055) };
       }
       return { stroke: circle(c, rl), fill: circle(T, 0.055) };
     }

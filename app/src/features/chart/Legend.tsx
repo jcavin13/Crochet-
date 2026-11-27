@@ -7,7 +7,8 @@ export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet 
   layout: ChartLayout; terms: Terms; symbolSet?: SymbolSet; scGlyph?: ScGlyph; upto?: number; showFlatness?: boolean;
 }) {
   const entries = useMemo(() => legendEntries(layout, terms, upto), [layout, terms, upto]);
-  const loose = layout.rounds.some((r) => r.flat?.slackOnly && (upto === undefined || r.index <= upto));
+  const loose = layout.rounds.some((r) => r.flat?.slackOnly && !r.pointed && (upto === undefined || r.index <= upto));
+  const pointed = layout.rounds.some((r) => r.pointed && r.first >= 0 && (upto === undefined || r.index <= upto));
   return (
     <div>
       <ul className="ch-legend" aria-label="Symbols used">
@@ -35,6 +36,11 @@ export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet 
           )}
           <span><i className="ch-swatch ch-swatch--cup" aria-hidden="true" />cups (too few sts)</span>
           <span><i className="ch-swatch ch-swatch--ruffle" aria-hidden="true" />ruffles (too many)</span>
+          {pointed && (
+            <span title="The arms stand off the circle (chain spines, pointed loops): such a round is stiffened and pinned out, so it is judged by how it blocks, not by the circle rule.">
+              <i className="ch-swatch ch-swatch--pointed" aria-hidden="true" />pointed round — judged by blocking
+            </span>
+          )}
         </div>
       )}
     </div>

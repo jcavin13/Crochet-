@@ -20,6 +20,7 @@ Publications that use the symbols should credit "Source: Craft Yarn Council www.
 | Chain | open oval along the course (tangent to the arc it lies on; tangential when stacked as a turning chain) | CYC |
 | Slip stitch | filled dot | CYC |
 | Picot | small loop sitting on top of the previous stitch, closed by a dot at its base; its size grows with the chain count (`ch-5 picot` is larger) | CYC: "small loop of 3 chains closed with a dot" |
+| Picot on an arm | on a snowflake / pointed-doily arm (a chain spine worked back along): a pointed loop leaving the spine at about 50°, alternating sides (pairs read as fern fronds), closed by a dot at its base; beside a tip loop at about 90° (trefoil leaves) | drawn the way the picot blocks; leaflet charts draw the same thing as a loop of chain ovals |
 | FLO / BLO | a small arc under the stem: FLO `⌣` (opening outward), BLO `⌢` (opening inward) | CYC front-/back-loop marks |
 | FP / BP | a hook at the foot of the stem, curling to one side for FP and to the other for BP | CYC post-stitch hooks (the side the hook curls to is a drawing convention; **unverified** against the CYC artwork) |
 | Magic ring | a circle with a short tail at the centre | CYC "adjustable ring" |

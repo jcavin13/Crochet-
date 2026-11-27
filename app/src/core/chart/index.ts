@@ -8,13 +8,13 @@
  *   hitTest(index, x, y)               → nearest node (pointer / tap)
  */
 export type * from './types';
-export { layoutChart, boundsUpto, DIM } from './layout';
+export { layoutChart, boundsUpto, outlineRadius, DIM } from './layout';
 export { solveOrdered } from './solve';
 export {
   glyph, symbolOf, hatchesOf, legendEntries, legendName, sampleGlyph, magicRingGlyph, SYM,
 } from './symbols';
 export type { SymbolOptions, SymbolSet, ScGlyph, Glyph, LegendEntry } from './symbols';
-export { chartToSvg, DEFAULT_COLORS, roundBandPath, bandPath, edgePath, roundEdge } from './svg';
+export { chartToSvg, DEFAULT_COLORS, POINTED_NOTE, roundBandPath, bandPath, edgePath, outlinePath, roundEdge } from './svg';
 export type { ChartColors, SvgOptions } from './svg';
 export { buildHitIndex, hitTest, roundAt } from './hit';
 export type { HitIndex } from './hit';

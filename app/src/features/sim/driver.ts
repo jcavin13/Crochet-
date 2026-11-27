@@ -58,7 +58,7 @@ export function createDriver(o: DriverOptions) {
         sim?.dispose();
         job = msg.job;
         try {
-          sim = createSim(msg.graph, msg.params, { config: msg.config, uptoRound: msg.uptoRound, blocked: msg.blocked });
+          sim = createSim(msg.graph, msg.params, { config: msg.config, uptoRound: msg.uptoRound, blocked: msg.blocked, table: msg.table, pins: msg.pins });
         } catch (e) {
           sim = null;
           o.error(job, e instanceof Error ? e.message : String(e));

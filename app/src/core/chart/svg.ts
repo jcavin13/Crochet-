@@ -10,6 +10,9 @@ import type { ChartLayout, ChartRound } from './types';
 
 const TAU = Math.PI * 2;
 
+/** What the chart says about a pointed round instead of flat / cup / ruffle. */
+export const POINTED_NOTE = 'pointed round — judged by blocking';
+
 export interface ChartColors {
   bg: string;
   ink: string;
@@ -47,6 +50,8 @@ export interface SvgOptions {
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const f = (v: number) => String(Math.round(v * 1000) / 1000);
 
+const ringPath = (r: number) => `M${f(-r)} 0a${f(r)} ${f(r)} 0 1 0 ${f(2 * r)} 0a${f(r)} ${f(r)} 0 1 0 ${f(-2 * r)} 0Z`;
+
 /** Annulus (r0 < r1) centred on the origin, fill-rule evenodd. */
 export function roundBandPath(r0: number, r1: number): string {
   const ring = (r: number) => `M${f(-r)} 0a${f(r)} ${f(r)} 0 1 0 ${f(2 * r)} 0a${f(r)} ${f(r)} 0 1 0 ${f(-2 * r)} 0Z`;
@@ -81,9 +86,22 @@ function poly(r: ChartRound, angles: number[], reverse: boolean, close: boolean)
   return `M${pts.join('L')}${close ? 'Z' : ''}`;
 }
 
-/** Band of round `k` (between the previous round's edge and its own), as a closed path. */
+/** Outline of a pointed round (its arms' star hull), closed. */
+export function outlinePath(r: ChartRound): string {
+  const o = r.outline ?? [];
+  if (!o.length) return roundBandPath(0, r.rOuter);
+  const pts = o.map((rr, i) => { const t = (TAU * i) / o.length; return `${f(rr * Math.cos(t))} ${f(-rr * Math.sin(t))}`; });
+  return `M${pts.join('L')}Z`;
+}
+
+/** Band of round `k` (between the previous round's edge and its own), as a closed path; a pointed round's is its outline. */
 export function bandPath(layout: ChartLayout, k: number): string {
   const r = layout.rounds[k];
+  if (r.pointed) {
+    let prev: ChartRound | undefined;
+    for (let j = k - 1; j >= 0; j--) if (layout.rounds[j].first >= 0) { prev = layout.rounds[j]; break; }
+    return outlinePath(r) + (prev && !prev.pointed ? ringPath(prev.r) : '');
+  }
   let prev: ChartRound | undefined;
   for (let j = k - 1; j >= 0; j--) if (layout.rounds[j].first >= 0) { prev = layout.rounds[j]; break; }
   if (!r.spiral && !prev?.spiral) return roundBandPath(prev ? prev.r : 0, r.r);
@@ -113,8 +131,9 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
   const entryW = entries.reduce((m, e) => Math.max(m, 1.2 + (e.abbr.length + e.name.length + 1) * 0.22), 4);
   const cols = Math.max(1, Math.floor(chartW / entryW));
   const rowsN = Math.ceil(entries.length / cols);
-  const looseKey = showFlat && layout.rounds.some((r) => r.flat?.slackOnly && r.index <= upto);
-  const flatRows = showFlat ? (chartW >= 15 ? 1 : looseKey ? 3 : 2.4) : 0;
+  const looseKey = showFlat && layout.rounds.some((r) => r.flat?.slackOnly && !r.pointed && r.index <= upto);
+  const anyPointed = showFlat && layout.rounds.some((r) => r.pointed && r.first >= 0 && r.index <= upto);
+  const flatRows = showFlat ? (chartW >= 15 ? 1 : 2.4 + (looseKey ? 0.6 : 0) + (anyPointed ? 0.6 : 0)) : 0;
   const titleH = o.title ? 1.4 : 0;
   const legendH = entries.length ? 1.0 + rowsN * 1.5 + flatRows * 1.2 : 0;
   const W = chartW, Hh = chartH + titleH + legendH;
@@ -140,7 +159,14 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
   }
   if (layout.mode === 'radial') {
     for (const r of layout.rounds) {
-      if (r.first < 0 || r.index > upto || r.r <= r.r0) continue;
+      if (r.first < 0 || r.index > upto) continue;
+      if (r.pointed) {
+        // judged by blocking, not by the circle rule: a faint star hull, no flat / cup / ruffle tint
+        if (!o.mono) out.push(`<path d="${bandPath(layout, r.index)}" fill="${C.band}" fill-rule="evenodd" fill-opacity="0.45"><title>${esc(`${r.label}: ${POINTED_NOTE}`)}</title></path>`);
+        if (showFlat) out.push(`<path d="${outlinePath(r)}" fill="none" stroke="${C.ink3}" stroke-width="0.04" stroke-dasharray="0.3 0.22" stroke-linecap="round"/>`);
+        continue;
+      }
+      if (r.r <= r.r0) continue;
       const cls = r.flat?.class;
       if (showFlat && cls && cls !== 'n/a') {
         const fill = cls === 'flat' ? C.flatSoft : cls === 'cup' ? C.cupSoft : C.ruffleSoft;
@@ -185,10 +211,11 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
     if (showFlat) {
       const keys: [string, string, string][] = [['flat', C.flatSoft, 'lies flat'], ['cup', C.cupSoft, 'cups (too few stitches)'], ['ruffle', C.ruffleSoft, 'ruffles (too many)']];
       if (anyLoose) keys.splice(1, 0, ['loose', C.flatSoft, 'flat (loose loops)']);
+      if (anyPointed) keys.push(['pointed', C.band, POINTED_NOTE]);
       keys.forEach(([key, fill, label], i) => {
         const x = x0 + 0.6 + (W >= 15 ? i * (W / keys.length) : 0);
         if (W < 15 && i > 0) y += 0.7;
-        out.push(`<rect x="${f(x)}" y="${f(y)}" width="0.6" height="0.45" fill="${fill}" stroke="${C.ink3}" stroke-width="0.03"/>`);
+        out.push(`<rect x="${f(x)}" y="${f(y)}" width="0.6" height="0.45" fill="${fill}" stroke="${C.ink3}" stroke-width="0.03"${key === 'pointed' ? ' stroke-dasharray="0.12 0.08"' : ''}/>`);
         if (key === 'loose') out.push(`<rect x="${f(x)}" y="${f(y)}" width="0.6" height="0.45" fill="url(#loose)"/>`);
         out.push(`<text class="lg" x="${f(x + 0.8)}" y="${f(y + 0.35)}">${esc(label)}</text>`);
       });

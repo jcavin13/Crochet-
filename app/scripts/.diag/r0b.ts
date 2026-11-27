@@ -1,0 +1,13 @@
+import { generateSnowflake, SNOWFLAKE_PRESETS } from '../../src/core/generate/snowflake/index';
+import { paramSetById, simConfig } from '../../src/core/params/index';
+import { buildNetwork, Grower, networkEnergy } from '../../src/core/sim/index';
+const params = paramSetById('thread-10_1.5mm')!;
+const res = generateSnowflake(SNOWFLAKE_PRESETS[0].spec, params);
+const g = res.pattern!.graph; const net = buildNetwork(g, params);
+const gr = new Grower(net, simConfig, { uptoRound: 0, table: true });
+gr.placer.placeRound(0);
+const X0 = Float64Array.from(gr.placer.X);
+const f = (X: Float64Array) => g.nodes.filter(n=>n.round===0).map(n => `${n.id}:${X[3*n.id].toFixed(1)},${X[3*n.id+1].toFixed(1)}`).join(' ');
+console.log('placed', f(X0), 'E', networkEnergy(net, X0));
+const gr2 = new Grower(net, simConfig, { uptoRound: 0, table: true }); gr2.advance();
+console.log('planar', f(gr2.planar!), 'E', networkEnergy(net, gr2.planar!));

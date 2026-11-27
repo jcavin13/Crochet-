@@ -208,9 +208,25 @@ export const ROUTES = [
     prepare: async (page) => { await page.locator('.dz-template').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 8)); await page.waitForTimeout(300); },
   },
   {
-    name: 'snowflake-chart', path: '/designer?kind=snowflake&view=chart', wait: '.ch-svg', only: 'desktop',
-    prepare: async (page) => { await page.locator('.sf-tabs').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 8)); await page.waitForTimeout(300); },
+    name: 'snowflake-chart', path: '/designer?kind=snowflake&view=chart', wait: '.ch-svg',
+    prepare: async (page) => { await page.locator('.sf-tabs').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - (window.innerWidth < 900 ? 72 : 8))); await page.waitForTimeout(300); },
   },
+  // the standalone Chart page of a saved snowflake: arms laid out as radial spines (core/chart pointed rounds)
+  ...(() => {
+    const openChart = (preset, points) => async (page) => {
+      await page.getByRole('button', { name: preset, exact: true }).click();
+      if (points) await page.locator('button.dz-toggle', { hasText: new RegExp(`^${points}$`) }).click();
+      await page.waitForTimeout(600);
+      await page.getByRole('button', { name: 'Open in…' }).first().click();
+      await page.getByRole('menuitem', { name: 'Chart' }).click();
+      await page.waitForSelector('.ch-page .ch-svg');
+      await page.waitForTimeout(400);
+    };
+    return [
+      { name: 'chart-snowflake-fern', path: '/designer?kind=snowflake', wait: '.sf-layers', only: 'desktop', prepare: openChart('Fern') },
+      { name: 'chart-snowflake-12', path: '/designer?kind=snowflake', wait: '.sf-layers', only: 'desktop', prepare: openChart('Double-pointed', 12) },
+    ];
+  })(),
   // counter: fresh start, mid-round (Rnd 5), the end-of-round check, landing, tally, dark
   ...(() => {
     const doily = '/counter/fixture%3Asimple_doily';

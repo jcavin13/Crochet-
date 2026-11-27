@@ -30,7 +30,7 @@ import type { BlockedShape, Bridge, Pt, Seg, SnowCheck, SnowCheckItem, SnowRound
 const BRANCH_ANGLE = (50 * Math.PI) / 180;
 const SIDE_PICOT_ANGLE = (60 * Math.PI) / 180;
 
-interface ArmGeo { segs: Seg[]; branchSegs: Seg[]; tips: { p: Pt; kind: 'tip' | 'branch' | 'minor' }[]; tipR: number }
+interface ArmGeo { segs: Seg[]; branchSegs: Seg[]; tips: { p: Pt; kind: 'tip' | 'branch' | 'minor' }[]; tipR: number; sides: Pt[]; branches: Pt[] }
 
 /** Local frame (u radial, v sideways) at angle φ (0 = straight up) → page coordinates (y down). */
 const at = (phi: number, u: number, v = 0): Pt => ({ x: u * Math.sin(phi) + v * Math.cos(phi), y: -u * Math.cos(phi) + v * Math.sin(phi) });
@@ -45,12 +45,14 @@ function armGeometry(arm: Pick<ArmSpec, 'length' | 'branches' | 'picot' | 'tip' 
   const segs: Seg[] = [{ a: at(phi, R0), b: at(phi, tipU) }];
   const branchSegs: Seg[] = [];
   const tips: ArmGeo['tips'] = [{ p: at(phi, tipU), kind: minor ? 'minor' : 'tip' }];
+  const sides: Pt[] = [], branches: Pt[] = [];
   if (arm.tip === 'trefoil') {
     const r = (Math.max(3, P - 1) * wch) / 2;
     for (const sg of [-1, 1]) {
       const b = at(phi, R0 + S + r * Math.cos(SIDE_PICOT_ANGLE), sg * r * Math.sin(SIDE_PICOT_ANGLE));
       branchSegs.push({ a: at(phi, R0 + S), b });
       tips.push({ p: b, kind: minor ? 'minor' : 'branch' });
+      sides.push(b);
     }
   }
   const B = branchPairs({ ...arm, tip: arm.tip });
@@ -65,17 +67,18 @@ function armGeometry(arm: Pick<ArmSpec, 'length' | 'branches' | 'picot' | 'tip' 
         const b = at(phi, u0 + reach * Math.cos(BRANCH_ANGLE), sg * reach * Math.sin(BRANCH_ANGLE));
         branchSegs.push({ a: at(phi, u0), b });
         tips.push({ p: b, kind: 'branch' });
+        branches.push(b);
       }
     }
   }
-  return { segs, branchSegs, tips, tipR: tipU };
+  return { segs, branchSegs, tips, tipR: tipU, sides, branches };
 }
 
 function minorGeometry(minor: MinorSpec, phi: number, R0: number, params: ParamSet): ArmGeo {
   if (minor.style === 'picot') {
     const wch = stitchParam(params, 'ch').width * simConfig.block_stretch;
     const tipU = R0 + (minor.picot * wch) / 2;
-    return { segs: [{ a: at(phi, R0), b: at(phi, tipU) }], branchSegs: [], tips: [{ p: at(phi, tipU), kind: 'minor' }], tipR: tipU };
+    return { segs: [{ a: at(phi, R0), b: at(phi, tipU) }], branchSegs: [], tips: [{ p: at(phi, tipU), kind: 'minor' }], tipR: tipU, sides: [], branches: [] };
   }
   return armGeometry({ length: minor.length, branches: 0, picot: minor.picot, tip: minor.style === 'trefoil' ? 'trefoil' : 'picot' }, phi, R0, params, true);
 }
@@ -110,14 +113,16 @@ export function blockedShape(spec: SnowflakeSpec, plan: SnowPlan, params: ParamS
   const arms: BlockedShape['arms'] = [];
   const pins: BlockedShape['pins'] = [];
   const armGeos: { geo: ArmGeo; phi: number; sector: number; idx: number }[] = [];
+  const anchorPins: BlockedShape['anchorPins'] = [];
   let tipR = 0, minorTipR = 0;
   for (let k = 0; k < n; k++) {
     anchors.forEach((a, idx) => {
       const phi = (k + a.frac) * theta;
-      if (a.kind === 'valley') { pins.push({ p: at(phi, R0), kind: 'valley' }); return; }
+      if (a.kind === 'valley') { pins.push({ p: at(phi, R0), kind: 'valley' }); anchorPins.push({ kind: 'valley', tip: at(phi, R0), sides: [], branches: [] }); return; }
       const geo = a.kind === 'point' ? armGeometry(spec.arm, phi, R0, params, false) : minorGeometry(spec.minor, phi, R0, params);
       if (a.kind === 'point') tipR = Math.max(tipR, geo.tipR); else minorTipR = Math.max(minorTipR, geo.tipR);
       armGeos.push({ geo, phi, sector: k, idx });
+      anchorPins.push({ kind: a.kind, tip: geo.tips[0].p, sides: geo.sides, branches: geo.branches });
       arms.push({ spine: geo.segs, branches: geo.branchSegs, tips: geo.tips.map((t) => t.p) });
       for (const t of geo.tips) pins.push(t);
     });
@@ -159,7 +164,7 @@ export function blockedShape(spec: SnowflakeSpec, plan: SnowPlan, params: ParamS
   const outline = pins.map((p) => p.p).sort((a, b) => angle(a) - angle(b) || Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
   const acrossMm = n % 2 === 0 ? 2 * tipR : tipR * (1 + Math.cos(Math.PI / n));
   const rings = planned.slice(0, -1).map((p) => p.r);
-  return { points: n, bodyR, tipR, minorTipR, valleyR, clearanceMm: clearance, acrossMm, outline, pins, arms, bridges, web, rings };
+  return { points: n, bodyR, tipR, minorTipR, valleyR, clearanceMm: clearance, acrossMm, outline, pins, arms, bridges, web, rings, anchorPins };
 }
 
 /** Move a spine's base a little outward so neighbouring spines that share the body don't count as touching. */

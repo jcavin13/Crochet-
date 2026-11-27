@@ -5,6 +5,8 @@
  *
  * spec/examples/tiny.cro is compiled too but NOT written over the hand-made tiny.graph.json:
  * it is compared (ignoring `src` and `notation`); a mismatch writes the compiled copy to a temp dir.
+ * spec/fixtures/extra/*.cro (references that are not canonical fixtures, e.g. a snowflake for the
+ * spine rules of lab/SPEC_NOTES.md N5) are compiled to <name>.graph.json next to them, graph only.
  * Options: --check  (do not write; exit 1 if any graph file is missing or stale — for CI).
  */
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
@@ -68,6 +70,16 @@ for (const f of readdirSync(fixturesDir).filter((x) => x.endsWith('.cro')).sort(
   writeOrCheck(join(fixturesDir, `${name}.graph.json`), stableJson(pattern),
     `${pattern.graph.nodes.length} nodes, ${pattern.graph.rounds.length} rounds`);
   writeOrCheck(join(fixturesDir, `${name}.flatness.json`), stableJson(flatnessRecord(name, pattern)), 'analytic flatness per round');
+}
+
+const extraDir = join(fixturesDir, 'extra');
+if (existsSync(extraDir)) {
+  for (const f of readdirSync(extraDir).filter((x) => x.endsWith('.cro')).sort()) {
+    const pattern = compileFile(join(extraDir, f));
+    if (!pattern) continue;
+    writeOrCheck(join(extraDir, f.replace(/\.cro$/, '.graph.json')), stableJson(pattern),
+      `${pattern.graph.nodes.length} nodes, ${pattern.graph.rounds.length} rounds (extra reference)`);
+  }
 }
 
 // tiny: compare against the hand-compiled reference
