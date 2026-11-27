@@ -9,7 +9,7 @@
  *   puff / popcorn      `ch 2, puff in same sp` / `ch 3, pc in same sp`
  * and every round ends `…, join.` with a count annotation.
  */
-import type { Entry, Item, Op, Place, Plain, Stitch } from './types';
+import type { Entry, HookStitch, Item, Op, Place, Plain, Stitch } from './types';
 
 export type Terms = 'US' | 'UK';
 
@@ -30,6 +30,13 @@ export function stitchName(s: Stitch, terms: Terms, legsOverride?: number): stri
 }
 
 const isTall = (s: Stitch): s is { t: 'dc' | 'tr' | 'dtr' } => s.t === 'dc' || s.t === 'tr' || s.t === 'dtr';
+
+/** English ordinal for "4th ch from hook". */
+export function ordinal(n: number): string {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
+}
 
 export function entryOf(s: Stitch): Entry {
   switch (s.t) {
@@ -62,6 +69,15 @@ export function sectorEntries(ops: Op[]): Entry[] {
     else if (op.k === 'each') { for (let i = 0; i < op.count; i++) out.push(entryOf(op.s)); chainRun = false; }
     else if (op.k === 'ch') pushCh(op.n);
     else if (op.k === 'picot') chainRun = false;
+    else if (op.k === 'hook') {
+      // a hook-addressed chain run is plain chains, not a chain space (notation.md 4a)
+      if (chainRun && out[out.length - 1]?.kind === 'sp') out.pop();
+      chainRun = false;
+      if (op.s.t !== 'slst') out.push(entryOf(op.s));
+    } else if (op.k === 'along') {
+      chainRun = false;
+      if (op.s.t !== 'slst') for (let i = 0; i < op.count; i++) out.push(entryOf(op.s as Stitch));
+    }
   }
   return out;
 }
@@ -75,6 +91,7 @@ class Writer {
   sk() { return this.terms === 'UK' ? 'miss' : 'sk'; }
   slst() { return this.terms === 'UK' ? 'ss' : 'sl st'; }
   name(s: Stitch) { return stitchName(s, this.terms); }
+  hookName(s: HookStitch) { return s.t === 'slst' ? this.slst() : stitchName(s, this.terms); }
 
   place(p: Place): string {
     switch (p.to) {
@@ -101,6 +118,8 @@ class Writer {
       case 'picot': return o.n === 3 ? 'picot' : `ch-${o.n} picot`;
       case 'skipSt': return `${this.sk()} ${o.n} st${o.n === 1 ? '' : 's'}`;
       case 'skipSp': return `${this.sk()} next ch-${o.len} sp`;
+      case 'hook': return `${this.hookName(o.s)} in ${ordinal(o.nth)} ch from hook`;
+      case 'along': return o.count === 1 ? `${this.hookName(o.s)} in next ch` : `${this.hookName(o.s)} in next ${o.count} ch`;
     }
   }
 

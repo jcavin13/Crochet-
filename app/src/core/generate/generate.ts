@@ -27,6 +27,18 @@ import type {
 
 export const MIN_SYMMETRY = 3;
 export const MAX_SYMMETRY = 24;
+/** Doubling may take the outer rounds up to this many repeats. */
+export const MAX_REPEATS = 48;
+
+/** One repeat's targets split into two identical halves (for doubling the repeats), or null. */
+export function halveEntries(entries: Entry[]): Entry[] | null {
+  if (entries.length < 2 || entries.length % 2) return null;
+  const h = entries.length / 2;
+  const a = entries.slice(0, h), b = entries.slice(h);
+  if (JSON.stringify(a) !== JSON.stringify(b)) return null;
+  if (!a.some((e) => e.kind === 'st')) return null;
+  return a;
+}
 /** Candidates of a round re-scored by how well the next round can follow them. */
 const LOOKAHEAD = 10;
 
@@ -40,6 +52,11 @@ interface Planned {
   iface: Iface;
   aim: GeneratedRound['aim'];
   prevLead: number;
+  /** Repeats around in this round. */
+  reps: number;
+  doubled?: boolean;
+  /** Flatness state before this round (for explaining the choice). */
+  before: FlatState;
   /** Index into spec.rounds of the user round this was made for (transitions: the round they serve). */
   source: number;
   autoReason?: GeneratedRound['autoReason'];
@@ -86,6 +103,7 @@ export interface SolveOptions {
 }
 
 export interface Plan { planned: Planned[]; warnings: string[]; ringChains: number; score: number; overrides: Map<number, number> }
+export type { Planned };
 
 const missed = (p: Planned) => p.pred.cls !== (p.aim === 'cup' ? 'cup' : p.aim);
 
@@ -133,6 +151,7 @@ function planOnce(spec: DoilySpec, params: ParamSet, overrides: Map<number, numb
   let state: FlatState = startState(params, 0);
   let ringChains = 0;
   let score = 0;
+  let reps = n;
   const total = user.length;
 
   type Scored = { c: Candidate; p: Prediction; s: number; entries: Entry[] };
@@ -141,6 +160,7 @@ function planOnce(spec: DoilySpec, params: ParamSet, overrides: Map<number, numb
 
   /** Every candidate of a round, scored (lower is better). */
   const scoreAll = (rs: RoundSpec, aim: GeneratedRound['aim'], ifc: Iface, st: FlatState, index: number, prev?: { motif: MotifId; params: RoundParams }): Scored[] => {
+    const n = reps;
     const ctx: MotifCtx = { prev: ifc, repeats: n, index, heights, lacy, prevMotif: prev?.motif, prevParams: prev?.params, params };
     const out: Scored[] = [];
     for (const c of MOTIFS[rs.motif].candidates(ctx, rs.params ?? {})) {
@@ -194,17 +214,26 @@ function planOnce(spec: DoilySpec, params: ParamSet, overrides: Map<number, numb
     score += best.s;
     if (planned.length === 0) ringChains = best.c.ringChains ?? 0;
     const lead = iface.kind === 'lace' ? spaceSlots(iface.entries).leading : 0;
+    const before = state;
     iface = ifaceOf(best.entries);
     state = best.p.next;
-    planned.push({ motif: rs.motif, params: best.c.params, auto, cand: best.c, pred: best.p, entries: best.entries, iface, aim, prevLead: lead, source: userIndex, autoReason });
+    planned.push({ motif: rs.motif, params: best.c.params, auto, cand: best.c, pred: best.p, entries: best.entries, iface, aim, prevLead: lead, source: userIndex, autoReason, reps, before: planned.length === 0 ? startState(params, best.c.ringChains ?? 0) : before, doubled: pendingDouble || undefined });
+    pendingDouble = false;
     return true;
   };
 
+  let pendingDouble = false;
   const limit = spec.rounds.length ? total : 1;
   for (let i = 0; i < limit; i++) {
     const rs = user[i];
     if (!MOTIFS[rs.motif]) { warnings.push(`Round ${i + 1}: unknown motif "${rs.motif}" — skipped.`); continue; }
     if (i > 0 && rs.motif === 'centre') { warnings.push(`Round ${i + 1}: a centre can only start the doily — skipped.`); continue; }
+    if (rs.double && i > 0) {
+      const half = planned.length ? halveEntries(iface.entries) : null;
+      if (!half) warnings.push(`Round ${i + 1}: the round below does not split into two equal halves per repeat, so the repeats cannot be doubled here (give it 2, 4… groups per repeat first).`);
+      else if (reps * 2 > MAX_REPEATS) warnings.push(`Round ${i + 1}: doubling would make ${reps * 2} repeats (at most ${MAX_REPEATS}).`);
+      else { iface = ifaceOf(half); reps *= 2; pendingDouble = true; }
+    }
     const tr = transitionFor(rs.motif, iface);
     if (tr) {
       place({ motif: tr }, true, i, tr === 'mesh' ? 'spaces' : tr === 'filler' ? 'stitches' : undefined);
@@ -223,7 +252,7 @@ function planOnce(spec: DoilySpec, params: ParamSet, overrides: Map<number, numb
 }
 
 /** Rough yarn per node, mm: about 2 × (width + height) of the stitch it makes. */
-function yarnOf(pattern: Pattern, params: ParamSet): number {
+export function yarnOf(pattern: Pattern, params: ParamSet): number {
   let mm = 0;
   for (const nd of pattern.graph.nodes) {
     const sp = stitchParam(params, nd.type);
@@ -260,10 +289,10 @@ export function generateDoily(spec: DoilySpec, params: ParamSet): GenerateResult
   const roundLines: string[] = [];
   planned.forEach((p, i) => {
     const body = writeRound({
-      sector: p.cand.ops, repeats: n, terms, prevLead: p.prevLead,
+      sector: p.cand.ops, repeats: p.reps, terms, prevLead: p.prevLead,
       ring: i === 0 ? { chains: ringChains } : undefined, fastenOff: i === planned.length - 1,
     });
-    const count = countAnnotation(p.entries, n, terms, picotCount(p.cand.ops));
+    const count = countAnnotation(p.entries, p.reps, terms, picotCount(p.cand.ops));
     roundLines.push(`Rnd ${i + 1}: ${body}. ${count}`);
   });
   const text = [...lines, ...roundLines].join('\n') + '\n';
@@ -283,10 +312,11 @@ export function generateDoily(spec: DoilySpec, params: ParamSet): GenerateResult
       number: i + 1, motif: p.motif, params: p.params, auto: p.auto || undefined, autoReason: p.autoReason, source: p.source,
       e: f?.e ?? p.pred.e, eMin: f?.eMin ?? p.pred.eMin, eMax: f?.eMax ?? p.pred.eMax,
       class: f?.class ?? p.pred.cls, aim: p.aim, slackOnly: f?.slackOnly || undefined,
-      stitches: gr?.stitchCount ?? p.entries.filter((e) => e.kind === 'st').length * n,
-      spaces: p.entries.filter((e) => e.kind === 'sp').length * n,
+      stitches: gr?.stitchCount ?? p.entries.filter((e) => e.kind === 'st').length * p.reps,
+      spaces: p.entries.filter((e) => e.kind === 'sp').length * p.reps,
       message: f?.message ?? '',
       text: roundLines[i],
+      repeats: p.reps, entries: p.entries, rho: f?.rho ?? p.pred.rho, r: f?.r ?? p.pred.r, doubled: p.doubled,
     };
   });
   for (const r of rounds) {
