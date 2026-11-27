@@ -47,12 +47,15 @@ GOLDEN = 2.399963
 # energy
 # ------------------------------------------------------------------------------------------
 def energy_and_grad(x: np.ndarray, I: np.ndarray, J: np.ndarray, L: np.ndarray, kL: np.ndarray,
-                    n: int) -> tuple[float, np.ndarray]:
-    """E = sum 1/2 (k/L)(|x_i - x_j| - L)^2 and its gradient. x is flat [3n]; kL = k / L."""
+                    n: int, slack: np.ndarray | None = None) -> tuple[float, np.ndarray]:
+    """E = sum 1/2 (k/L)(|x_i - x_j| - L)^2 and its gradient. x is flat [3n]; kL = k / L.
+    Springs flagged in `slack` are tension-only: (|x_i - x_j| - L) is replaced by max(0, .)."""
     X = x.reshape(n, 3)
     d = X[I] - X[J]
     r = np.sqrt(np.einsum("ij,ij->i", d, d))
     e = r - L
+    if slack is not None:
+        e = np.where(slack & (e < 0), 0.0, e)
     E = 0.5 * float(np.dot(kL, e * e))
     coef = kL * e / np.maximum(r, 1e-12)
     f = d * coef[:, None]
@@ -63,7 +66,8 @@ def energy_and_grad(x: np.ndarray, I: np.ndarray, J: np.ndarray, L: np.ndarray, 
 
 
 def network_energy(net: Network, X: np.ndarray) -> float:
-    E, _ = energy_and_grad(np.asarray(X, float).ravel(), net.i, net.j, net.L, net.k / net.L, net.n_particles)
+    E, _ = energy_and_grad(np.asarray(X, float).ravel(), net.i, net.j, net.L, net.k / net.L, net.n_particles,
+                           net.slack)
     return E
 
 
@@ -73,13 +77,13 @@ def spring_strain(net: Network, X: np.ndarray) -> np.ndarray:
 
 
 def relax(X0: np.ndarray, I, J, L, k, free: np.ndarray | None = None, gtol: float = 1e-6,
-          maxiter: int = 20000) -> tuple[np.ndarray, float, bool, int]:
+          maxiter: int = 20000, slack: np.ndarray | None = None) -> tuple[np.ndarray, float, bool, int]:
     """Minimise the spring energy over the particles flagged in `free` (default: all)."""
     n = len(X0)
     kL = k / L
     if free is None or free.all():
         def fun(x):
-            return energy_and_grad(x, I, J, L, kL, n)
+            return energy_and_grad(x, I, J, L, kL, n, slack)
         x0 = X0.ravel().copy()
         res = minimize(fun, x0, jac=True, method="L-BFGS-B",
                        options={"maxiter": maxiter, "maxcor": 20, "gtol": gtol, "ftol": 1e-15, "maxfun": maxiter * 2})
@@ -89,7 +93,7 @@ def relax(X0: np.ndarray, I, J, L, k, free: np.ndarray | None = None, gtol: floa
 
     def fun(x):
         Xf[idx] = x.reshape(-1, 3)
-        E, g = energy_and_grad(Xf.ravel(), I, J, L, kL, n)
+        E, g = energy_and_grad(Xf.ravel(), I, J, L, kL, n, slack)
         return E, g.reshape(n, 3)[idx].ravel()
     res = minimize(fun, X0[idx].ravel(), jac=True, method="L-BFGS-B",
                    options={"maxiter": maxiter, "maxcor": 20, "gtol": gtol, "ftol": 1e-15, "maxfun": maxiter * 2})
@@ -307,7 +311,7 @@ def _relax_placed(net: Network, X: np.ndarray, mask: np.ndarray, gtol: float):
     remap[idx] = np.arange(len(idx))
     both = mask[net.i] & mask[net.j]
     I, J = remap[net.i[both]], remap[net.j[both]]
-    Xs, E, ok, it = relax(X[idx].copy(), I, J, net.L[both], net.k[both], gtol=gtol)
+    Xs, E, ok, it = relax(X[idx].copy(), I, J, net.L[both], net.k[both], gtol=gtol, slack=net.slack[both])
     out = X.copy()
     out[idx] = Xs
     return out, E, ok, it

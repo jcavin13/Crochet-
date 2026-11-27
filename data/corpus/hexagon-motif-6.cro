@@ -6,7 +6,7 @@ hook: 4.0mm
 params: dk-3_4.0mm
 source: original (written for this project, 2026)
 license: CC0-1.0
-notes: A hexagon worked from a magic ring, with 3-dc clusters at the six corners and 2-dc groups along the sides, finished with an sc round (the ch-1 side spaces are passed over, not filled) with picots at the corners and mid-sides. Design intent: a joinable hexagon for blankets, but here a single motif. Exercises magic ring, beginning cluster ("ch 2, 2-dc cl in same sp"), cluster pairs in a corner space, side groups, travelling by slip stitches into a space, and picots. Real hexagons lie flat; NOTE the analytic flatness check treats rounds as circles, so a 6-fold cornered motif will read as slightly "over" at the corners.
+notes: A hexagon worked from a magic ring, with 3-dc clusters at the six corners and 2-dc groups along the sides, finished with an sc round (the ch-1 side spaces are passed over, not filled) with picots at the corners and mid-sides. Design intent: a joinable hexagon for blankets, but here a single motif. Exercises magic ring, beginning cluster ("ch 2, 2-dc cl in same sp"), cluster pairs in a corner space, side groups, travelling by slip stitches into a space, and picots. Real hexagons lie flat; NOTE the analytic flatness check treats rounds as circles, so a 6-fold cornered motif can read as "over" at the corners (here the numbers stay inside tolerance).
 
 Rnd 1: mr, ch 3 (counts as dc), dc in ring, ch 2, *2 dc in ring, ch 2* x5, join. (12 dc, 6 ch-2 sps)
 Rnd 2: sl st in next st, sl st in next ch-2 sp, ch 2, 2-dc cl in same sp, ch 3, 3-dc cl in same sp, ch 2, *(3-dc cl, ch 3, 3-dc cl) in next ch-2 sp, ch 2* x5, join. (12 cl, 6 ch-3 sps, 6 ch-2 sps)

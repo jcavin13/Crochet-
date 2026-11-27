@@ -1,0 +1,24 @@
+# Original project pattern: fifteen-round wheel-and-mesh centrepiece
+title: Wheel and mesh centrepiece (8-fold, 15 rounds)
+terms: US
+yarn: crochet cotton no. 10
+hook: 1.5mm
+params: thread-10_1.5mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: The largest pattern in the set (15 rounds, about 2600 graph nodes; nominal diameter about 16 cm in no. 10 thread by the analytic radius). Design intent: a classic wheel-and-web centre: dc ring and mesh, sixteen ch-5 loops, eight 7-dc wedges that are narrowed by dc2tog and dc3tog while ch-4 loops multiply (2, 3, 4, 5 per repeat), two plain mesh rounds given once with a range label, a ch-6 round, then sixteen 7-dc fans opened into ch-1 lattices and edged with sc, picot, ch 1. Exercises chain ring with dc, a range label ("Rnds 10-11") repeating a joined mesh round, beginning "ch 2" before a tog, dc2tog/dc3tog over stitches, "sc in next sc" across spaces, groups with xN in long repeats, and the ch-N sp length check on every space reference. Intended shape: flat.
+
+Rnd 1: ch 5, join to form ring, ch 3 (counts as dc), 15 dc in ring, join. (16)
+Rnd 2: ch 5 (counts as dc, ch 2), *dc in next st, ch 2* x15, join. (16 dc, 16 ch-2 sps)
+Rnd 3: sl st in next ch-2 sp, ch 3 (counts as dc), dc in same sp, ch 1, *2 dc in next ch-2 sp, ch 1* x15, join. (32 dc, 16 ch-1 sps)
+Rnd 4: sl st in next st, sl st in next ch-1 sp, ch 1, sc in same sp, ch 5, *sc in next ch-1 sp, ch 5* x15, join. (16 sc, 16 ch-5 sps)
+Rnd 5: sl st in next ch-5 sp, ch 3 (counts as dc), 6 dc in same sp, ch 3, sc in next ch-5 sp, ch 3, *7 dc in next ch-5 sp, ch 3, sc in next ch-5 sp, ch 3* x7, join. (64 sts, 56 dc, 16 ch-3 sps)
+Rnd 6: ch 3 (counts as dc), dc in next 6 sts, ch 4, sc in next sc, ch 4, *dc in next 7 sts, ch 4, sc in next sc, ch 4* x7, join. (64 sts, 16 ch-4 sps)
+Rnd 7: ch 2, *dc2tog, dc in next 3 sts, dc2tog, ch 4, sc in next ch-4 sp, ch 4, sc in next ch-4 sp, ch 4* x8, join. (56 sts, 24 ch-4 sps)
+Rnd 8: ch 2, *dc2tog, dc in next st, dc2tog, ch 4, sc in next ch-4 sp, ch 4, sc in next ch-4 sp, ch 4, sc in next ch-4 sp, ch 4* x8, join. (48 sts, 32 ch-4 sps)
+Rnd 9: ch 2, *dc3tog, ch 4, (sc in next ch-4 sp, ch 4) x4* x8, join. (40 sts, 40 ch-4 sps)
+Rnds 10-11: sl st in next ch-4 sp, ch 1, sc in same sp, ch 4, *sc in next ch-4 sp, ch 4* x39, join. (40 sc, 40 ch-4 sps)
+Rnd 12: sl st in next ch-4 sp, ch 1, sc in same sp, ch 6, *sc in next ch-4 sp, ch 6* x39, join. (40 sc, 40 ch-6 sps)
+Rnd 13: sl st in next ch-6 sp, ch 1, sc in same sp, ch 2, 7 dc in next ch-6 sp, ch 2, sc in next ch-6 sp, ch 2, 7 dc in next ch-6 sp, ch 2, sc in next ch-6 sp, ch 3, *sc in next ch-6 sp, ch 2, 7 dc in next ch-6 sp, ch 2, sc in next ch-6 sp, ch 2, 7 dc in next ch-6 sp, ch 2, sc in next ch-6 sp, ch 3* x7, join. (136 sts, 112 dc, 32 ch-2 sps, 8 ch-3 sps)
+Rnd 14: ch 1, sc in same st, ch 2, (dc in next dc, ch 1) x6, dc in next dc, ch 2, sc in next sc, ch 2, (dc in next dc, ch 1) x6, dc in next dc, ch 2, sc in next sc, ch 3, *sc in next sc, ch 2, (dc in next dc, ch 1) x6, dc in next dc, ch 2, sc in next sc, ch 2, (dc in next dc, ch 1) x6, dc in next dc, ch 2, sc in next sc, ch 3* x7, join. (136 sts, 96 ch-1 sps, 32 ch-2 sps, 8 ch-3 sps)
+Rnd 15: ch 1, sc in same st, sc in next ch-2 sp, (sc in next ch-1 sp, ch-3 picot, ch 1) x6, sc in next ch-2 sp, sc in next sc, sc in next ch-2 sp, (sc in next ch-1 sp, ch-3 picot, ch 1) x6, sc in next ch-2 sp, sc in next sc, 2 sc in next ch-3 sp, *sc in next sc, sc in next ch-2 sp, (sc in next ch-1 sp, ch-3 picot, ch 1) x6, sc in next ch-2 sp, sc in next sc, sc in next ch-2 sp, (sc in next ch-1 sp, ch-3 picot, ch 1) x6, sc in next ch-2 sp, sc in next sc, 2 sc in next ch-3 sp* x7, join, fasten off. (168 sc, 96 picot, 96 ch-1 sps)

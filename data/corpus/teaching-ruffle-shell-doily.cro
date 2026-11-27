@@ -1,0 +1,16 @@
+# Original project pattern -- DELIBERATELY NON-FLAT teaching example (ruffles)
+title: Teaching example - ruffled shell edge (NOT flat)
+terms: US
+yarn: worsted-4
+hook: 5.0mm
+params: worsted-4_5.0mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: DELIBERATE FLATNESS FAILURE, for teaching and for testing the analytic check and the sim. Rnds 1-4 are a textbook flat dc circle (12 increases per round). Rnd 5 then puts a 5-dc shell in every other stitch (120 dc where a flat round needs about 60) and Rnd 6 puts a 7-dc shell in the centre of every shell with sc between (216 sts where about 72 would lie flat). Intended behaviour: Rnds 1-4 flat; Rnd 5 ruffles (about twice the flat stitch count, roughly +100%) and Rnd 6 ruffles harder (roughly +200%), so the edge forms deep wavy flutes like a frilled lettuce edge. A designer fix would be a 5-dc shell in every 4th stitch with sc between. Exercises "ch 3 (does not count as st)" before a shell in the same st, the shell name with default and explicit size, "sk 1 st" / "sk 2 sts", and the shells count unit.
+
+Rnd 1: mr, ch 3 (counts as dc), 11 dc in ring, join. (12)
+Rnd 2: ch 3 (counts as dc), dc in same st, 2 dc in each st around, join. (24)
+Rnd 3: ch 3 (counts as dc), 2 dc in next st, *dc in next st, 2 dc in next st* x11, join. (36)
+Rnd 4: ch 3 (counts as dc), dc in next st, 2 dc in next st, *dc in next 2 sts, 2 dc in next st* x11, join. (48)
+Rnd 5: ch 3 (does not count as st), shell in same st, sk 1 st, *shell in next st, sk 1 st* x23, join. (120 dc, 24 shells)
+Rnd 6: ch 1, *sc in next st, sk 1 st, 7-dc shell in next st, sk 1 st, sc in next st* x24, join, fasten off. (216 sts, 48 sc, 168 dc, 24 shells)

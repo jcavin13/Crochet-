@@ -49,6 +49,7 @@ class Network:
     height: np.ndarray     # (effective) height per node
     graph: Graph = field(repr=False)
     params: StitchParams = field(repr=False)
+    slack: np.ndarray = None  # bool [m]: tension-only springs (chain-space chains, SPEC_NOTES N4)
 
     @property
     def m(self) -> int:
@@ -115,10 +116,28 @@ class CourseGroups:
     C: dict[tuple[str, int], float]
     closed: dict[tuple[str, int], bool]
     rho_g: dict[tuple[str, int], float]
+    Cnode: np.ndarray = None   # per node: length of the reference circle it lies on
 
 
-def course_groups(g: Graph, w: np.ndarray, w_eff: np.ndarray, h: np.ndarray, cfg: dict) -> CourseGroups:
+def course_groups(g: Graph, w: np.ndarray, w_eff: np.ndarray, h: np.ndarray, cfg: dict,
+                  params: StitchParams | None = None) -> CourseGroups:
     cn = cfg.get("flatness", {}).get("chain_nominal", 0.85)
+    # lace rounds: chain spaces take up the length the round needs, within their compliance band
+    # [chain_slack_min, 1] (flatness.md); chains of a round with a loop rise sit further out.
+    fl_round: dict[int, dict] = {}
+    if params is not None and any(sp["kind"] == "chsp" for sp in g.spaces):
+        from .flatness import analyse
+        for row in analyse(g.pattern, params, cfg)["rounds"]:
+            fl_round[row["round"]] = row
+    smin = cfg.get("flatness", {}).get("chain_slack_min", 0.3)
+    chain_frac: dict[int, float] = {}
+    for r, row in fl_round.items():
+        if row["class"] == "n/a" or row["C_max"] <= row["C_min"]:
+            continue
+        sum_st = row["C_min"] - smin * (row["C_max"] - row["C_min"]) / (1 - smin)
+        sum_ch = (row["C_max"] - row["C_min"]) / (1 - smin)
+        f = (2 * math.pi * row["rho"] - sum_st) / sum_ch
+        chain_frac[r] = min(1.0, max(smin, f))
     ring_chain: dict[int, int] = {}
     for s in g.spaces:
         if s["kind"] == "ring":
@@ -137,7 +156,7 @@ def course_groups(g: Graph, w: np.ndarray, w_eff: np.ndarray, h: np.ndarray, cfg
             c[i] = w_eff[i]
         elif i in g.chain_space and g.spaces[g.chain_space[i]]["kind"] == "chsp" \
                 and g.spaces[g.chain_space[i]]["round"] == r:
-            c[i] = cn * w[i]
+            c[i] = chain_frac.get(r, cn) * w[i]
     cum: dict[tuple[str, int], float] = {}
     u = np.zeros(g.n)
     for i in range(g.n):
@@ -150,7 +169,15 @@ def course_groups(g: Graph, w: np.ndarray, w_eff: np.ndarray, h: np.ndarray, cfg
         u[i] = u[i] / C[groups[i]] if C[groups[i]] > 0 else 0.0
     closed = {k: (k[0] == "ring" or g.rounds[k[1]]["kind"] == "round") for k in C}
     rho_g = geodesic_radii(g, groups, C, h, closed)
-    return CourseGroups(groups, u, C, closed, rho_g)
+    # length of the circle each node lies on: its course length; chains of chain spaces of a
+    # round whose loops stand outward (flatness.md arc rise) lie on a circle 2 pi rise longer
+    Cn = np.array([C[groups[i]] for i in range(g.n)])
+    for i in range(g.n):
+        r = g.nodes[i]["round"]
+        if c[i] > 0 and not g.counts_as_stitch(i) and groups[i][0] == "round" and r in fl_round:
+            row = fl_round[r]
+            Cn[i] += 2 * math.pi * (row["r"] - row["rho"])
+    return CourseGroups(groups, u, C, closed, rho_g, Cn)
 
 
 def geodesic_radii(g: Graph, groups, C, h, closed) -> dict:
@@ -197,10 +224,13 @@ class Reference:
         self.cg = cg
         G = cg.group
         pairs: dict[tuple, list[tuple[int, int]]] = {}
+        lace = {G[c] for s in g.spaces if s["kind"] == "chsp" for c in s["chains"]}
         for i in range(n):
             for a in anchors[i]:
-                if a < n and G[a] != G[i]:
+                if a < n and G[a] != G[i] and g.counts_as_stitch(i):
                     pairs.setdefault((G[i], G[a]), []).append((i, a))
+        self.lace = lace
+        self.counting = [g.counts_as_stitch(i) for i in range(n)]
         self.sigma: dict[tuple, float] = {}
         self.shift: dict[tuple, float] = {}
         for (gi, ga), lst in pairs.items():
@@ -218,7 +248,7 @@ class Reference:
             self.shift[(gi, ga)] = float(np.mean(Ds))
 
     def has(self, i: int, p: int) -> bool:
-        return (self.cg.group[i], self.cg.group[p]) in self.sigma
+        return self.counting[i] and (self.cg.group[i], self.cg.group[p]) in self.sigma
 
     def _raw(self, i: int, p: int, gi, ga) -> float:
         cg = self.cg
@@ -249,7 +279,7 @@ class Reference:
         x = self.offset(i, p)
         if not self.closed_pair(i, p):
             return math.hypot(h, x)
-        Ct, Cb = cg.C[cg.group[i]], cg.C[cg.group[p]]
+        Ct, Cb = float(cg.Cnode[i]), float(cg.Cnode[p])
         dC = abs(Ct - Cb)
         if dC < 1e-9 * max(Ct, Cb):
             return math.hypot(h, x * Ct)
@@ -263,7 +293,7 @@ class Reference:
         cg = self.cg
         x = self.offset(i, a) + self.offset(a, b)
         if self.closed_pair(i, a) and self.closed_pair(a, b):
-            lat = x * math.sqrt(cg.C[cg.group[i]] * cg.C[cg.group[b]])
+            lat = x * math.sqrt(cg.Cnode[i] * cg.Cnode[b])
         else:
             lat = x
         return math.hypot(hi + ha, lat)
@@ -335,7 +365,12 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
     # chains of a turning chain other than a counts-as top: a column climbing to the next round,
     # not part of the fabric's course (SPEC_NOTES N3)
     tch_chain = [nd.get("role") == "tch" and not nd.get("countsAs") for nd in g.nodes]
-    cg = course_groups(g, w, w_eff, h, cfg)
+    # chains of chain spaces: slack yarn loops (tension-only course springs, no shear to them)
+    chsp_chain = np.zeros(n, bool)
+    for sp in g.spaces:
+        if sp["kind"] == "chsp":
+            chsp_chain[sp["chains"]] = True
+    cg = course_groups(g, w, w_eff, h, cfg, params)
     ref = Reference(g, anchors, cg, n) if metric else None
     G = cg.group
 
@@ -343,7 +378,7 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
     kc, kw, ks, kb = cfg["k_course"], cfg["k_wale"], cfg["k_shear"], cfg["k_bend"]
     for i in range(1, n):
         L = Lc(i - 1, i)
-        if metric and G[i - 1] == G[i] and cg.closed[G[i]]:
+        if metric and G[i - 1] == G[i] and cg.closed[G[i]] and G[i] not in ref.lace:
             L = circle_chord(L, cg.rho_g[G[i]])
         elif metric and _seam(g, ref, i - 1, i):
             L = ref.cell(i, i - 1, h[i])
@@ -360,7 +395,7 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
             if a >= n:
                 continue
             for nb in (a - 1, a + 1):
-                if 0 <= nb < n and prounds[nb] == prounds[a] and nb != i and not (metric and tch_chain[nb]):
+                if 0 <= nb < n and prounds[nb] == prounds[a] and nb != i and not (metric and (tch_chain[nb] or chsp_chain[nb])):
                     if metric and ref.has(i, a) and G[nb] == G[a]:
                         L = ref.cell(i, nb, h[i])
                     else:
@@ -371,7 +406,7 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
             continue
         arc = Lc(i - 2, i - 1) + Lc(i - 1, i)
         k1 = G[i - 1]
-        cont = metric and G[i - 2] == k1 == G[i] and cg.closed[k1]
+        cont = metric and G[i - 2] == k1 == G[i] and cg.closed[k1] and k1 not in ref.lace
         L = circle_chord(arc, cg.rho_g[k1]) if cont else arc
         if metric and not cont and _seam(g, ref, i - 2, i):
             L = ref.cell(i, i - 2, h[i])
@@ -400,6 +435,12 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
             best[key] = idx
     keep = sorted(best.values())
     arr = [gen[x] for x in keep]
+
+    def is_slack(a, b, t):
+        if not metric or t not in (COURSE, BEND_COURSE):
+            return False
+        lo, hi = min(a, b), max(a, b)
+        return bool(chsp_chain[lo:hi + 1].any())
     I = np.array([min(a[0], a[1]) for a in arr], dtype=np.int64)
     J = np.array([max(a[0], a[1]) for a in arr], dtype=np.int64)
     return Network(
@@ -408,5 +449,5 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
         kind=np.array([a[4] for a in arr], dtype=np.int64),
         particle_round=np.array(prounds, dtype=np.int64), virtual_space=virtual_space,
         space_particle=space_particle, anchor_particles=anchors, width=w, height=h, graph=g,
-        params=params,
+        params=params, slack=np.array([is_slack(a[0], a[1], a[4]) for a in arr], dtype=bool),
     )
