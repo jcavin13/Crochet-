@@ -8,8 +8,9 @@ The swatch photo tool lives in `crolab/swatch` and `lab/swatch/`, with its own R
 ## Run
 
 ```
-make lab            # uv sync, pytest, execute notebooks -> lab/reports/*.html
+make lab            # uv sync --locked, pytest, execute notebooks -> lab/reports/*.html
 make lab-fixtures   # re-simulate the canonical fixtures -> spec/fixtures/<name>.lab.json
+make lab-check      # committed lab.json / network.json / reports are current (nothing written)
 cd lab && uv run pytest -q
 cd lab && uv run python -m crolab.fitting data/example_swatches.csv --out /tmp/params.json
 ```
@@ -25,17 +26,29 @@ cd lab && uv run python -m crolab.fitting data/example_swatches.csv --out /tmp/p
 | `crolab/sim.py` | Energy and analytic gradient (numpy), round-by-round growth with deterministic placement and perturbation, per-round and final L-BFGS (scipy). `simulate(pattern, params, upto_round, config) -> SimResult`. |
 | `crolab/metrics.py` | Shape metric and classifier, physics.md §5: `{class, A, W, Rg, outer_radius}`. |
 | `crolab/blocking.py` | Blocked solve, physics.md §6: in-plane, outer round pinned at `block_stretch`. Reports strains and the buckle fraction. |
-| `crolab/flatness.py` | Analytic per-round flatness (`spec/flatness.md`), mirroring `app/src/core/flatness`. |
+| `crolab/flatness.py` | Analytic per-round flatness (`spec/flatness.md`), mirroring `app/src/core/flatness`. Pinned to the TS analyzer by `spec/fixtures/<name>.flatness.json` when that file exists (`tests/test_flatness.py`). |
 | `crolab/curvature.py` | Intrinsic Gauss–Bonnet curvature per round from rest lengths, and extrinsic angle deficits on a triangulation of the simulated surface (with exact discrete Gauss–Bonnet). Also plots. |
 | `crolab/fitting.py` | Fits stitch width and height from swatch CSVs and writes a schema-valid `stitch_params.json` with `status: "fitted"`. |
 | `crolab/fixtures.py` | `python -m crolab.fixtures` writes `spec/fixtures/*.lab.json`. Exits non-zero on a class mismatch. |
-| `crolab/reports.py` | `python -m crolab.reports` executes `notebooks/*.py` (jupytext) into `reports/*.html` and writes `index.html`. |
+| `crolab/reports.py` | `python -m crolab.reports` executes `notebooks/*.py` (jupytext) into `reports/*.html` and writes `index.html`; `--check` renders into a temp dir and compares bytes. |
+| `crolab/compare.py` | Tolerant comparison of committed reference JSON with freshly computed values. |
 | `notebooks/` | `01_fixtures_gallery`, `02_curvature`, `03_flatness_vs_sim` (cup → flat → ruffle), `04_parameter_fitting`. |
 | `data/example_swatches.csv` | **SYNTHETIC** example measurements, generated with known truth. These are not real yarn. |
 | `SPEC_NOTES.md` | Every decision where the lab deviates from or clarifies the spec. The TS sim must follow it. |
 
 The `*.lab.json` reference files are reproducible: two runs give identical bytes (values are
-rounded to 4 decimals). The tests check that the committed files are up to date.
+rounded to 4 decimals). The tests check that the committed files are up to date, comparing
+floats within a couple of units of the last decimal (`crolab/compare.py`) so that another CPU or
+BLAS build does not fail on a rounding boundary; `*.network.json` is compared with the same
+tolerances as the TypeScript parity test.
+
+`make lab` is reproducible too: the reports are byte-identical between runs (numbered cell ids,
+no timings, fixed seeds and dpi), so it leaves the git tree clean when nothing changed.
+
+**Threads.** `import crolab` sets `OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS` and
+`MKL_NUM_THREADS` to 1 unless they are already set (as do the Makefile and CI). The problems are
+small, so extra BLAS threads only add overhead, and on a loaded machine they made a 5 s
+simulation take 90 s. Tests bound the solver work by L-BFGS iterations, not by wall time.
 
 ## Fitting CSV format
 

@@ -33,6 +33,8 @@ export interface SimResult {
   positions: Float64Array;
   energy: number;
   converged: boolean;
+  /** Per round: did that round's relaxation reach its tolerance (false: iteration cap or stall)? */
+  roundsConverged: boolean[];
   /** Per round: positions after relaxing that round (same layout). */
   snapshots: Float64Array[];
   /** Energy after each round's relaxation. */
@@ -319,6 +321,8 @@ export class Grower {
   readonly placer: Placer;
   readonly snapshots: Float64Array[] = [];
   readonly roundEnergies: number[] = [];
+  /** Per round: the round's relaxation reached gtolRound (false: hit maxIter or stalled). */
+  readonly roundConverged: boolean[] = [];
   /** Round being relaxed (phase 'round'). */
   round = -1;
   phase: GrowPhase = 'round';
@@ -376,6 +380,7 @@ export class Grower {
       if (this.phase === 'round') {
         this.snapshots.push(Float64Array.from(this.placer.X));
         this.roundEnergies.push(opt.f);
+        this.roundConverged.push(st === 'converged' || opt.gnorm <= 10 * this.gtolRound);
         if (this.round >= this.lastRound) this.phase = 'final';
       } else {
         this.converged = st === 'converged' || opt.gnorm <= 10 * this.gtolFinal;
@@ -395,7 +400,7 @@ export function simulate(input: Pattern | Graph, params: ParamSet, opts: SolveOp
   const gr = new Grower(net, cfg, opts);
   gr.advance();
   return {
-    network: net, positions: gr.X, energy: gr.energy, converged: gr.converged, snapshots: gr.snapshots,
+    network: net, positions: gr.X, energy: gr.energy, converged: gr.converged, roundsConverged: gr.roundConverged, snapshots: gr.snapshots,
     roundEnergies: gr.roundEnergies, roundsDone: gr.snapshots.length, iterations: gr.iterations, ms: now() - t0,
   };
 }

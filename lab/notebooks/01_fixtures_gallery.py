@@ -6,7 +6,6 @@
 # the lab clarifications in `lab/SPEC_NOTES.md`). Shape metric and class per physics.md §5.
 
 # %%
-import time
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -21,15 +20,14 @@ names = list(G.iter_fixture_names())
 results = {}
 for name in names:
     pat, src = fixture_pattern(name)
-    t = time.perf_counter()
     res = simulate(pat)
-    results[name] = (pat, src, res, classify_result(res), time.perf_counter() - t)
+    results[name] = (pat, src, res, classify_result(res), res.iterations)
 
 # %%
-print(f"{'fixture':20s} {'graph':9s} {'expected':8s} {'sim':8s} {'A':>6s} {'W':>6s} {'Rg mm':>7s} {'nodes':>5s} {'time':>6s}")
+print(f"{'fixture':20s} {'graph':9s} {'expected':8s} {'sim':8s} {'A':>6s} {'W':>6s} {'Rg mm':>7s} {'nodes':>5s} {'L-BFGS it':>9s}")
 for name, (pat, src, res, m, dt) in results.items():
     print(f"{name:20s} {src:9s} {G.load_expected(name)['shape']:8s} {m['class']:8s} {m['A']:6.3f} {m['W']:6.3f} "
-          f"{m['Rg']:7.2f} {res.network.n_nodes:5d} {dt:5.1f}s")
+          f"{m['Rg']:7.2f} {res.network.n_nodes:5d} {dt:9d}")
 
 # %% [markdown]
 # ## 3D renders (course and wale springs; colour = round)

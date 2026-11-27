@@ -184,7 +184,9 @@ def geodesic_radii(g: Graph, groups, C, h, closed) -> dict:
     """rho_g = C_r / (dC/drho) for closed round courses, with dC/drho = (C_{r+1} - C_{r-1}) /
     (hbar_{r+1} + hbar_r) (central difference over the rounds worked in the round; one-sided at
     the ends: (C_{r+1} - C_r)/hbar_{r+1}, (C_r - C_{r-1})/hbar_r). A round worked into a magic
-    ring, and a chain ring, use C/(2 pi). |dC/drho| < 1e-9: infinite (straight)."""
+    ring, and a chain ring, use C/(2 pi). |dC/drho| < 1e-9: infinite (straight). A closed course
+    of total length 0 (a round of only slip stitches) gets no entry; callers treat a missing
+    radius as straight, like the TypeScript sim."""
     hb: dict[int, float] = {}
     for r in range(len(g.rounds)):
         st = g.stitch_nodes(r)
@@ -379,7 +381,7 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
     for i in range(1, n):
         L = Lc(i - 1, i)
         if metric and G[i - 1] == G[i] and cg.closed[G[i]] and G[i] not in ref.lace:
-            L = circle_chord(L, cg.rho_g[G[i]])
+            L = circle_chord(L, cg.rho_g.get(G[i], math.inf))   # C = 0 course (e.g. only sl sts): straight
         elif metric and _seam(g, ref, i - 1, i):
             L = ref.cell(i, i - 1, h[i])
         gen.append((i - 1, i, L, kc * min(s_course[i - 1], s_course[i]), COURSE))
@@ -409,7 +411,7 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
         arc = Lc(i - 2, i - 1) + Lc(i - 1, i)
         k1 = G[i - 1]
         cont = metric and G[i - 2] == k1 == G[i] and cg.closed[k1] and k1 not in ref.lace
-        L = circle_chord(arc, cg.rho_g[k1]) if cont else arc
+        L = circle_chord(arc, cg.rho_g.get(k1, math.inf)) if cont else arc
         if metric and not cont and _seam(g, ref, i - 2, i):
             L = ref.cell(i, i - 2, h[i])
         gen.append((i - 2, i, L, kb, BEND_COURSE))

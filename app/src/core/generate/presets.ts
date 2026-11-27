@@ -40,7 +40,9 @@ export const PRESETS: Preset[] = [
         { motif: 'mesh' },
         { motif: 'arches' },
         { motif: 'arches' },
-        { motif: 'arches' },
+        // a third arches round (1 sc per loop) can only stay flat with its loops pulled taut
+        // (−22% at nominal loop length, review R4), so the outer loop round is a mesh
+        { motif: 'mesh' },
         { motif: 'fans', params: { form: 'scallop' } },
         { motif: 'picot' },
       ],

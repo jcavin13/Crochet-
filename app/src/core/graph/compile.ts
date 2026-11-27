@@ -52,6 +52,13 @@ const TARGET_FAMILY = new Set<DiagnosticCode>([
   'E_NO_TARGET', 'E_NO_SPACE', 'E_SPACE_LENGTH', 'E_NO_CHAIN', 'E_REPEAT_UNEVEN', 'E_COUNT_MISMATCH', 'W_UNWORKED', 'I_UNWORKED_TCH',
 ]);
 
+/**
+ * Sanity cap on the size of a compiled pattern (R15). The largest crochet object on record — the
+ * Lorenz manifold — has about 25 500 stitches; anything beyond this is almost certainly a typo
+ * ("ch 200000") and would freeze the chart and the 3D view.
+ */
+export const MAX_NODES = 50000;
+
 class TargetError extends Error {
   constructor(public code: DiagnosticCode, public msg: string, public span: Span) {
     super(msg);
@@ -78,6 +85,10 @@ interface RoundState {
   prevLabel?: string;
   targets: Entry[];
   cursor: number;
+  /** target-list indices this round consumed or skipped, in order (for the closing-arc rule) */
+  used: number[];
+  /** chain lengths of the previous round's spaces this round worked into */
+  workedSpaceLens: Set<number>;
   lastUsed?: Anchor;
   /** id of the first node of this round */
   start: number;
@@ -114,6 +125,7 @@ class Compiler {
   fastenRoundReported = false;
   turnNext = false;
   prevUnreliable = false;
+  tooBig = false;
   cur!: RoundState;
 
   constructor(private ast: PatternAst) {}
@@ -143,6 +155,7 @@ class Compiler {
     this.checkNumbering();
     for (const r of this.ast.rounds) {
       for (let n = r.label.from; n <= Math.max(r.label.from, r.label.to); n++) {
+        if (this.tooBig) break;
         this.compileRound(r, n);
       }
     }
@@ -211,7 +224,7 @@ class Compiler {
     if (turned) targets = targets.slice().reverse();
 
     this.cur = {
-      index, label, kind, ast, prevLabel: prev?.label, targets, cursor: 0, start: this.nodes.length,
+      index, label, kind, ast, prevLabel: prev?.label, targets, cursor: 0, used: [], workedSpaceLens: new Set(), start: this.nodes.length,
       madeStitch: false, turned, suppress: !!ast.broken || this.prevUnreliable,
       unreliable: !!ast.broken, fastenReported: false,
     };
@@ -226,6 +239,10 @@ class Compiler {
       if (!this.fastenRoundReported) this.diag('error', 'E_AFTER_FASTEN_OFF',
         `${label}: the pattern was fastened off earlier, so nothing may follow — found another round.`, ast.label.span, index);
       this.fastenRoundReported = true;
+    } else if (ast.items.length === 0 && !ast.broken) {
+      this.diag('error', 'E_SYNTAX',
+        `${label}: the round has no instructions — expected stitches after "${ast.label.word} ${ast.label.from}:".`, ast.label.span, index);
+      this.cur.suppress = true;
     } else {
       try {
         this.compileItems(ast.items, undefined, true);
@@ -252,33 +269,66 @@ class Compiler {
       const a = lastNode.into[0];
       if ('node' in a && a.node >= first && nodeCounts(this.nodes[a.node])) R.joined = true;
     }
-    if (ast.count) this.checkCount(ast.count, R);
+    // after "fasten off" the round was never worked: a count check would only be a cascade
+    if (ast.count && !this.cur.fastenReported) this.checkCount(ast.count, R);
     this.checkUnworked();
     R.src = { line: ast.span.line, endLine: ast.span.endLine };
     this.prevUnreliable = this.cur.unreliable;
   }
 
-  /** W_UNWORKED (3.3): stitch targets after the cursor were never consumed or passed over. */
+  /**
+   * W_UNWORKED (3.3, 4a): targets after the cursor were never consumed or passed over. Stitch
+   * targets always count; a space target counts when this round worked into spaces of the same
+   * chain length (so a round that skips most of the previous round's ch-3 loops is caught, while
+   * ch-1 spaces a round of "sc in next st" passes over everywhere stay silent at the end too).
+   *
+   * A chain arc as the last thing before the join (or the end) may span the trailing targets, but
+   * only as many as one arc plausibly covers: the stretch from the last target used, round the end
+   * of the list, to the first target used must be no longer than the widest step between two
+   * consecutive targets used inside this round (at least 3, i.e. two unworked entries under the
+   * arc — the old leniency for the usual "…ch 4, join" finish).
+   */
   checkUnworked(): void {
     const c = this.cur;
     if (c.suppress || c.unreliable) return;
-    const rest = c.targets.slice(c.cursor).filter((e): e is { kind: 'stitch'; node: number } => e.kind === 'stitch');
+    const rest = c.targets.slice(c.cursor).filter((e) =>
+      e.kind === 'stitch' || c.workedSpaceLens.has(this.spaces[e.space].chains.length));
     if (rest.length === 0) return;
-    // A chain arc as the last thing before the join (or end) spans the remaining stitches.
     let k = this.nodes.length - 1;
     while (k >= c.start && this.nodes[k].type === 'slst') k--;
-    if (k >= c.start && this.nodes[k].type === 'ch' && this.nodes[k].role !== 'tch') return;
+    const endsWithArc = k >= c.start && this.nodes[k].type === 'ch' && this.nodes[k].role !== 'tch';
+    if (endsWithArc && this.arcCoversTrailing()) return;
     const span = c.ast.label.span;
-    if (c.kind === 'row' && rest.every((e) => this.nodes[e.node].countsAs !== undefined)) {
+    if (c.kind === 'row' && rest.every((e) => e.kind === 'stitch' && this.nodes[e.node].countsAs !== undefined)) {
       this.diag('info', 'I_UNWORKED_TCH',
         `${c.label}: the turning chain at the end of ${c.prevLabel} is not worked into (normal in rows, but check the stitch count).`,
         span, c.index);
       return;
     }
-    const n = rest.length;
+    const nSt = rest.filter((e) => e.kind === 'stitch').length;
+    const nSp = rest.length - nSt;
+    const parts: string[] = [];
+    if (nSt) parts.push(`${nSt} stitch${nSt === 1 ? '' : 'es'}`);
+    if (nSp) parts.push(`${nSp} chain space${nSp === 1 ? '' : 's'}`);
+    const what = parts.join(' and ');
+    const verb = rest.length === 1 ? 'is' : 'are';
+    const arcNote = endsWithArc ? ' — more than the closing chain arc can span' : '';
+    const expectWord = nSp ? 'every stitch and space' : 'every stitch';
     this.diag('warning', 'W_UNWORKED',
-      `${c.label}: ${n} stitch${n === 1 ? '' : 'es'} of ${c.prevLabel} ${n === 1 ? 'is' : 'are'} left unworked at the end of the round — expected every stitch to be worked into or skipped with "${skipWord(this.ast.terms)}".`,
+      `${c.label}: ${what} of ${c.prevLabel} ${verb} left unworked at the end of the round${arcNote} — expected ${expectWord} to be worked into or skipped with "${skipWord(this.ast.terms)}".`,
       span, c.index);
+  }
+
+  /** Closing-arc rule (see checkUnworked). */
+  arcCoversTrailing(): boolean {
+    const c = this.cur;
+    const n = c.targets.length;
+    const used = c.used;
+    if (used.length === 0) return n <= 2;
+    let maxGap = 0;
+    for (let i = 1; i < used.length; i++) maxGap = Math.max(maxGap, used[i] - used[i - 1]);
+    const wrapGap = n - used[used.length - 1] + used[0];
+    return wrapGap <= Math.max(maxGap, 3);
   }
 
   // ----- count annotations (3.8) ---------------------------------------------------------------
@@ -347,6 +397,11 @@ class Compiler {
 
   pushNode(n: Omit<Node, 'id' | 'round'>, src: Span): Node {
     const c = this.cur;
+    if (this.nodes.length >= MAX_NODES) {
+      this.tooBig = true;
+      throw new TargetError('E_SYNTAX',
+        `the pattern grows past ${MAX_NODES.toLocaleString('en')} stitches here — check for a mistyped count (e.g. "ch 200000"); the app cannot chart or simulate a piece that large.`, src);
+    }
     if (n.type !== 'ch') this.closeRun();
     const node = { id: this.nodes.length, round: c.index, ...n, src: toSrc(src) } as Node;
     this.nodes.push(node);
@@ -461,17 +516,20 @@ class Compiler {
 
   noTarget(u: Unit, span: Span): TargetError {
     const c = this.cur;
+    // "has none left" only when the previous round had some to begin with (N2)
+    const had = c.targets.some((e) => entryMatches(e, u, this.nodes, this.spaces));
+    const none = had ? 'has none left' : u.kind === 'space' ? 'made none' : 'has none';
     if (u.kind === 'space') {
       const what = this.noun(u);
       return new TargetError('E_NO_SPACE',
-        c.prevLabel ? `needs a ${what} to work into but ${c.prevLabel} has none left.` : `needs a ${what} to work into but there is no previous round.`, span);
+        c.prevLabel ? `needs a ${what} to work into but ${c.prevLabel} ${none}.` : `needs a ${what} to work into but there is no previous round.`, span);
     }
     const what = u.kind === 'stname' ? this.noun(u) : 'stitch';
     if (!c.prevLabel) {
       return new TargetError('E_NO_TARGET',
         `needs a ${what} to work into but there is no previous round — start with "mr", "ch N, join to form ring" or a foundation chain.`, span);
     }
-    return new TargetError('E_NO_TARGET', `needs a ${what} to work into but ${c.prevLabel} has none left.`, span);
+    return new TargetError('E_NO_TARGET', `needs a ${what} to work into but ${c.prevLabel} ${none}.`, span);
   }
 
   /** Move to the next entry matching `u` and consume it. */
@@ -482,6 +540,8 @@ class Compiler {
       const e = c.targets[k];
       if (entryMatches(e, u, this.nodes, this.spaces)) {
         c.cursor = k + 1;
+        c.used.push(k);
+        if (e.kind === 'space') c.workedSpaceLens.add(this.spaces[e.space].chains.length);
         const a: Anchor = e.kind === 'stitch' ? { node: e.node } : { space: e.space };
         if (setLast) c.lastUsed = a;
         return a;
@@ -541,6 +601,8 @@ class Compiler {
           const e = c.targets[k];
           if (e.kind === 'space') {
             c.cursor = k + 1;
+            c.used.push(k);
+            c.workedSpaceLens.add(this.spaces[e.space].chains.length);
             const chains = this.spaces[e.space].chains.slice();
             c.chainCursor = { chains: c.turned ? chains.reverse() : chains, pos: 0 };
             found = true;
@@ -880,7 +942,7 @@ class Compiler {
       try {
         body();
       } catch (e) {
-        if (!(e instanceof TargetError)) throw e;
+        if (!(e instanceof TargetError) || this.tooBig) throw e;
         if (reps === 0 && e.code !== 'E_NO_TARGET' && e.code !== 'E_NO_SPACE') throw e;
         this.err('E_REPEAT_UNEVEN',
           `${label} does not fit evenly: after ${reps} full repeat${reps === 1 ? '' : 's'} ${left} stitch${left === 1 ? ' is' : 'es are'} left in ${c.prevLabel ?? 'the previous round'}, not enough for another repeat.`,

@@ -67,6 +67,8 @@
 .sim-shape dt { color: var(--ink-3); font-size: var(--text-sm); }
 .sim-shape dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); font-variant-numeric: tabular-nums; }
 .sim-explain { margin: 0; color: var(--ink-2); font-size: var(--text-sm); }
+.sim-approx { color: var(--warning); }
+.sim-approx svg { vertical-align: -3px; }
 .sim-verdict { display: flex; align-items: flex-start; gap: var(--s-2); font-size: var(--text-sm); }
 .sim-verdict[data-verdict="easy"] { color: var(--ok); }
 .sim-verdict[data-verdict="firm"] { color: var(--warning); }

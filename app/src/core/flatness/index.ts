@@ -22,6 +22,24 @@ export interface RoundFlatness {
   /** Incremental ratio: are this round's increases right for flat? (−1 tube … 0 flat … >0 ruffling). NaN for round 1. */
   g: number;
   cMin: number; cMax: number; c: number;
+  /**
+   * Signed stitches over (+) / under (−) flat at the *nominal* course length, for every
+   * classified round — also for flat ones ("flat (+3 sts, within tolerance)"). 0 for n/a.
+   */
+  stitchesNominal: number;
+  /**
+   * The round is classified flat only thanks to chain compliance: its nominal excess `e` is
+   * outside ±tol, but the chain-slack band [eMin, eMax] reaches back inside it. Such a round lies
+   * flat only if its loops sag (e > tol: long, floppy loops) or are pulled taut (e < −tol).
+   */
+  slackOnly: boolean;
+  /**
+   * A cupping round that is far beyond a "fix a few stitches" correction: its stitch count is
+   * decreasing (the shape is closing, as in a ball) or it is more than `closing_e` under flat
+   * (a tube, cone or deep bowl). The message then says it is a 3D form instead of quoting an
+   * absurd deficit. Numeric fields are unchanged.
+   */
+  closing: boolean;
   message: string;
 }
 export interface FlatnessReport {
@@ -36,6 +54,8 @@ export interface FlatnessReport {
 export interface FlatnessOptions { tol?: number; chainSlackMin?: number; chainNominal?: number }
 
 const TAU = 2 * Math.PI;
+/** |e| beyond this (as a fraction) on a cupping round is a 3D form, not a fixable flat piece. */
+export const CLOSING_E = 0.5;
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
 export function analyzeFlatness(graph: Graph, params: ParamSet, opts: FlatnessOptions = {}): FlatnessReport {
@@ -52,7 +72,7 @@ export function analyzeFlatness(graph: Graph, params: ParamSet, opts: FlatnessOp
 
   const out: RoundFlatness[] = [];
   let rPrev = firstRing ? (firstRing.chains.length * wch) / TAU : 0;
-  let rhoPrev = rPrev, cPrev = 0, k = 0;
+  let rhoPrev = rPrev, cPrev = 0, k = 0, countPrev = -1;
 
   for (const round of graph.rounds) {
     const nodes: Node[] = round.first < 0 ? [] : graph.nodes.slice(round.first, round.last + 1);
@@ -64,7 +84,7 @@ export function analyzeFlatness(graph: Graph, params: ParamSet, opts: FlatnessOp
     for (const n of nodes) if (n.type === 'ch' && chspOf.has(n.id)) { nCh++; spaceIds.add(chspOf.get(n.id)!); }
     const base: RoundFlatness = {
       round: round.index, label: round.label, class: 'n/a', eMin: 0, eMax: 0, e: 0, stitchesOff: 0,
-      rho: rhoPrev, r: rPrev, g: NaN, cMin: 0, cMax: 0, c: 0, message: `${round.label}: not worked in the round — flatness does not apply.`,
+      rho: rhoPrev, r: rPrev, g: NaN, cMin: 0, cMax: 0, c: 0, stitchesNominal: 0, slackOnly: false, closing: false, message: `${round.label}: not worked in the round — flatness does not apply.`,
     };
     if (!inRound || round.kind !== 'round' || (st.length === 0 && nCh === 0)) { out.push(base); continue; }
     k++;
@@ -87,11 +107,35 @@ export function analyzeFlatness(graph: Graph, params: ParamSet, opts: FlatnessOp
     const g = k === 1 || rho === rhoPrev ? NaN : (c - cPrev) / (TAU * (rho - rhoPrev)) - 1;
     const pct = (x: number) => `${x >= 0 ? '+' : '−'}${Math.round(Math.abs(x) * 100)}%`;
     const nOff = Math.max(1, Math.round(Math.abs(off)));
-    const message =
-      cls === 'flat' ? `${round.label} lies flat.`
-      : cls === 'cup' ? `${round.label} will cup: about ${nOff} stitch${nOff === 1 ? '' : 'es'} under flat (${pct(eMax)}).`
-      : `${round.label} will ruffle: about ${nOff} stitch${nOff === 1 ? '' : 'es'} over flat (${pct(eMin)}).`;
-    out.push({ round: round.index, label: round.label, class: cls, eMin, eMax, e, stitchesOff: off, rho, r: rho + rise, g, cMin, cMax, c, message });
+    const nominalOff = (c - need) / wBar;
+    const slackOnly = cls === 'flat' && Math.abs(e) > tol;
+    const decreasing = countPrev >= 0 && round.stitchCount < countPrev;
+    const closing = cls === 'cup' && (decreasing || eMax < -CLOSING_E);
+    const sts = (n: number) => `${n} stitch${n === 1 ? '' : 'es'}`;
+    let message: string;
+    if (cls === 'flat') {
+      const n = Math.round(nominalOff);
+      if (slackOnly && e > 0) {
+        message = `${round.label} lies flat only if its chain loops take up the slack (${pct(e)} at nominal loop length) — expect long, floppy loops.`;
+      } else if (slackOnly) {
+        message = `${round.label} lies flat only if its chain loops are pulled taut (${pct(e)} at nominal loop length) — expect tight, strained loops.`;
+      } else {
+        message = n === 0 ? `${round.label} lies flat.` : `${round.label} lies flat (${n > 0 ? '+' : '−'}${Math.abs(n)} sts, within tolerance).`;
+      }
+    } else if (closing) {
+      message = decreasing
+        ? `${round.label} closes the shape (far under flat) — this is a 3D form, not a flat piece.`
+        : `${round.label} is far under flat (${pct(eMax)}) — this is a 3D form (tube, cone or deep bowl), not a flat piece.`;
+    } else if (cls === 'cup') {
+      message = `${round.label} will cup: about ${sts(nOff)} under flat (${pct(eMax)}).`;
+    } else {
+      message = `${round.label} will ruffle: about ${sts(nOff)} over flat (${pct(eMin)}).`;
+    }
+    out.push({
+      round: round.index, label: round.label, class: cls, eMin, eMax, e, stitchesOff: off, rho, r: rho + rise, g, cMin, cMax, c,
+      stitchesNominal: nominalOff, slackOnly, closing, message,
+    });
+    countPrev = round.stitchCount;
     rPrev = rho + rise; rhoPrev = rho; cPrev = c;
   }
   const real = out.filter((r) => r.class !== 'n/a');

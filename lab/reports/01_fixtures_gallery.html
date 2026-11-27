@@ -7796,7 +7796,7 @@ a.anchor-link {
 <!-- End of mermaid configuration --></head>
 <body class="jp-Notebook" data-jp-theme-light="true" data-jp-theme-name="JupyterLab Light">
 <main>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=b5cb89c8">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=cell-0">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7808,7 +7808,7 @@ the lab clarifications in <code>lab/SPEC_NOTES.md</code>). Shape metric and clas
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=b23c70a6">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=cell-1">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7816,8 +7816,7 @@ the lab clarifications in <code>lab/SPEC_NOTES.md</code>). Shape metric and clas
 <div class="jp-InputPrompt jp-InputArea-prompt">In [1]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib</span>
 <span class="n">matplotlib</span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="s2">"Agg"</span><span class="p">)</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">rcParams</span><span class="p">[</span><span class="s2">"figure.dpi"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">80</span>
@@ -7831,15 +7830,14 @@ the lab clarifications in <code>lab/SPEC_NOTES.md</code>). Shape metric and clas
 <span class="n">results</span> <span class="o">=</span> <span class="p">{}</span>
 <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="p">:</span>
     <span class="n">pat</span><span class="p">,</span> <span class="n">src</span> <span class="o">=</span> <span class="n">fixture_pattern</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
-    <span class="n">t</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
     <span class="n">res</span> <span class="o">=</span> <span class="n">simulate</span><span class="p">(</span><span class="n">pat</span><span class="p">)</span>
-    <span class="n">results</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">pat</span><span class="p">,</span> <span class="n">src</span><span class="p">,</span> <span class="n">res</span><span class="p">,</span> <span class="n">classify_result</span><span class="p">(</span><span class="n">res</span><span class="p">),</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t</span><span class="p">)</span>
+    <span class="n">results</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">pat</span><span class="p">,</span> <span class="n">src</span><span class="p">,</span> <span class="n">res</span><span class="p">,</span> <span class="n">classify_result</span><span class="p">(</span><span class="n">res</span><span class="p">),</span> <span class="n">res</span><span class="o">.</span><span class="n">iterations</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=d9d540d7">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=cell-2">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7847,10 +7845,10 @@ the lab clarifications in <code>lab/SPEC_NOTES.md</code>). Shape metric and clas
 <div class="jp-InputPrompt jp-InputArea-prompt">In [2]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="s1">'fixture'</span><span class="si">:</span><span class="s2">20s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'graph'</span><span class="si">:</span><span class="s2">9s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'expected'</span><span class="si">:</span><span class="s2">8s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'sim'</span><span class="si">:</span><span class="s2">8s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'A'</span><span class="si">:</span><span class="s2">&gt;6s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'W'</span><span class="si">:</span><span class="s2">&gt;6s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'Rg mm'</span><span class="si">:</span><span class="s2">&gt;7s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'nodes'</span><span class="si">:</span><span class="s2">&gt;5s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'time'</span><span class="si">:</span><span class="s2">&gt;6s</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="s1">'fixture'</span><span class="si">:</span><span class="s2">20s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'graph'</span><span class="si">:</span><span class="s2">9s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'expected'</span><span class="si">:</span><span class="s2">8s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'sim'</span><span class="si">:</span><span class="s2">8s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'A'</span><span class="si">:</span><span class="s2">&gt;6s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'W'</span><span class="si">:</span><span class="s2">&gt;6s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'Rg mm'</span><span class="si">:</span><span class="s2">&gt;7s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'nodes'</span><span class="si">:</span><span class="s2">&gt;5s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'L-BFGS it'</span><span class="si">:</span><span class="s2">&gt;9s</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="p">(</span><span class="n">pat</span><span class="p">,</span> <span class="n">src</span><span class="p">,</span> <span class="n">res</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">dt</span><span class="p">)</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">:</span><span class="s2">20s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">src</span><span class="si">:</span><span class="s2">9s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">G</span><span class="o">.</span><span class="n">load_expected</span><span class="p">(</span><span class="n">name</span><span class="p">)[</span><span class="s1">'shape'</span><span class="p">]</span><span class="si">:</span><span class="s2">8s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">m</span><span class="p">[</span><span class="s1">'class'</span><span class="p">]</span><span class="si">:</span><span class="s2">8s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">m</span><span class="p">[</span><span class="s1">'A'</span><span class="p">]</span><span class="si">:</span><span class="s2">6.3f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">m</span><span class="p">[</span><span class="s1">'W'</span><span class="p">]</span><span class="si">:</span><span class="s2">6.3f</span><span class="si">}</span><span class="s2"> "</span>
-          <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">m</span><span class="p">[</span><span class="s1">'Rg'</span><span class="p">]</span><span class="si">:</span><span class="s2">7.2f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">res</span><span class="o">.</span><span class="n">network</span><span class="o">.</span><span class="n">n_nodes</span><span class="si">:</span><span class="s2">5d</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">dt</span><span class="si">:</span><span class="s2">5.1f</span><span class="si">}</span><span class="s2">s"</span><span class="p">)</span>
+          <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">m</span><span class="p">[</span><span class="s1">'Rg'</span><span class="p">]</span><span class="si">:</span><span class="s2">7.2f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">res</span><span class="o">.</span><span class="n">network</span><span class="o">.</span><span class="n">n_nodes</span><span class="si">:</span><span class="s2">5d</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">dt</span><span class="si">:</span><span class="s2">9d</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -7863,21 +7861,21 @@ the lab clarifications in <code>lab/SPEC_NOTES.md</code>). Shape metric and clas
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
-<pre>fixture              graph     expected sim           A      W   Rg mm nodes   time
-chain_space_motif    compiled  flat     flat      0.018  0.029   12.15   178   5.2s
-flat_dc_circle       compiled  flat     flat      0.175  0.138   46.22   195  16.8s
-flat_sc_circle       compiled  flat     flat      0.003  0.074   37.08   216   8.3s
-hyperbolic_plane     compiled  ruffle   ruffle    0.143  0.601   27.38   213   1.9s
-sc_cone              compiled  cup      cup       1.532  0.050   24.00   132   0.5s
-sc_sphere            compiled  cup      cup       2.133  0.218   25.88   300   2.9s
-simple_doily         compiled  flat     flat      0.142  0.089   20.83   396   3.6s
+<pre>fixture              graph     expected sim           A      W   Rg mm nodes L-BFGS it
+chain_space_motif    compiled  flat     flat      0.018  0.029   12.15   178     11016
+flat_dc_circle       compiled  flat     flat      0.175  0.138   46.22   195     26638
+flat_sc_circle       compiled  flat     flat      0.003  0.074   37.08   216     25332
+hyperbolic_plane     compiled  ruffle   ruffle    0.143  0.601   27.38   213      8552
+sc_cone              compiled  cup      cup       1.532  0.050   24.00   132      3807
+sc_sphere            compiled  cup      cup       2.133  0.218   25.88   300     12905
+simple_doily         compiled  flat     flat      0.142  0.089   20.83   396     13466
 </pre>
 </div>
 </div>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=ef8f5b68">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=cell-3">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7887,7 +7885,7 @@ simple_doily         compiled  flat     flat      0.142  0.089   20.83   396   3
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=bb805bdb">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=cell-4">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7908,7 +7906,7 @@ simple_doily         compiled  flat     flat      0.142  0.089   20.83   396   3
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=3ec405d2">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=cell-5">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7918,7 +7916,7 @@ simple_doily         compiled  flat     flat      0.142  0.089   20.83   396   3
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=d4cb1aee">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=cell-6">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7938,7 +7936,7 @@ simple_doily         compiled  flat     flat      0.142  0.089   20.83   396   3
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=4de3106f">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=cell-7">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7948,7 +7946,7 @@ simple_doily         compiled  flat     flat      0.142  0.089   20.83   396   3
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=7e1f2ed1">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=cell-8">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>

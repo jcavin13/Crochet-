@@ -15,7 +15,8 @@ Springs are sorted by (i, j) with i < j; L and k are rounded to 1e-6 (`round(x, 
 0/1. `checksum` is an FNV-1a-32 hash over the text "i,j,L,k,kind,slack;" of every spring with
 L and k printed with exactly 6 decimals; `pairs_hash` the same over "i,j,kind,slack;" only.
 
-Options: --check (compare only), --debug NAME (write lab growth dumps for NAME to stdout as JSON:
+Options: --check (compare only, numerically with the tolerances of the TypeScript parity test;
+exit 1 if a file is stale), --debug NAME (write lab growth dumps for NAME to stdout as JSON:
 initial positions per round, per-round energies and the final metric; used when comparing the two
 simulators' growth).
 """
@@ -30,6 +31,7 @@ import numpy as np
 
 from . import FIXTURES_DIR, SPEC_DIR
 from . import graph as G
+from .compare import network_diff
 from .network import KIND_NAMES, build_network
 
 #: fixtures (besides tiny) whose full spring lists are stored; the rest get a summary
@@ -177,10 +179,13 @@ def main(argv=None) -> int:
         p = path_for(name)
         kind = "full" if "springs" in rec else "summary"
         if a.check:
+            # numeric comparison (TypeScript parity tolerances), not bytes: docs/review.md R11
             cur = p.read_text(encoding="utf-8") if p.exists() else None
-            ok = cur == text
+            diff = network_diff(rec, json.loads(cur)) if cur is not None else ["missing"]
+            ok = not diff
             bad += not ok
-            print(f"{name:20s} {kind:8s} {rec['n_springs']:6d} springs  {'ok' if ok else 'STALE'}")
+            state = ("ok" if cur == text else "ok (within tolerance)") if ok else "STALE: " + "; ".join(diff[:3])
+            print(f"{name:20s} {kind:8s} {rec['n_springs']:6d} springs  {state}")
         else:
             p.write_text(text, encoding="utf-8")
             print(f"{name:20s} {kind:8s} {rec['n_springs']:6d} springs  {len(text):8d} B")

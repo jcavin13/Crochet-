@@ -28,3 +28,4 @@ packages = ["src/crolab"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: executes a notebook in a Jupyter kernel (a few seconds)"]

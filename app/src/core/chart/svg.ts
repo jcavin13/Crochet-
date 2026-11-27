@@ -113,7 +113,8 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
   const entryW = entries.reduce((m, e) => Math.max(m, 1.2 + (e.abbr.length + e.name.length + 1) * 0.22), 4);
   const cols = Math.max(1, Math.floor(chartW / entryW));
   const rowsN = Math.ceil(entries.length / cols);
-  const flatRows = showFlat ? (chartW >= 15 ? 1 : 2.4) : 0;
+  const looseKey = showFlat && layout.rounds.some((r) => r.flat?.slackOnly && r.index <= upto);
+  const flatRows = showFlat ? (chartW >= 15 ? 1 : looseKey ? 3 : 2.4) : 0;
   const titleH = o.title ? 1.4 : 0;
   const legendH = entries.length ? 1.0 + rowsN * 1.5 + flatRows * 1.2 : 0;
   const W = chartW, Hh = chartH + titleH + legendH;
@@ -132,7 +133,11 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
   out.push(`<rect x="${f(x0)}" y="${f(y0)}" width="${f(W)}" height="${f(Hh)}" fill="${C.bg}"/>`);
   if (o.title) out.push(`<text class="ttl" x="${f(x0 + 0.6)}" y="${f(y0 + 0.95)}">${esc(o.title)}</text>`);
 
-  // bands
+  // bands ("flat (loose loops)" rounds get a hatch over the flat tint)
+  const anyLoose = looseKey;
+  if (anyLoose) {
+    out.push(`<defs><pattern id="loose" patternUnits="userSpaceOnUse" width="0.32" height="0.32" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="0.32" stroke="${C.flat}" stroke-width="0.07" stroke-opacity="0.55"/></pattern></defs>`);
+  }
   if (layout.mode === 'radial') {
     for (const r of layout.rounds) {
       if (r.first < 0 || r.index > upto || r.r <= r.r0) continue;
@@ -141,6 +146,7 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
         const fill = cls === 'flat' ? C.flatSoft : cls === 'cup' ? C.cupSoft : C.ruffleSoft;
         const edge = cls === 'flat' ? C.flat : cls === 'cup' ? C.cup : C.ruffle;
         out.push(`<path d="${bandPath(layout, r.index)}" fill="${fill}" fill-rule="evenodd" fill-opacity="${r.index % 2 ? 0.55 : 0.9}"><title>${esc(r.flat!.message)}</title></path>`);
+        if (cls === 'flat' && r.flat!.slackOnly) out.push(`<path d="${bandPath(layout, r.index)}" fill="url(#loose)" fill-rule="evenodd"/>`);
         if (cls !== 'flat') out.push(`<path d="${edgePath(r)}" fill="none" stroke="${edge}" stroke-width="0.06" stroke-dasharray="${cls === 'cup' ? '0.45 0.3' : '0.1 0.2'}" stroke-linecap="round"/>`);
       } else if (!o.mono && r.index % 2 === 1) {
         out.push(`<path d="${bandPath(layout, r.index)}" fill="${C.band}" fill-rule="evenodd"/>`);
@@ -178,10 +184,12 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
     y += rowsN * 1.5 + 0.6;
     if (showFlat) {
       const keys: [string, string, string][] = [['flat', C.flatSoft, 'lies flat'], ['cup', C.cupSoft, 'cups (too few stitches)'], ['ruffle', C.ruffleSoft, 'ruffles (too many)']];
-      keys.forEach(([, fill, label], i) => {
-        const x = x0 + 0.6 + (W >= 15 ? i * (W / 3) : 0);
+      if (anyLoose) keys.splice(1, 0, ['loose', C.flatSoft, 'flat (loose loops)']);
+      keys.forEach(([key, fill, label], i) => {
+        const x = x0 + 0.6 + (W >= 15 ? i * (W / keys.length) : 0);
         if (W < 15 && i > 0) y += 0.7;
         out.push(`<rect x="${f(x)}" y="${f(y)}" width="0.6" height="0.45" fill="${fill}" stroke="${C.ink3}" stroke-width="0.03"/>`);
+        if (key === 'loose') out.push(`<rect x="${f(x)}" y="${f(y)}" width="0.6" height="0.45" fill="url(#loose)"/>`);
         out.push(`<text class="lg" x="${f(x + 0.8)}" y="${f(y + 0.35)}">${esc(label)}</text>`);
       });
     }

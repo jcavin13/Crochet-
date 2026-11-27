@@ -69,6 +69,14 @@ export function parse(text: string): ParseResult {
       cur.lastLine = lineNo;
       return;
     }
+    // "Fasten off." on its own line after a header line that followed the rounds (notes: …):
+    // it still ends the last round.
+    if (chunks.length > 0 && isFastenOffLine(line)) {
+      const last = chunks[chunks.length - 1];
+      last.tokens.push(...tokenize(line, lineNo, 1));
+      last.lastLine = lineNo;
+      return;
+    }
     const lead = line.length - line.trimStart().length;
     add('error', 'E_SYNTAX',
       `expected a header line like "title: My pattern" or a round label like "Rnd 1:" but found "${line.trim()}".`,
@@ -134,6 +142,13 @@ const CH_WORDS = new Set(['ch', 'chs', 'chain', 'chains']);
 const NOT_COUNT_WORDS = new Set(['in', 'into', 'next', 'each', 'same', 'around', 'over', 'on', 'from', 'first', 'top']);
 
 class ParseError extends Error {}
+
+const FASTEN_LINE_RE = /^\s*(fasten\s+off|finish\s+off|fo)\b(\s+and\s+weave\s+in(\s+the)?\s+(yarn\s+)?ends)?[\s.;,!]*$/i;
+
+/** A line that says nothing but "Fasten off." (optionally "…and weave in ends"). */
+export function isFastenOffLine(line: string): boolean {
+  return FASTEN_LINE_RE.test(line);
+}
 
 class RoundParser {
   private i = 0;
@@ -241,6 +256,50 @@ class RoundParser {
    * annotation (notation.md section 2). Detect it first and cut it off the token list.
    */
   private extractCount(): CountAnn | undefined {
+    // "… (12) fasten off": a trailing fasten off may follow the count (notation.md section 2).
+    const tail = this.cutFastenTail();
+    const count = this.extractCountBody();
+    if (tail.length) {
+      // keep it as the last item; a separator token makes "inc x6 (12) fasten off" parse like
+      // "inc x6, fasten off"
+      const f = tail[0];
+      this.toks.push({ ...f, kind: 'punct', text: ',', low: ',', value: undefined, endLine: f.line, endCol: f.col }, ...tail);
+    }
+    return count;
+  }
+
+  /**
+   * Remove a trailing `fasten off` / `finish off` / `fo` (optionally followed by "and weave in
+   * ends") from the token list and return its tokens.
+   */
+  private cutFastenTail(): Token[] {
+    let end = this.toks.length;
+    while (end > 0 && this.isSep(this.toks[end - 1])) end--;
+    let k = end;
+    // optional "and weave in (the) (yarn) ends" (articles are already dropped by the lexer)
+    const w = (i: number, ...words: string[]) => i >= 0 && this.isWord(this.toks[i], ...words);
+    if (w(k - 1, 'ends')) {
+      let j = k - 2;
+      if (w(j, 'yarn')) j--;
+      if (w(j, 'in') && w(j - 1, 'weave') && w(j - 2, 'and')) k = j - 2;
+    }
+    let start = -1;
+    if (w(k - 1, 'off') && w(k - 2, 'fasten', 'finish')) start = k - 2;
+    else if (w(k - 1, 'fo')) start = k - 1;
+    if (start < 0) return [];
+    // not when it sits inside an unclosed group (that is a different error)
+    const tail = this.toks.slice(start, k);
+    let depth = 0;
+    for (let i = 0; i < start; i++) {
+      if (this.isPunct(this.toks[i], '(', '[')) depth++;
+      else if (this.isPunct(this.toks[i], ')', ']')) depth--;
+    }
+    if (depth !== 0) return [];
+    this.toks = this.toks.slice(0, start);
+    return tail;
+  }
+
+  private extractCountBody(): CountAnn | undefined {
     let end = this.toks.length;
     while (end > 0 && this.isSep(this.toks[end - 1])) end--;
     if (end === 0 || !this.isPunct(this.toks[end - 1], ')')) return undefined;
@@ -957,6 +1016,23 @@ class RoundParser {
     const start = this.i;
     const open = this.peek()!;
     const closer = open.low === '(' ? ')' : ']';
+    if (open.low === '(') {
+      // "(6)" / "(12 sts)" can never be a group: it is a count annotation in the wrong place
+      let close = -1;
+      for (let k = this.i + 1; k < this.toks.length; k++) {
+        if (this.isPunct(this.toks[k], '(', '[')) break;
+        if (this.isPunct(this.toks[k], ')')) { close = k; break; }
+      }
+      if (close > 0) {
+        const parts = this.parseCountParts(this.toks.slice(this.i + 1, close));
+        if (parts && parts.every((p) => p.unit.kind === 'st')) {
+          this.err('E_SYNTAX', `a count annotation like "${this.toks.slice(this.i, close + 1).map((t) => t.text).join('').replace(/(\d)([a-z])/gi, '$1 $2')}" must come last in the round (only "fasten off" may follow it).`,
+            this.spanOf(open, this.toks[close]));
+          this.i = close + 1;
+          throw new ParseError();
+        }
+      }
+    }
     this.i++;
     const items = this.parseSequence({ inRepeat: ctx.inRepeat, inGroup: true });
     const t = this.peek();

@@ -1,7 +1,14 @@
 """Shared fixtures: simulated canonical fixtures, cached per session (each sim takes seconds)."""
-from functools import lru_cache
+import os
 
-import pytest
+# Single-threaded BLAS/OpenMP before numpy is imported (docs/review.md R5); crolab/__init__.py
+# does the same, this covers test modules that import numpy first.
+for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
+
+from functools import lru_cache  # noqa: E402
+
+import pytest  # noqa: E402
 
 from crolab import graph as G
 from crolab.builders import LACE_FIXTURES, builder_for_fixture

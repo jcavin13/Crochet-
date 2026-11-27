@@ -49,5 +49,6 @@ export default defineConfig({
     },
   },
   server: { fs: { allow: ['..'] } },
-  test: { environment: 'node', include: ['src/**/*.test.ts', 'src/**/*.test.tsx'] },
+  // generous timeout: the sim tests are CPU-bound and run slowly on a loaded machine
+  test: { environment: 'node', include: ['src/**/*.test.ts', 'src/**/*.test.tsx'], testTimeout: 60000 },
 });

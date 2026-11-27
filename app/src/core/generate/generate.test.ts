@@ -251,3 +251,28 @@ describe('solver and predictor', () => {
     }
   });
 });
+
+describe('flat aims are not met by absurd chains (review R4)', () => {
+  it('no preset round is flat only with loose (or strained) loops', () => {
+    for (const p of PRESETS) {
+      const r = generateDoily(p.spec, THREAD);
+      for (const x of r.rounds) expect(x.slackOnly ?? false, `${p.id} ${x.message}`).toBe(false);
+    }
+  });
+  it('random designs: flat-aimed rounds are within tol at nominal loop length (rare exceptions are warned)', () => {
+    let flatAimed = 0, slack = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const r = generateDoily(randomSpec(seed, { rounds: [4, 12] }), THREAD);
+      for (const x of r.rounds) {
+        if (x.aim !== 'flat' || x.class !== 'flat') continue;
+        flatAimed++;
+        if (x.slackOnly) {
+          slack++;
+          expect(r.warnings.join('\n')).toContain(x.message);
+        }
+      }
+    }
+    expect(flatAimed).toBeGreaterThan(300);
+    expect(slack / flatAimed).toBeLessThan(0.01);
+  });
+});

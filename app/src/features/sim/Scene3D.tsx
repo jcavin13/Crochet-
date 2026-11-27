@@ -216,6 +216,9 @@ export default function Scene3D(props: Scene3DProps) {
       camera={{ fov: 40, position: [0, 60, 80], near: 0.1, far: 5000 }}
       gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: 'default' }}
       onCreated={({ gl }) => {
+        // accessible name for the canvas (review N8)
+        gl.domElement.setAttribute('role', 'img');
+        gl.domElement.setAttribute('aria-label', '3D view of the simulated piece. Drag to turn, pinch or scroll to zoom, two fingers to pan.');
         gl.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); props.onContextLost?.(); });
       }}
       style={{ touchAction: 'none' }}

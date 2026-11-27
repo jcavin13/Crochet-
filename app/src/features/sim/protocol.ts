@@ -28,6 +28,8 @@ export interface SimFrame {
   block?: BlockSummary;
   /** ms spent in step() for this frame. */
   ms: number;
+  /** Did the shown state settle to the solver tolerance (sent when solved)? */
+  converged?: boolean;
   /** Solver tolerances in use (see core/sim createSim). */
   accuracy: 'reference' | 'fast';
 }

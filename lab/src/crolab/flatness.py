@@ -94,3 +94,22 @@ def table(pattern: dict, **kw) -> list[dict]:
     """Compact per-round rows {round, class, e_min, e_max, stitches_off, rho, r, g}."""
     return [{k: row[k] for k in ("round", "label", "class", "e_min", "e_max", "e", "stitches_off", "rho", "r", "g")}
             for row in analyse(pattern, **kw)["rounds"]]
+
+
+#: per-round fields of the cross-language golden file `spec/fixtures/<name>.flatness.json`
+GOLDEN_FIELDS = ("e_min", "e_max", "e", "rho", "r")
+
+
+def golden_record(name: str, pattern: dict) -> dict:
+    """The lab's version of `spec/fixtures/<name>.flatness.json`, written by the TypeScript
+    analyzer (`app/src/core/flatness`) and asserted in `tests/test_flatness.py` (docs/review.md
+    R8): {"name", "rounds": [{"round", "class", "e_min", "e_max", "e", "rho", "r"}, ...]} for every
+    round of the graph in order (n/a rounds included), floats rounded to 6 decimals."""
+    rows = []
+    for row in analyse(pattern)["rounds"]:
+        rec = {"round": row["round"], "class": row["class"]}
+        for k in GOLDEN_FIELDS:
+            v = round(float(row[k]), 6)
+            rec[k] = 0.0 if v == 0 else v
+        rows.append(rec)
+    return {"name": name, "rounds": rows}

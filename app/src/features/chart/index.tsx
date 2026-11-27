@@ -79,6 +79,7 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
   };
 
   const worst = flat.worst;
+  const loose = flat.rounds.filter((r) => r.slackOnly);
   const nodeCount = useMemo(() => {
     const R = rounds[upto];
     return R && R.last >= 0 ? R.last + 1 : pattern.graph.nodes.length;
@@ -144,8 +145,17 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
                 label="Symbol set"
                 value={prefs.set}
                 onChange={(v) => set({ set: v })}
-                options={[{ value: 'cyc', label: 'CYC', title: 'Craft Yarn Council symbols' }, { value: 'jis', label: 'JIS', title: 'Japanese chart conventions' }]}
+                options={[
+                  { value: 'cyc', label: 'CYC', title: 'Craft Yarn Council symbols' },
+                  { value: 'jis', label: 'JIS (unverified)', title: 'Japanese-style chart conventions — unverified: drawn from secondary sources, not checked against the JIS standard (see app/src/core/chart/SYMBOLS.md)' },
+                ]}
               />
+              {prefs.set === 'jis' && (
+                <p className="muted small" style={{ margin: 0 }}>
+                  The Japanese-style set is <strong>unverified</strong>: it follows common practice in Japanese-published charts,
+                  not the text of the JIS standard (caveat in <code>app/src/core/chart/SYMBOLS.md</code>).
+                </p>
+              )}
               <SegmentedControl
                 label="Single crochet symbol"
                 value={prefs.sc}
@@ -173,13 +183,22 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
                 <p className="ch-worst">
                   {worst
                     ? <><ShapeBadge shape={worst.class as 'cup' | 'ruffle'} /> <strong>Worst: {worst.message}</strong></>
-                    : <><ShapeBadge shape="flat" /> Every round lies flat.</>}
+                    : loose.length
+                      ? <><ShapeBadge shape="flat">flat (loose loops)</ShapeBadge> Every round passes the count rule, but {loose.map((r) => r.label).join(', ')} only if {loose.length === 1 ? 'its' : 'their'} chain loops take up the slack.</>
+                      : <><ShapeBadge shape="flat" /> Every round lies flat.</>}
                 </p>
+                {worst && loose.length > 0 && (
+                  <p className="muted small" style={{ margin: '0 0 var(--s-2)' }}>
+                    Also flat only with loose loops: {loose.map((r) => r.label).join(', ')}.
+                  </p>
+                )}
                 <ul className="ch-report">
                   {flat.rounds.map((r) => (
                     <li key={r.round} className={worst && worst.round === r.round ? 'is-worst' : undefined}>
                       <button type="button" onClick={() => setUpto(r.round)} aria-label={`Show up to ${r.label}`}>
-                        {r.class === 'n/a' ? <Badge tone="outline">n/a</Badge> : <ShapeBadge shape={r.class} />}
+                        {r.class === 'n/a' ? <Badge tone="outline">n/a</Badge>
+                          : r.slackOnly ? <ShapeBadge shape="flat">flat (loose loops)</ShapeBadge>
+                          : <ShapeBadge shape={r.class} />}
                         <span>{r.message}</span>
                       </button>
                     </li>

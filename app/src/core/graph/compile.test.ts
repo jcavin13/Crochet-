@@ -399,7 +399,7 @@ describe('rows (1, 3.3)', () => {
 describe('targets and the cursor (3.3)', () => {
   it('next st passes over spaces; next sp passes over stitches', () => {
     const g = ok(`${RING6}Rnd 2: sc, ch 3, sc, ch 3, sc, ch 3, sc, ch 3, sc, ch 3, sc, ch 3. (6, 6 ch-3 sps)
-Rnd 3: sc in next st, 3 sc in next sp, sc in next ch-3 sp, sc in next st, sc in next st, 2 sc. (9)`);
+Rnd 3: sc in next st, 3 sc in next sp, sc in next ch-3 sp, sc in next st, sc in next st, 2 sc, sk next sp. (9)`);
     const r = R(g, 2);
     const sp = (i: number) => ({ space: g.spaces[i].id });
     expect(r[0].into).toEqual([{ node: 6 }]);

@@ -7,7 +7,7 @@
  * flatness from its sector entries (predict.ts), and keep the best:
  *
  *   score = shapeCost + 0.1 · styleCost
- *   shapeCost (aim flat)   = |e|                         if the round is flat, else 10 + distance
+ *   shapeCost (aim flat)   = |e| (+5 if |e| > tol: flat only with loose loops)   if flat, else 10 + distance
  *   shapeCost (aim ruffle) = |eMin − (tol + amount)|     (+10 unless it ruffles)
  *   shapeCost (aim cup)    = |eMax + (tol + amount)|     (+10 unless it cups)
  *
@@ -61,7 +61,9 @@ function scoreOf(pred: Prediction, aim: GeneratedRound['aim'], amount: number): 
   const tol = simConfig.flatness.tol;
   if (aim === 'ruffle') return Math.abs(pred.eMin - (tol + amount)) + (pred.cls === 'ruffle' ? 0 : 10);
   if (aim === 'cup') return Math.abs(pred.eMax + (tol + amount)) + (pred.cls === 'cup' ? 0 : 10);
-  if (pred.cls === 'flat') return Math.abs(pred.e);
+  // flat only by chain compliance (nominal |e| beyond tol, the band reaching back inside it) means
+  // long, floppy or strained loops: rank it after every truly flat candidate (review R4)
+  if (pred.cls === 'flat') return Math.abs(pred.e) + (Math.abs(pred.e) > tol ? 5 : 0);
   return 10 + (pred.cls === 'cup' ? -tol - pred.eMax : pred.eMin - tol);
 }
 
@@ -280,7 +282,7 @@ export function generateDoily(spec: DoilySpec, params: ParamSet): GenerateResult
     return {
       number: i + 1, motif: p.motif, params: p.params, auto: p.auto || undefined, autoReason: p.autoReason, source: p.source,
       e: f?.e ?? p.pred.e, eMin: f?.eMin ?? p.pred.eMin, eMax: f?.eMax ?? p.pred.eMax,
-      class: f?.class ?? p.pred.cls, aim: p.aim,
+      class: f?.class ?? p.pred.cls, aim: p.aim, slackOnly: f?.slackOnly || undefined,
       stitches: gr?.stitchCount ?? p.entries.filter((e) => e.kind === 'st').length * n,
       spaces: p.entries.filter((e) => e.kind === 'sp').length * n,
       message: f?.message ?? '',
@@ -293,6 +295,8 @@ export function generateDoily(spec: DoilySpec, params: ParamSet): GenerateResult
       warnings.push(r.aim === 'flat'
         ? `${r.message} (closest the ${MOTIFS[r.motif].label.toLowerCase()} motif gets with these settings).`
         : `Rnd ${r.number} was meant to ${r.aim === 'ruffle' ? 'ruffle' : 'cup'} but is ${r.class}.`);
+    } else if (r.aim === 'flat' && r.slackOnly) {
+      warnings.push(`${r.message} (closest the ${MOTIFS[r.motif].label.toLowerCase()} motif gets with these settings).`);
     }
   }
 

@@ -1,4 +1,9 @@
 name: Deploy app to GitHub Pages
+# Publishes app/dist as a project site (https://<owner>.github.io/<repo>/). The build uses
+# `base: './'` and hash routing, so it works under any sub-path without a 404.html fallback.
+# Runs on pushes to the default branch `main` (the github-pages environment only accepts the
+# default branch unless its protection rules are changed) and on demand from the Actions tab.
+# Pages must be enabled once: Settings -> Pages -> Source: GitHub Actions.
 on:
   push:
     branches: [main]
@@ -7,24 +12,26 @@ permissions:
   contents: read
   pages: write
   id-token: write
-concurrency: { group: pages, cancel-in-progress: true }
+# one deployment at a time; do not cancel a deployment that is already running
+concurrency: { group: pages, cancel-in-progress: false }
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: { run: { working-directory: app } }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+        with: { node-version: "22", cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
-        working-directory: app
+      - run: npm test
       - run: npm run build
-        working-directory: app
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: app/dist }
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: { name: github-pages, url: "${{ steps.deployment.outputs.page_url }}" }
     steps:
       - id: deployment

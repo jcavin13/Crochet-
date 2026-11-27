@@ -185,11 +185,15 @@ export function ShapeTab() {
 
       <Card>
         <div className="row">
-          <h2 className="ui-card__title" style={{ margin: 0 }}>Physics preview</h2>
+          <h2 className="ui-card__title" style={{ margin: 0 }}>Physics preview (unstuffed)</h2>
           <span className="spacer" />
           <Toggle label="Simulate" checked={simOn} onChange={setSimOn} />
         </div>
-        <p className="small muted">The spring simulation of the compiled pattern — a second opinion on the shape (unstuffed). It can be slow on large pieces.</p>
+        <p className="small muted">
+          The spring simulation of the compiled pattern, <strong>without stuffing</strong>: a closed piece relaxes like an empty bag
+          (often a flattened dome or bell), not into the drawn profile. Read it as which way the shape tends, not as a preview of the
+          stuffed toy. It has no gravity or self-collision, and can be slow on large pieces.
+        </p>
         {simOn && (compiled.pattern
           ? <Suspense fallback={<p className="small muted">Loading the 3D view…</p>}>
               <div className="ami-sim"><SimView pattern={compiled.pattern} params={params} controls /></div>

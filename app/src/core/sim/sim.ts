@@ -64,6 +64,12 @@ export interface SimHandle {
   step(budgetMs: number): StepResult;
   setUptoRound(r: number): void;
   setBlocked(b: boolean): void;
+  /**
+   * Did the shown state settle to its tolerance? For the last round: the final pass converged;
+   * for an earlier round: that round's relaxation did; blocked: the blocking solve did.
+   * Undefined until solved. With accuracy 'fast' "settled" means the looser fast tolerance.
+   */
+  converged(): boolean | undefined;
   /** Shape metric of the shown relaxed state (undefined until solved). */
   metric(): ShapeMetric | undefined;
   /** Blocking summary of the shown round (undefined unless blocked and solved). */
@@ -146,6 +152,12 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
     step,
     setUptoRound(r: number) { target = clampRound(r); },
     setBlocked(b: boolean) { blocked = b; },
+    converged() {
+      if (blocked) return blockCache.get(target)?.converged;
+      if (!relaxedState(target)) return undefined;
+      if (target === nRounds - 1) return grower.converged;
+      return grower.roundConverged[target];
+    },
     metric() {
       const X = relaxedState(target);
       if (!X) return undefined;

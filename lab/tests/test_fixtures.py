@@ -8,11 +8,14 @@ from conftest import ALL, fixture_pattern
 from crolab import FIXTURES_DIR
 from crolab import graph as G
 from crolab.builders import SOLID_FIXTURES
+from crolab.compare import json_diff
 from crolab.fixtures import dumps, lab_record
 from crolab.metrics import classify_result
 from crolab.params import load_sim_config
 
 CFG = load_sim_config()
+#: about 2x the largest total iteration count of a fixture (flat_dc_circle, 26.6k)
+MAX_ITERATIONS = 60_000
 
 
 @pytest.mark.parametrize("name", ALL)
@@ -21,7 +24,11 @@ def test_fixture_shape_class(name, sim_cache):
     pat, res = sim_cache(name, src)
     m = classify_result(res)
     assert res.converged
-    assert res.seconds < 60   # typically <= 7 s; generous for loaded CI machines
+    # Work budget instead of wall-clock time, which flaked on loaded machines (docs/review.md R5).
+    # Total L-BFGS iterations are 3.8k-27k for the fixtures; the bound catches a solver that
+    # stops converging. The wall-clock guard only catches hangs (typically 0.5-5 s per fixture).
+    assert res.iterations <= MAX_ITERATIONS, res.iterations
+    assert res.seconds < 900
     assert m["class"] == G.load_expected(name)["shape"], m
 
 
@@ -42,9 +49,22 @@ def test_lab_json_up_to_date(name, sim_cache):
     path = FIXTURES_DIR / f"{name}.lab.json"
     if not path.exists():
         pytest.skip("no lab.json yet")
-    pat, src = fixture_pattern(name)
-    rec, _ = lab_record(name, pat, src)
-    assert json.loads(path.read_text()) == rec
+    _, src = fixture_pattern(name)
+    pat, res = sim_cache(name, src)
+    rec, _ = lab_record(name, pat, src, res)
+    # classes and integers exactly, floats within a couple of units of the 4th decimal: another
+    # CPU / BLAS build must not fail CI on a rounding boundary (docs/review.md R11)
+    diff = json_diff(rec, json.loads(path.read_text()))
+    assert not diff, f"{path.name} is stale (run `make lab-fixtures`): " + "; ".join(diff[:5])
+
+
+def test_json_diff_tolerance():
+    ref = {"class": "flat", "A": 0.1234, "n_nodes": 10, "per_round": [{"class": "cup", "W": 0.5}]}
+    assert json_diff(dict(ref, A=0.1235), ref) == []
+    assert json_diff(dict(ref, A=0.1250), ref)
+    assert json_diff(dict(ref, n_nodes=11), ref)
+    assert json_diff(dict(ref, per_round=[{"class": "flat", "W": 0.5}]), ref)
+    assert json_diff(dict(ref, A=1), dict(ref, A=1.0)) == []
 
 
 def test_determinism_two_runs():

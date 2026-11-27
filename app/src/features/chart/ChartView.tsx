@@ -7,7 +7,7 @@
  * two chunks. Pan / zoom writes the transform straight to the DOM (no React state per frame);
  * hit testing uses a grid index, so there are no per-node elements or listeners.
  */
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Pattern, Terms } from '@/core/graph';
 import { describeNode } from '@/core/graph';
 import { paramsFor, type ParamSet } from '@/core/params';
@@ -110,7 +110,7 @@ export function ChartView(props: ChartViewProps) {
     if (layout.mode !== 'radial') return [];
     return layout.rounds.filter((r) => r.first >= 0 && r.r > r.r0).map((r) => ({
       index: r.index, d: bandPath(layout, r.index), edge: r.flat && r.flat.class !== 'flat' && r.flat.class !== 'n/a' ? edgePath(r) : '',
-      cls: r.flat?.class ?? 'n/a', message: r.flat?.message ?? '',
+      cls: r.flat?.class ?? 'n/a', message: r.flat?.message ?? '', loose: !!r.flat?.slackOnly,
     }));
   }, [layout]);
 
@@ -170,6 +170,7 @@ export function ChartView(props: ChartViewProps) {
 
   // ---- tooltip
   const [tip, setTip] = useState<Tip | null>(null);
+  const hatchId = `ch-hatch${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const tipFor = useCallback((clientX: number, clientY: number, pinned: boolean): { tip: Tip | null; node: number; round: number } => {
     const root = rootRef.current;
     if (!root) return { tip: null, node: -1, round: -1 };
@@ -323,7 +324,7 @@ export function ChartView(props: ChartViewProps) {
         onDoubleClick={() => { reset(); setTip(null); }}
       >
         <g ref={gRef}>
-          <Bands bands={bands} upto={upto} flatness={showFlatness} />
+          <Bands bands={bands} upto={upto} flatness={showFlatness} hatchId={hatchId} />
           {ring && <path className="ch-ring" d={ring.stroke} />}
           {chunks.map((c) => {
             if (c.round > upto) return null;
@@ -391,11 +392,21 @@ const Chunk = memo(function Chunk({ stroke, fill, from, to, alt, state, cut }: {
   return part(from, to, state === 'todo' ? `${base} ch-dim` : base, 'a');
 });
 
-const Bands = memo(function Bands({ bands, upto, flatness }: {
-  bands: { index: number; d: string; edge: string; cls: string; message: string }[]; upto: number; flatness: boolean;
+const Bands = memo(function Bands({ bands, upto, flatness, hatchId }: {
+  bands: { index: number; d: string; edge: string; cls: string; message: string; loose: boolean }[]; upto: number; flatness: boolean; hatchId: string;
 }) {
+  const anyLoose = flatness && bands.some((b) => b.loose && b.index <= upto);
   return (
     <g className="ch-bands">
+      {anyLoose && (
+        <defs>
+          {/* "flat (loose loops)": flat only if the chain loops take up the slack (flatness.md) */}
+          <pattern id={hatchId} patternUnits="userSpaceOnUse" width="0.32" height="0.32" patternTransform="rotate(45)">
+            <rect className="ch-hatch-bg" width="0.32" height="0.32" />
+            <line className="ch-hatch-line" x1="0" y1="0" x2="0" y2="0.32" />
+          </pattern>
+        </defs>
+      )}
       {bands.map((b) => {
         if (b.index > upto) return null;
         const shape = flatness && b.cls !== 'n/a' ? b.cls : '';
@@ -403,6 +414,7 @@ const Bands = memo(function Bands({ bands, upto, flatness }: {
         return (
           <g key={b.index}>
             <path className={shape ? `ch-band ch-band--${shape}${b.index % 2 ? ' ch-band--odd' : ''}` : 'ch-band ch-band--alt'} d={b.d} fillRule="evenodd" />
+            {shape === 'flat' && b.loose && <path className="ch-band ch-band--loose" d={b.d} fillRule="evenodd" fill={`url(#${hatchId})`} />}
             {shape && b.edge && <path className={`ch-edge ch-edge--${shape}`} d={b.edge} />}
           </g>
         );

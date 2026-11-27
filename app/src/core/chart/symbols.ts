@@ -170,12 +170,13 @@ function stitchGlyph(n: ChartNode, o: SymbolOptions): Glyph {
     const a = Math.min(0.21, Math.max(0.12, L * 0.3));
     // worked into the same place as its neighbour (inc): join the fan to the anchor
     if (n.fan && L - Math.min(L / 2, 0.42) - a > 0.4) stroke += line(A, add(C, dir, -a * 0.75));
+    // The cross itself stays upright on the page (review R23): rotated with the round, a × at
+    // 45° reads as a + (and vice versa), so the two conventions would look alike in one chart.
+    const k = a * 0.7071;
     if ((o.sc ?? 'x') === 'plus') {
-      stroke += line(add(C, dir, -a), add(C, dir, a)) + line(add(C, perp, -a), add(C, perp, a));
+      stroke += line({ x: C.x - a, y: C.y }, { x: C.x + a, y: C.y }) + line({ x: C.x, y: C.y - a }, { x: C.x, y: C.y + a });
     } else {
-      const d1 = { x: (dir.x + perp.x) * a * 0.7071, y: (dir.y + perp.y) * a * 0.7071 };
-      const d2 = { x: (dir.x - perp.x) * a * 0.7071, y: (dir.y - perp.y) * a * 0.7071 };
-      stroke += line(add(C, d1, -1), add(C, d1)) + line(add(C, d2, -1), add(C, d2));
+      stroke += line({ x: C.x - k, y: C.y - k }, { x: C.x + k, y: C.y + k }) + line({ x: C.x - k, y: C.y + k }, { x: C.x + k, y: C.y - k });
     }
   } else if (base === 'puff') {
     const m = Math.max(2, sp.size ?? 3);

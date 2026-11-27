@@ -143,6 +143,8 @@ export interface GeneratedRound {
   /** Nominal excess and class from the real flatness check of the compiled pattern. */
   e: number;
   eMin: number;
+  /** Flat only thanks to chain compliance (flatness.md "flat (loose loops)"). */
+  slackOnly?: boolean;
   eMax: number;
   class: RoundClass;
   /** What the solver aimed for. */

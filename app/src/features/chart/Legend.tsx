@@ -7,6 +7,7 @@ export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet 
   layout: ChartLayout; terms: Terms; symbolSet?: SymbolSet; scGlyph?: ScGlyph; upto?: number; showFlatness?: boolean;
 }) {
   const entries = useMemo(() => legendEntries(layout, terms, upto), [layout, terms, upto]);
+  const loose = layout.rounds.some((r) => r.flat?.slackOnly && (upto === undefined || r.index <= upto));
   return (
     <div>
       <ul className="ch-legend" aria-label="Symbols used">
@@ -27,6 +28,11 @@ export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet 
       {showFlatness && layout.mode === 'radial' && (
         <div className="ch-shapekey" aria-label="Flatness band">
           <span><i className="ch-swatch ch-swatch--flat" aria-hidden="true" />lies flat</span>
+          {loose && (
+            <span title="Flat by the count rule only if the chain loops sag or stretch to take up the difference — expect long, floppy (or strained) loops.">
+              <i className="ch-swatch ch-swatch--loose" aria-hidden="true" />flat (loose loops)
+            </span>
+          )}
           <span><i className="ch-swatch ch-swatch--cup" aria-hidden="true" />cups (too few sts)</span>
           <span><i className="ch-swatch ch-swatch--ruffle" aria-hidden="true" />ruffles (too many)</span>
         </div>

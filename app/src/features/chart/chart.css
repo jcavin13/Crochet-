@@ -37,6 +37,10 @@
 .ch-band--cup { fill: var(--shape-cup-soft); opacity: 0.95; }
 .ch-band--ruffle { fill: var(--shape-ruffle-soft); opacity: 0.95; }
 .ch-band--odd { opacity: 0.6; }
+/* flat only if the chain loops take up the slack: hatched over the flat tint */
+.ch-band--loose { opacity: 1; }
+.ch-hatch-bg { fill: var(--surface); opacity: 0.35; }
+.ch-hatch-line { stroke: var(--shape-flat); stroke-width: 0.07; opacity: 0.55; }
 .ch-edge { fill: none; stroke-width: 0.06; stroke-linecap: round; }
 .ch-edge--cup { stroke: var(--shape-cup); stroke-dasharray: 0.45 0.3; }
 .ch-edge--ruffle { stroke: var(--shape-ruffle); stroke-dasharray: 0.1 0.2; }
@@ -118,6 +122,10 @@
 .ch-shapekey span { display: inline-flex; align-items: center; gap: var(--s-1); }
 .ch-swatch { width: 18px; height: 12px; border-radius: 3px; border: 1px solid var(--border-strong); display: inline-block; }
 .ch-swatch--flat { background: var(--shape-flat-soft); }
+.ch-swatch--loose {
+  background: repeating-linear-gradient(45deg, var(--shape-flat-soft) 0 3px, color-mix(in srgb, var(--shape-flat) 45%, var(--shape-flat-soft)) 3px 4.5px);
+  border: 1.5px solid var(--shape-flat);
+}
 .ch-swatch--cup { background: var(--shape-cup-soft); border: 1.5px dashed var(--shape-cup); }
 .ch-swatch--ruffle { background: var(--shape-ruffle-soft); border: 1.5px dotted var(--shape-ruffle); }
 

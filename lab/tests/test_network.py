@@ -77,3 +77,42 @@ def test_no_duplicates_and_positive(net):
     keys = list(zip(net.i.tolist(), net.j.tolist()))
     assert len(keys) == len(set(keys))
     assert (net.L > 0).all() and (net.k > 0).all() and (net.i < net.j).all()
+
+
+def _slst_round_pattern():
+    """6 sc in a magic ring, Rnd 2 inc x6 (12), Rnd 3 a sl st in each st (a closed round course
+    whose total course length is 0: slip stitches contribute nothing to the course)."""
+    from crolab.builders import N, S, PatternBuilder
+    b = PatternBuilder("slip-stitch edge")
+    b.begin("Rnd 1")
+    ring = b.magic_ring()
+    for _ in range(6):
+        b.st("sc", S(ring))
+    b.end(declared=6)
+    prev = b.targets(0)
+    b.begin("Rnd 2")
+    for t in prev:
+        b.st("sc", N(t))
+        b.st("sc", N(t))
+    b.end(declared=12)
+    prev = b.targets(1)
+    b.begin("Rnd 3")
+    for t in prev:
+        b.st("slst", N(t))
+    b.end()
+    return b.build()
+
+
+@pytest.mark.parametrize("variant", ["spec", "metric"])
+def test_zero_length_closed_course_is_straight(variant):
+    """A closed round whose course length is 0 has no geodesic radius; its course and course-bend
+    springs are straight (the TypeScript sim does the same) instead of raising KeyError."""
+    pat = _slst_round_pattern()
+    G.validate(pat)
+    net = build_network(pat, variant=variant)
+    first = pat["graph"]["rounds"][2]["first"]
+    p = net.pairs()
+    L, _, t = p[(first, first + 1)]
+    assert t == COURSE and L == pytest.approx(3.25)          # w_slst, not shortened to a chord
+    L, _, t = p[(first, first + 2)]
+    assert t == BEND_COURSE and L == pytest.approx(6.5)       # two slip-stitch widths, straight

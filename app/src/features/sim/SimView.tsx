@@ -35,6 +35,8 @@ export interface SimStatus {
   renderer: 'webgl' | 'svg';
   nNodes: number;
   accuracy?: 'reference' | 'fast';
+  /** the shown state settled to the solver tolerance (undefined while solving) */
+  converged?: boolean;
   /** strain shown at full colour in 'strain' colouring */
   strainScale: number;
 }
@@ -149,9 +151,9 @@ export function SimView(props: SimViewProps) {
     onStatus?.({
       phase, nRounds, roundsGrown: frame?.step.roundsGrown ?? 0, shownRound: frame?.step.shownRound ?? upto,
       metric: frame?.metric, block: frame?.block, error: error ?? undefined, mode, renderer: useGl ? 'webgl' : 'svg',
-      nNodes: network?.nNodes ?? 0, accuracy: frame?.accuracy, strainScale: sScale,
+      nNodes: network?.nNodes ?? 0, accuracy: frame?.accuracy, converged: frame?.converged, strainScale: sScale,
     });
-  }, [phase, frame?.step.roundsGrown, frame?.step.shownRound, frame?.metric, frame?.block, error, mode, useGl, nRounds, upto, network, onStatus, sScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, frame?.step.roundsGrown, frame?.step.shownRound, frame?.metric, frame?.block, frame?.converged, error, mode, useGl, nRounds, upto, network, onStatus, sScale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fitKey = `${network ? network.nNodes : 0}|${resetViewKey ?? ''}|${blocked}|${done ? 'done' : 'live'}|${axis.join(',')}|${elev}`;
   const positions = frame?.positions ?? null;
@@ -194,7 +196,10 @@ export function SimView(props: SimViewProps) {
             <SegmentedControl label="Boundary" value={ownBlocked ? 'blocked' : 'relaxed'} onChange={(v) => setOwnBlocked(v === 'blocked')}
               options={[{ value: 'relaxed', label: 'Relaxed' }, { value: 'blocked', label: 'Blocked' }]} />
             {frame?.metric && !ownBlocked && (
-              <span className="sim-readout small"><ShapeBadge shape={frame.metric.class} /> A {fmt(frame.metric.A)} · W {fmt(frame.metric.W)}</span>
+              <span className="sim-readout small">
+                <ShapeBadge shape={frame.metric.class}>{`tends to ${frame.metric.class === 'flat' ? 'lie flat' : frame.metric.class}`}</ShapeBadge> A {fmt(frame.metric.A)} · W {fmt(frame.metric.W)}
+                {(frame.converged === false || frame.accuracy === 'fast') && <> · <em>{frame.converged === false ? 'approximate — did not fully settle' : 'approximate (fast solve)'}</em></>}
+              </span>
             )}
             {ownBlocked && frame?.block && <span className="sim-readout small">{frame.block.message}</span>}
           </div>

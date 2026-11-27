@@ -36,7 +36,7 @@ def intrinsic_curvature(pattern: dict, params=None, config=None) -> list[dict]:
 
     fl = analyse(pattern, params, config)
     out = []
-    prevC, prevrho = 0.0, None
+    prevC = 0.0
     prevK = 0.0
     for row in fl["rounds"]:
         if row["class"] == "n/a":

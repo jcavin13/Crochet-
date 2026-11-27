@@ -19,7 +19,7 @@ Public builders:
 from __future__ import annotations
 
 import json
-from typing import Iterable, Sequence
+from typing import Sequence
 
 STITCH_TCH = {"sc": 1, "hdc": 2, "dc": 3, "tr": 4, "dtr": 5, "slst": 0}
 

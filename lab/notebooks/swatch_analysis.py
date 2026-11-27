@@ -27,7 +27,6 @@
 
 # %%
 import tempfile
-import time
 from pathlib import Path
 
 import cv2
@@ -50,9 +49,7 @@ plt.rcParams.update({"figure.dpi": 80, "font.size": 9})
 # %%
 img, truth = make_photo(SwatchSpec(seed=101), PhotoSpec(tilt_deg=20, tilt_azimuth_deg=40, swatch_angle_deg=3, seed=101),
                         LAYOUTS)
-t0 = time.time()
 an = analyze_image(img, stitch="sc", hook_mm=5.0, yarn="synthetic", layouts=LAYOUTS)
-print(f"analysis took {time.time() - t0:.1f} s")
 r = an.result
 g = r["gauge_from_texture"]
 print(f"markers {r['markers']['detected_layout']}/{r['markers']['of']}, reprojection rms {r['markers']['reproj_rms_mm']:.3f} mm")
@@ -95,7 +92,6 @@ for tilt in (0, 10, 20, 30, 40):
         configs.append(("sc", tilt, noise))
 for tilt in (0, 20, 35):
     configs.append(("dc", tilt, 6))
-t0 = time.time()
 for k, (st, tilt, noise) in enumerate(configs):
     if st == "sc":
         px = float(rng.uniform(5.0, 7.5)); py = px * float(rng.uniform(0.88, 1.0)); n_st, n_r = int(min(20, 125 // px)), 20
@@ -119,7 +115,7 @@ for k, (st, tilt, noise) in enumerate(configs):
                      h_err=a["swatch"]["bbox_height_mm"] / tr["bbox_height_mm"] - 1,
                      px_err=gt["stitch_pitch_mm"] / px - 1, py_err=gt["row_pitch_mm"] / py - 1,
                      conf=gt["confidence"], label=gt["confidence_label"]))
-print(f"{len(rows)} photos in {time.time() - t0:.0f} s")
+print(f"{len(rows)} photos analysed")
 
 # %%
 hdr = f"{'st':3s} {'tilt':>4s} {'noise':>5s} {'win err mm':>10s} {'rms mm':>7s} {'tilt est':>8s} " \

@@ -11,6 +11,7 @@ import {
   Badge, Button, Card, EmptyState, Icon, IconButton, Page, PageHeader, SegmentedControl, Select, ShapeBadge, Slider, buttonClass,
 } from '@/ui';
 import { SimView, usePalette, type ColorBy, type SimStatus } from './SimView';
+import { closedShapeNote, explainDisagreement } from './explain';
 import { roundColor, toCss, type Palette } from './topology';
 import './sim.css';
 
@@ -53,21 +54,6 @@ export default function SimPage() {
 
 const CLASS_WORD: Record<'flat' | 'cup' | 'ruffle', string> = { flat: 'lies flat', cup: 'cups', ruffle: 'ruffles' };
 
-function explainDisagreement(sim: 'flat' | 'cup' | 'ruffle', analytic: RoundClass): string | null {
-  if (analytic === 'n/a') return 'The analytic check does not apply here (rows, or a round with nothing to measure), so only the simulation gives a verdict.';
-  if (sim === analytic) return null;
-  if (analytic === 'cup' && sim === 'ruffle') {
-    return 'The count rule already sees too few stitches; in the simulation the short edge first pulls the piece out of plane and the edge waves before the cup forms. Add a few more rounds and the cup shows.';
-  }
-  if (analytic === 'flat') {
-    return `Each round is within the flat band of the count rule, but the simulation adds the stitch heights and the way stitches lean, and lets small errors add up over rounds — together enough to make the piece ${sim === 'cup' ? 'cup' : 'wave'}. Expect a gentle ${sim === 'cup' ? 'cup' : 'ruffle'} that blocking will usually remove.`;
-  }
-  if (sim === 'flat') {
-    return `The count rule flags this round, but in the simulation the neighbouring rounds absorb the difference (or the piece is still small), so the fabric stays within the flat band (A and W below ${simConfig.tau_flat}).`;
-  }
-  return 'The two checks see different things: the count rule looks at one round at a time, the simulation at the whole piece. Trust the count rule for which round to fix, and the simulation for the overall shape.';
-}
-
 function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title: string }) {
   const auto = useStitchParams(pattern);
   const [stored, setPrefs] = usePersistentState<Prefs>('sim:prefs', DEFAULT_PREFS);
@@ -103,6 +89,10 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
   const m = status?.metric;
   const blk = status?.block;
   const explanation = m && analyticRound ? explainDisagreement(m.class, analyticRound.class) : null;
+  // approximate: the solve stopped at its iteration cap, or used the looser fast tolerances
+  const unsettled = !!m && status?.converged === false;
+  const approximate = !!m && (unsettled || status?.accuracy === 'fast');
+  const closedNote = closedShapeNote(flat.rounds, round);
   const palette = usePalette();
 
   return (
@@ -135,13 +125,14 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
             <dl className="sim-shape">
               <dt>Simulation</dt>
               <dd>
-                {m ? <><ShapeBadge shape={m.class} /><span className="small">A {m.A.toFixed(2)} · W {m.W.toFixed(2)}</span></>
+                {m ? <><ShapeBadge shape={m.class}>{`tends to ${m.class === 'flat' ? 'lie flat' : m.class}`}</ShapeBadge><span className="small">A {m.A.toFixed(2)} · W {m.W.toFixed(2)}</span>
+                  {approximate && <Badge tone="warning">{unsettled ? 'approximate — did not fully settle' : 'approximate (fast solve)'}</Badge>}</>
                   : <span className="small muted">{status?.phase === 'error' ? 'failed' : 'solving…'}</span>}
               </dd>
               <dt>Count rule</dt>
               <dd>
                 {analyticRound && analyticRound.class !== 'n/a'
-                  ? <><ShapeBadge shape={analyticRound.class} /><span className="small">{pct(analyticRound.e)}</span></>
+                  ? <><ShapeBadge shape={analyticRound.class}>{analyticRound.slackOnly ? 'flat (loose loops)' : undefined}</ShapeBadge><span className="small">{pct(analyticRound.e)}</span></>
                   : <Badge>n/a</Badge>}
               </dd>
               {m && <><dt>Size</dt><dd className="small">Rg {(m.Rg / 10).toFixed(1)} cm · edge radius {(m.outer_radius / 10).toFixed(1)} cm</dd></>}
@@ -150,10 +141,19 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
               <p className="sim-explain">
                 {pattern.graph.rounds[round]?.label ?? 'This round'}: the simulated piece {CLASS_WORD[m.class]}
                 {m.class === 'flat' ? '' : m.class === 'cup' ? ` (depth A = ${m.A.toFixed(2)} of its size)` : ` (waviness W = ${m.W.toFixed(2)})`}.
-                {' '}{explanation ?? 'Both checks agree.'}
+                {' '}{explanation ?? (approximate ? 'The count rule points the same way, but this state is approximate.' : 'The count rule points the same way.')}
               </p>
             )}
-            {analyticRound && analyticRound.class !== 'n/a' && analyticRound.class !== 'flat' && (
+            {approximate && (
+              <p className="sim-explain sim-approx" role="note">
+                <Icon name="alert" size={16} />{' '}
+                {unsettled
+                  ? 'Approximate — the solver did not fully settle (it hit its iteration limit), so A, W and the shape class may still change. Treat them as a rough tendency.'
+                  : 'Approximate — this large piece was solved to a looser tolerance, so A and W are rough and a shape with several stable forms may settle differently.'}
+              </p>
+            )}
+            {closedNote && <p className="sim-explain muted">{closedNote}</p>}
+            {analyticRound && analyticRound.class !== 'n/a' && (analyticRound.class !== 'flat' || analyticRound.slackOnly) && (
               <p className="sim-explain muted">{analyticRound.message}</p>
             )}
           </Card>
@@ -194,13 +194,15 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
             <ul className="sim-limits">
               <li>Stitch-level springs, not yarn: it shows the shape, not the drape or the texture.</li>
               <li>Nominal stitch sizes for the chosen yarn and hook; your tension will differ.</li>
-              <li>No gravity, no stuffing, and no self-collision: strong ruffles may pass through themselves.</li>
+              <li>No gravity, no stuffing, and no self-collision: strong ruffles may pass through themselves, and closed shapes relax like an empty bag.</li>
+              <li>It reacts to mismatches of a few percent; the count rule tolerates ±{Math.round(simConfig.flatness.tol * 100)} %. When they differ, neither is the final word: the 3D shape is a tendency, not a verdict.</li>
               <li>Ruffled and closed shapes have several stable forms; the one shown is one of them.</li>
             </ul>
             {status && (
               <p className="small muted">
                 {status.nNodes} stitches · {status.mode === 'worker' ? 'solved in a background worker' : 'solved on the page'} · {status.renderer === 'webgl' ? '3D' : 'flat projection'}
                 {status.accuracy === 'fast' && ' · large piece: solved to a looser tolerance, so A and W are approximate'}
+                {status.converged === false && ' · did not fully settle'}
               </p>
             )}
           </Card>

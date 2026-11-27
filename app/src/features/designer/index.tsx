@@ -275,7 +275,7 @@ function Results({ result, params, summary, stale }: { result: GenerateResult; p
                   <span className="dz-motif">{MOTIFS[r.motif].label}{r.auto ? <Badge tone="outline">added</Badge> : null}</span>
                   <span className="dz-motif__sum">{paramSummary(r)}</span>
                 </td>
-                <td>{r.class === 'n/a' ? '—' : <ShapeBadge shape={r.class} />}{r.aim !== 'flat' && <span className="dz-aim">aimed: {r.aim === 'cup' ? 'cup' : 'ruffle'}</span>}</td>
+                <td>{r.class === 'n/a' ? '—' : r.slackOnly ? <ShapeBadge shape="flat">flat (loose loops)</ShapeBadge> : <ShapeBadge shape={r.class} />}{r.aim !== 'flat' && <span className="dz-aim">aimed: {r.aim === 'cup' ? 'cup' : 'ruffle'}</span>}</td>
                 <td className="dz-num-col" title={`flat window ${pct(r.eMin)} … ${pct(r.eMax)}`}>{pct(r.e)}</td>
               </tr>
             ))}

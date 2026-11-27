@@ -44,6 +44,7 @@ export function createDriver(o: DriverOptions) {
         strain: st.done ? sim.strain() : undefined,
         metric: st.done ? metricOf(sim) : undefined,
         block: st.done ? sim.block() : undefined,
+        converged: st.done ? sim.converged() : undefined,
       });
     }
     if (st.done) { running = false; return; }

@@ -231,3 +231,26 @@ describe('solveOrdered', () => {
     expect(y[2]).toBeCloseTo(1.2);
   });
 });
+
+describe('sc glyph orientation (review R23)', () => {
+  // the two strokes of every sc cross: slopes ±1 for "×", 0 / ∞ for "+", whatever the round angle
+  const segs = (d: string) => [...d.matchAll(/M(-?[\d.]+) (-?[\d.]+)L(-?[\d.]+) (-?[\d.]+)/g)].map((m) => m.slice(1).map(Number));
+  const pat = load(fixDir + 'flat_sc_circle.cro')!;
+  const layout = layoutChart(pat.graph, paramsFor(pat));
+  const scs = layout.nodes.filter((n) => n.symbol.base === 'sc' && n.symbol.legs === 1);
+  it('× never turns into +', async () => {
+    const { glyph } = await import('./index');
+    expect(scs.length).toBeGreaterThan(100);
+    for (const n of scs) {
+      const s = segs(glyph(n, { sc: 'x' }).stroke).slice(-2);
+      for (const [x1, y1, x2, y2] of s) expect(Math.abs(Math.abs((y2 - y1) / (x2 - x1)) - 1)).toBeLessThan(0.05);
+    }
+  });
+  it('+ stays +', async () => {
+    const { glyph } = await import('./index');
+    for (const n of scs) {
+      const s = segs(glyph(n, { sc: 'plus' }).stroke).slice(-2);
+      for (const [x1, y1, x2, y2] of s) expect(Math.min(Math.abs(x2 - x1), Math.abs(y2 - y1))).toBeLessThan(0.01);
+    }
+  });
+});
