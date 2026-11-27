@@ -42,7 +42,7 @@ const EXPECTED: Record<string, string> = {
   'spiral-sc-mat-fan-edge': 'C6',
   // Rnd 8 puts its first fan in the V's ch-3 sp but the other 19 in the sp after the sc (a
   // transcription slip in the corpus file, reported): 20-fold up to Rnd 7, a defect in Rnd 8
-  'sunburst-dtr-doily-20': 'C1',
+  'sunburst-dtr-doily-20': 'D20',
   'teaching-cup-basket': 'C6',
   'teaching-ruffle-shell-doily': 'C12',
   'uk-terms-wheel-16': 'D16',
@@ -67,20 +67,23 @@ describe('analyzeSymmetry on fixtures and corpus', () => {
       expect(report.summary[0]).toMatch(/^Whole piece/);
       // the name's "-N" is the order of the piece, except where documented above
       const m = /-(\d+)$/.exec(name);
-      if (m && !['picot-coaster-24', 'solid-centre-lace-border-24', 'sunburst-dtr-doily-20'].includes(name)) {
+      if (m && !['picot-coaster-24', 'solid-centre-lace-border-24'].includes(name)) {
         expect(report.order).toBe(Number(m[1]));
       }
-      if (name !== 'sunburst-dtr-doily-20') expect(report.defects).toEqual([]);
+      expect(report.defects).toEqual([]);
     });
   }
 
-  it('documents the deviations: last-round order of the picot coaster, the sunburst defect', () => {
+  it('documents the deviations: last-round order of the picot coaster; finds the slip the sunburst doily originally had', () => {
     const picot = analyze(readFileSync(`${CORPUS}picot-coaster-24.cro`, 'utf8')).report;
     expect(picot.rounds.at(-1)!.order).toBe(24);
     expect(picot.rounds.at(-1)!.cumulative).toBe(12);
     const border = analyze(readFileSync(`${CORPUS}solid-centre-lace-border-24.cro`, 'utf8')).report;
     expect(border.rounds.slice(6).map((r) => r.order)).toEqual([24, 24, 24, 24]);
-    const sun = analyze(readFileSync(`${CORPUS}sunburst-dtr-doily-20.cro`, 'utf8')).report;
+    // The corpus file once lacked this skip in Rnd 8's repeat (found by this analysis, since fixed).
+    const sunText = readFileSync(`${CORPUS}sunburst-dtr-doily-20.cro`, 'utf8');
+    expect(sunText).toContain('*sk next ch-3 sp, (3 dc, picot, 3 dc)');
+    const sun = analyze(sunText.replace('*sk next ch-3 sp, (3 dc, picot, 3 dc)', '*(3 dc, picot, 3 dc)')).report;
     expect(sun.rounds.slice(0, 7).every((r) => r.cumulative === 20)).toBe(true);
     expect(sun.defects).toHaveLength(1);
     expect(sun.defects[0].round).toBe(7);
