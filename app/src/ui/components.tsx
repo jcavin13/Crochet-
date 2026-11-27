@@ -404,3 +404,19 @@ export function SplitPane({
 }
 /** Inside a SplitPane: which pane is active on phones (all panes are visible on desktop). */
 export const useSplitPane = () => useContext(SplitCtx);
+
+/** The app mark: the eight-loop rosette from the app icon (public/icon.svg). */
+export function BrandMark({ size = 28 }: { size?: number }) {
+  const loops = [0, 45, 90, 135, 180, 225, 270, 315];
+  return (
+    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true">
+      <rect width="512" height="512" rx="120" fill="var(--accent)" />
+      <g fill="none" stroke="var(--accent-ink)" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="256" cy="256" r="44" strokeWidth="30" />
+        {loops.map((a) => (
+          <path key={a} strokeWidth="28" transform={`rotate(${a} 256 256)`} d="M256 200 C206 150 210 96 256 78 C302 96 306 150 256 200" />
+        ))}
+      </g>
+    </svg>
+  );
+}

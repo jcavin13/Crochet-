@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maskable/opaque variant: full-bleed background, motif inside the 80% safe zone. -->
+  <rect width="512" height="512" fill="#a3412a"/>
+  <g transform="translate(256 256) scale(0.74) translate(-256 -256)">
+    <g fill="none" stroke="#fbf3e4" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="256" cy="256" r="40" stroke-width="18"/>
+      <g stroke-width="15">
+        <path id="loop" d="M256 206 C212 160 214 108 256 92 C298 108 300 160 256 206"/>
+        <use href="#loop" transform="rotate(45 256 256)"/>
+        <use href="#loop" transform="rotate(90 256 256)"/>
+        <use href="#loop" transform="rotate(135 256 256)"/>
+        <use href="#loop" transform="rotate(180 256 256)"/>
+        <use href="#loop" transform="rotate(225 256 256)"/>
+        <use href="#loop" transform="rotate(270 256 256)"/>
+        <use href="#loop" transform="rotate(315 256 256)"/>
+      </g>
+    </g>
+    <g fill="#fbf3e4">
+      <circle id="dot" cx="256" cy="58" r="12"/>
+      <use href="#dot" transform="rotate(22.5 256 256)"/><use href="#dot" transform="rotate(45 256 256)"/>
+      <use href="#dot" transform="rotate(67.5 256 256)"/><use href="#dot" transform="rotate(90 256 256)"/>
+      <use href="#dot" transform="rotate(112.5 256 256)"/><use href="#dot" transform="rotate(135 256 256)"/>
+      <use href="#dot" transform="rotate(157.5 256 256)"/><use href="#dot" transform="rotate(180 256 256)"/>
+      <use href="#dot" transform="rotate(202.5 256 256)"/><use href="#dot" transform="rotate(225 256 256)"/>
+      <use href="#dot" transform="rotate(247.5 256 256)"/><use href="#dot" transform="rotate(270 256 256)"/>
+      <use href="#dot" transform="rotate(292.5 256 256)"/><use href="#dot" transform="rotate(315 256 256)"/>
+      <use href="#dot" transform="rotate(337.5 256 256)"/>
+    </g>
+  </g>
+</svg>

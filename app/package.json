@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "fixtures": "tsx scripts/fixtures.ts",
+    "check": "tsx scripts/check.ts",
+    "screenshots": "node scripts/screenshots.mjs",
+    "icons": "node scripts/icons.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
