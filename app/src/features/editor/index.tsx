@@ -214,7 +214,7 @@ function convertNotationTerms(text: string, terms: Terms): { ok: true; text: str
   const errs = p.diagnostics.filter((d) => d.severity === 'error');
   if (errs.length) {
     const d = errs[0];
-    return { ok: false, reason: `Can't switch to ${terms} terms while the notation has ${errs.length === 1 ? 'an error' : `${errs.length} errors`} (line ${d.line}: ${d.message}). Fix ${errs.length === 1 ? 'it' : 'them'} first.` };
+    return { ok: false, reason: `Can't switch to ${terms} terms while the notation has ${errs.length === 1 ? 'an error' : `${errs.length} errors`} (line ${d.line}: ${d.message.replace(/\.$/, '')}). Fix ${errs.length === 1 ? 'it' : 'them'} first.` };
   }
   let out = print(p.ast, { terms });
   const before = compile(p.ast);

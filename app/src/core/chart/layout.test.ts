@@ -45,9 +45,10 @@ function checkLayout(L: ChartLayout, label: string) {
     for (let i = 1; i < course.length; i++) {
       expect(R.dir * (course[i].s - course[i - 1].s), `${label} ${R.label}: nodes ${course[i - 1].id}→${course[i].id}`).toBeGreaterThanOrEqual(-1e-9);
     }
-    // a closed round fits in one turn
-    if (L.mode === 'radial' && course.length > 1) {
-      expect(R.dir * (course[course.length - 1].s - course[0].s), `${label} ${R.label} span`).toBeLessThanOrEqual(2 * Math.PI + 1e-6);
+    // a closed round fits in one turn (the join sits in the gap between the last and first stitch)
+    const body = course.filter((n) => n.role !== 'join');
+    if (L.mode === 'radial' && body.length > 1) {
+      expect(R.dir * (body[body.length - 1].s - body[0].s), `${label} ${R.label} span`).toBeLessThanOrEqual(2 * Math.PI + 1e-6);
     }
   }
 }
@@ -107,11 +108,14 @@ describe('layoutChart', () => {
       if (R.first < 0) continue;
       const tops = L.nodes.slice(R.first, R.last + 1).filter((m) => m.kind === 'stitch' || (m.kind === 'tch' && p.graph.nodes[m.id].countsAs));
       if (tops.length < n) continue;
-      for (const t of tops) {
-        // spiral rounds rise over the turn: compare angles at the node's own radius
+      // the top of each stitch (a counting turning chain's top is r along its angle)
+      const top = (m: (typeof tops)[number]) => { const a0 = Math.atan2(-m.y, m.x); return { x: m.r * Math.cos(a0), y: -m.r * Math.sin(a0), r: m.r }; };
+      const T = tops.map(top);
+      for (const t of T) {
         const x = t.x * c + t.y * s, y = -t.x * s + t.y * c;
         let best = Infinity;
-        for (const q of tops) {
+        for (const q of T) {
+          // spiral rounds rise over the turn: compare angles at the node's own radius
           const d = R.spiral
             ? Math.abs(Math.atan2(Math.sin(Math.atan2(-y, x) - Math.atan2(-q.y, q.x)), Math.cos(Math.atan2(-y, x) - Math.atan2(-q.y, q.x)))) * t.r
             : Math.hypot(q.x - x, q.y - y);
@@ -120,7 +124,7 @@ describe('layoutChart', () => {
         worst = Math.max(worst, best);
       }
     }
-    expect(worst).toBeLessThan(0.45);
+    expect(worst).toBeLessThan(0.25);
   });
 
   it('lays out 2500 nodes in well under 100 ms', () => {

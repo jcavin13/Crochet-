@@ -34,7 +34,7 @@ export const DIM = {
   stHalf: 0.32,
   clusterHalf: 0.42,
   tchHalf: 0.32,
-  tchLooseHalf: 0.22,
+  tchLooseHalf: 0.12,
   chHalf: 0.08,
   picotHalf: 0.14,
   joinHalf: 0.07,
@@ -107,7 +107,15 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
   const chainSpace = new Int32Array(N).fill(-1);
   for (const s of graph.spaces) for (const c of s.chains) if (c >= 0 && c < N) chainSpace[c] = s.id;
   const kids = childrenOf(graph);
-  const posInSpace: Map<number, number>[] = kids.spaces.map((ids) => new Map(ids.map((id, j) => [id, j + 1])));
+  // physics.md §3 attachment, counting the stitches worked into a space; slip stitches that only
+  // travel through it are counted separately so they do not shift the stitches.
+  const isSl = (id: number) => graph.nodes[id].type === 'slst';
+  const spaceSt = kids.spaces.map((ids) => ids.filter((id) => !isSl(id)));
+  const spaceSl = kids.spaces.map((ids) => ids.filter(isSl));
+  const posInSpace: Map<number, number>[] = kids.spaces.map((_, s) => new Map([
+    ...spaceSt[s].map((id, j) => [id, j + 1] as [number, number]),
+    ...spaceSl[s].map((id, j) => [id, j + 1] as [number, number]),
+  ]));
   const ringR = new Float64Array(graph.spaces.length);
   for (const s of graph.spaces) {
     if (s.kind !== 'ring') continue;
@@ -116,7 +124,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
   // Stitches worked into a space one after another (a shell written out, "3 dc in sp") or as one
   // compound (shell, V, inc) fan from one chain: the mean of their physics.md c_q positions.
   const fanJ = new Map<number, number>(); // node id -> effective j
-  kids.spaces.forEach((list, sid) => {
+  spaceSt.forEach((list, sid) => {
     let cluster: number[] = [];
     const flush = () => {
       if (!cluster.length) return;
@@ -161,7 +169,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     }
     const nCh = sp.chains.length;
     if (!nCh) return null;
-    const m = kids.spaces[sp.id].length;
+    const m = (n.type === 'slst' ? spaceSl : spaceSt)[sp.id].length;
     const j = fanJ.get(n.id * 0x10000 + sp.id) ?? posInSpace[sp.id].get(n.id) ?? 1;
     const q = Math.min(nCh, Math.max(1, Math.floor((j * (nCh + 1)) / (m + 1) + 0.5)));
     const c = sp.chains[q - 1];
@@ -359,9 +367,9 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     if (central) {
       // spread evenly by width: round 1 into a ring, foundation chain
       let cum = 0;
-      const tot = items.reduce((a, it) => a + (it.kind === 'join' ? 0 : lin(it)), 0);
+      const tot = items.reduce((a, it) => a + (it.kind === 'join' || it.kind === 'tchLoose' ? 0 : lin(it)), 0);
       for (const it of items) {
-        const half = it.kind === 'join' ? 0 : it.half;
+        const half = it.kind === 'join' || it.kind === 'tchLoose' ? 0 : it.half;
         const c = cum + half;
         it.t = radial ? start + (dir * TAU * c) / Math.max(tot, 1e-9) : c;
         it.w = 1;
@@ -465,7 +473,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         for (let i = 0; i < n; i++) {
           const a = solveItems[i], b = solveItems[(i + 1) % n];
           const ka = before[i], kb = after[(i + 1) % n];
-          share[i] = a.kind === 'join' || b.kind === 'join' ? 0.15 : ka && ka === kb ? 0.3 : 1;
+          share[i] = a.kind === 'tchLoose' || b.kind === 'tchLoose' ? 0 : ka && ka === kb ? 0.3 : 1;
           tot += share[i];
         }
         const give = (0.8 * free) / tot;
@@ -484,7 +492,9 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       for (let j = i - 1; j >= 0; j--) if (items[j].kind !== 'join') { a = j; break; }
       for (let j = i + 1; j < items.length; j++) if (items[j].kind !== 'join') { b = j; break; }
       const sa = a >= 0 ? S[items[a].rep] : NaN;
-      const sb = b >= 0 ? S[items[b].rep] : solveItems.length ? S[solveItems[0].rep] + (radial ? dir * TAU : dir * 0.6) : NaN;
+      const a0 = graph.nodes[it.rep].into[0];
+      const tgt = a0 && 'node' in a0 && graph.nodes[a0.node]?.round === k ? S[a0.node] : NaN;
+      const sb = b >= 0 ? S[items[b].rep] : Number.isFinite(tgt) ? tgt + (radial ? dir * TAU : 0) : solveItems.length ? S[solveItems[0].rep] + (radial ? dir * TAU : dir * 0.6) : NaN;
       const v = Number.isFinite(sa) && Number.isFinite(sb) ? (sa + sb) / 2 : Number.isFinite(sa) ? sa + dir * 0.3 : Number.isFinite(sb) ? sb - dir * 0.3 : it.t;
       for (const id of it.ids) { S[id] = v; course[id] = 1; }
     });
@@ -636,6 +646,11 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     function endpoint(id: number, a: number, b: number, before: boolean): Pt {
       if (id >= a && id <= b && placed[id]) {
         const nd = graph.nodes[id];
+        // a join sits between the last and first stitch: the arc runs on to the stitch joined into
+        if (role[id] === 'join' && !before) {
+          const a0 = nd.into[0];
+          if (a0 && 'node' in a0 && placed[a0.node]) return { x: TX[a0.node], y: TY[a0.node] };
+        }
         if (nd.type === 'picot') return { x: X[id], y: Y[id] };
         return { x: TX[id], y: TY[id] };
       }
@@ -765,7 +780,13 @@ function chainArc(F: Frame, radial: boolean, P: Pt, Q: Pt, n: number, sHint: num
       y: u * u * u * P.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * Q.y,
     };
   };
-  const M = 48;
+  const M = 40;
+  const lengthOf = (h: number) => {
+    const { c1, c2 } = ctrl(h);
+    let len = 0, px = P.x, py = P.y;
+    for (let i = 1; i <= 16; i++) { const q = at(i / 16, c1, c2); len += Math.hypot(q.x - px, q.y - py); px = q.x; py = q.y; }
+    return len;
+  };
   const sample = (h: number) => {
     const { c1, c2 } = ctrl(h);
     const pts: Pt[] = [];
@@ -779,8 +800,8 @@ function chainArc(F: Frame, radial: boolean, P: Pt, Q: Pt, n: number, sHint: num
   let sm = sample(h);
   if (sm.cum[M] < L) {
     let lo = h, hi = Math.max(1, L);
-    while (sample(hi).cum[M] < L && hi < 1e4) hi *= 2;
-    for (let it = 0; it < 32; it++) { const mid = (lo + hi) / 2; if (sample(mid).cum[M] < L) lo = mid; else hi = mid; }
+    while (lengthOf(hi) < L && hi < 1e4) hi *= 2;
+    for (let it = 0; it < 20; it++) { const mid = (lo + hi) / 2; if (lengthOf(mid) < L) lo = mid; else hi = mid; }
     h = hi; sm = sample(h);
   }
   const total = sm.cum[M];
