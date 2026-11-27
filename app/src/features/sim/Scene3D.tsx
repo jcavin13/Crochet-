@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three/examples/jsm/controls/OrbitControls.js';
-import { boundsOf, nodeColor, picotLoops, PICOT_SEGS, roundColor, mix, type ColorInputs, type Segments, type Topology } from './topology';
+import { boundsOf, nodeColor, picotLoops, PICOT_SEGS, roundColor, mix, segmentColor, type ColorInputs, type Segments, type Topology } from './topology';
 
 export interface Scene3DProps {
   topology: Topology;
