@@ -1,0 +1,55 @@
+{
+ "name": "hyperbolic_plane",
+ "source": "compiled",
+ "class": "ruffle",
+ "A": 0.1435,
+ "W": 0.601,
+ "Rg": 27.3837,
+ "outer_radius": 27.8755,
+ "n_nodes": 213,
+ "energy": 0.1602,
+ "per_round": [
+  {
+   "round": 0,
+   "class": "flat",
+   "A": 0.0,
+   "W": 0.0187,
+   "Rg": 6.2064
+  },
+  {
+   "round": 1,
+   "class": "flat",
+   "A": 0.1122,
+   "W": 0.072,
+   "Rg": 10.5876
+  },
+  {
+   "round": 2,
+   "class": "ruffle",
+   "A": 0.2379,
+   "W": 0.3067,
+   "Rg": 14.8168
+  },
+  {
+   "round": 3,
+   "class": "ruffle",
+   "A": 0.1361,
+   "W": 0.4747,
+   "Rg": 18.9525
+  },
+  {
+   "round": 4,
+   "class": "ruffle",
+   "A": 0.1324,
+   "W": 0.5554,
+   "Rg": 23.3158
+  },
+  {
+   "round": 5,
+   "class": "ruffle",
+   "A": 0.1432,
+   "W": 0.601,
+   "Rg": 27.3849
+  }
+ ]
+}

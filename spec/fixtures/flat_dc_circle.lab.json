@@ -1,0 +1,48 @@
+{
+ "name": "flat_dc_circle",
+ "source": "compiled",
+ "class": "flat",
+ "A": 0.1752,
+ "W": 0.138,
+ "Rg": 46.2211,
+ "outer_radius": 59.8521,
+ "n_nodes": 195,
+ "energy": 0.0011,
+ "per_round": [
+  {
+   "round": 0,
+   "class": "flat",
+   "A": 0.0,
+   "W": 0.0066,
+   "Rg": 11.5641
+  },
+  {
+   "round": 1,
+   "class": "flat",
+   "A": 0.0763,
+   "W": 0.0402,
+   "Rg": 20.3463
+  },
+  {
+   "round": 2,
+   "class": "flat",
+   "A": 0.0874,
+   "W": 0.0602,
+   "Rg": 29.1352
+  },
+  {
+   "round": 3,
+   "class": "flat",
+   "A": 0.1335,
+   "W": 0.1078,
+   "Rg": 37.7224
+  },
+  {
+   "round": 4,
+   "class": "flat",
+   "A": 0.1716,
+   "W": 0.1352,
+   "Rg": 46.2446
+  }
+ ]
+}

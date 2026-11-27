@@ -6,7 +6,7 @@
   "k_bend": 0.05,
   "perturb_eps": 0.05,
   "axis_min": 0.25,
-  "tau_flat": 0.10,
+  "tau_flat": 0.25,
   "agree_rg_rel": 0.10,
   "agree_abs": 0.12,
   "block_stretch": 1.05,

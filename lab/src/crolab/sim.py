@@ -177,6 +177,7 @@ class _Placer:
         net, g, X = self.net, self.g, self.X
         nn = net.n_nodes
         new: list[int] = []
+        self.round_centroid = self.centroid()
         # P0 virtual particles of magic rings created in this round
         for s, p in net.space_particle.items():
             if g.spaces[s]["round"] == r:
@@ -259,6 +260,8 @@ class _Placer:
                 for q, nid in enumerate(run, start=1):
                     X[nid] = X[nid] + (q - (m + 1) / 2) * (wb / 2) * t
             k += len(run)
+        # P4' chain-space loops: on an outward arc between the nodes either side of the loop
+        self.place_loops(r, ids)
         # P6 perturbation
         if ids:
             wbar = float(np.mean(net.width[ids]))
@@ -266,6 +269,62 @@ class _Placer:
             for i in ids:
                 X[i, 2] += eps * wbar * math.sin(GOLDEN * (i + 1))
         return new
+
+
+def _arc_angle(ratio: float) -> float:
+    """theta in (0, 1.95 pi] with theta / (2 sin(theta/2)) = ratio (arc length / chord)."""
+    lo, hi = 1e-9, 1.95 * math.pi
+    f = lambda t: t / (2 * math.sin(t / 2)) - ratio  # noqa: E731
+    if f(hi) < 0:
+        return hi
+    for _ in range(80):
+        mid = 0.5 * (lo + hi)
+        if f(mid) > 0:
+            hi = mid
+        else:
+            lo = mid
+    return 0.5 * (lo + hi)
+
+
+def _place_loops(self, r: int, ids: list[int]) -> None:
+    net, g, X = self.net, self.g, self.X
+    idset = set(ids)
+    for sp in g.spaces:
+        if sp["kind"] != "chsp" or sp["round"] != r or not sp["chains"]:
+            continue
+        ch = sp["chains"]
+        a, b = ch[0] - 1, ch[-1] + 1
+        if a not in idset or b not in idset or np.isnan(X[a, 0]) or np.isnan(X[b, 0]):
+            continue
+        seq = [a] + ch + [b]
+        rest = np.array([0.5 * (net.width[seq[k]] + net.width[seq[k + 1]]) for k in range(len(seq) - 1)])
+        S = float(rest.sum())
+        d = X[b] - X[a]
+        D = float(np.linalg.norm(d))
+        t = np.concatenate([[0.0], np.cumsum(rest)])[1:-1] / S
+        if D < 1e-9:
+            d_hat = self.tangent(a) if np.linalg.norm(self.tangent(a)) > 0 else np.array([1.0, 0.0, 0.0])
+        else:
+            d_hat = d / D
+        mid = 0.5 * (X[a] + X[b])
+        o = mid - self.round_centroid
+        o = o - np.dot(o, d_hat) * d_hat
+        o, no = _unit(o)
+        if no < 1e-9:
+            o, no = _unit(np.cross([0.0, 0.0, 1.0], d_hat))
+        if S <= D * (1 + 1e-9) or D < 1e-9 and S <= 0:
+            for k, c in enumerate(ch):
+                X[c] = X[a] + t[k] * d
+            continue
+        th = _arc_angle(S / max(D, 1e-9 * S)) if D > 1e-9 else 1.95 * math.pi
+        R = S / th
+        C0 = mid - o * R * math.cos(th / 2)
+        for k, c in enumerate(ch):
+            ph = -th / 2 + t[k] * th
+            X[c] = C0 + R * (math.sin(ph) * d_hat + math.cos(ph) * o)
+
+
+_Placer.place_loops = _place_loops
 
 
 def simulate(pattern: dict, params: StitchParams | None = None, upto_round: int | None = None,

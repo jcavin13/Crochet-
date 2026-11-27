@@ -1,0 +1,41 @@
+{
+ "name": "chain_space_motif",
+ "source": "compiled",
+ "class": "flat",
+ "A": 0.0184,
+ "W": 0.0293,
+ "Rg": 12.1485,
+ "outer_radius": 15.0277,
+ "n_nodes": 178,
+ "energy": 0.0,
+ "per_round": [
+  {
+   "round": 0,
+   "class": "flat",
+   "A": 0.0,
+   "W": 0.0079,
+   "Rg": 2.87
+  },
+  {
+   "round": 1,
+   "class": "flat",
+   "A": 0.0048,
+   "W": 0.054,
+   "Rg": 5.8385
+  },
+  {
+   "round": 2,
+   "class": "flat",
+   "A": 0.0264,
+   "W": 0.0355,
+   "Rg": 8.7967
+  },
+  {
+   "round": 3,
+   "class": "flat",
+   "A": 0.0182,
+   "W": 0.0286,
+   "Rg": 12.1493
+  }
+ ]
+}

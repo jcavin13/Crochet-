@@ -204,19 +204,21 @@ def _work_round(b: PatternBuilder, prev: list[int], m: int, stitch: str = "sc",
         assert pos == n
 
 
-def sc_rounds(counts: Sequence[int], title: str | None = None, params: str | None = None) -> dict:
+def sc_rounds(counts: Sequence[int], title: str | None = None, params: str | None = None,
+              stitch: str = "sc") -> dict:
     """Spiral sc rounds from a magic ring: round 1 = counts[0] sc in ring, then each round works
-    evenly distributed `inc` / `dec` (sc2tog) to reach the next count. Not joined."""
-    b = PatternBuilder(title or f"sc rounds {list(counts)}", params=params)
+    evenly distributed `inc` / `dec` (sc2tog) to reach the next count. Not joined.
+    `stitch` swaps sc for another stitch type (spiral hdc / dc ... rounds)."""
+    b = PatternBuilder(title or f"{stitch} rounds {list(counts)}", params=params)
     b.begin("Rnd 1")
     ring = b.magic_ring()
     for _ in range(counts[0]):
-        b.st("sc", S(ring))
+        b.st(stitch, S(ring))
     b.end(declared=counts[0])
     for k, m in enumerate(counts[1:], start=2):
         prev = b.targets(len(b.rounds) - 1)
         b.begin(f"Rnd {k}")
-        _work_round(b, prev, m, "sc")
+        _work_round(b, prev, m, stitch, inc_group=(stitch == "sc"))
         b.end(declared=m)
     return b.build()
 

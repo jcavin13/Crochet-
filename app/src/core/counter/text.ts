@@ -42,6 +42,9 @@ export function printItem(item: Item, terms: Terms): string {
       if ((item.count ?? 1) > 1 && !item.target && !item.times && (item.spec.kind === 'basic' || item.spec.kind === 'tog' || item.spec.kind === 'puff' || item.spec.kind === 'popcorn' || item.spec.kind === 'cluster')) {
         return printItems([{ ...item, count: undefined, target: { prep: 'in', place: { kind: 'next', n: item.count, unit: { kind: 'st' } }, span: item.span } }], terms);
       }
+      if (item.spec.kind === 'inc' && (item.count ?? 1) === 1 && !item.target && !item.times) {
+        return `${printItems([item], terms)} (2 ${nameOf(item.spec.base, terms)} in next st)`;
+      }
       break;
     default:
       break;
@@ -104,6 +107,7 @@ function compress(graph: Graph, ids: number[], terms: Terms): string {
 export function nodeText(graph: Graph, id: number, terms: Terms): string {
   const s = describeNode(graph, id, { terms });
   if (s.endsWith(' (join)')) return `${nameOf('slst', terms)} to join`;
+  if (/^ch \((turning ch, )?1 of 1(, ch-1 sp)?\)$/.test(s)) return 'ch 1';
   return s;
 }
 

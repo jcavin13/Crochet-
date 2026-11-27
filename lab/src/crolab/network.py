@@ -391,9 +391,11 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
                 L = ref.cell(i, p, h[i]) if (metric and ref.has(i, p)) else h[i]
             gen.append((i, p, L, kw * s_wale[i], WALE))
     for i in range(n):
+        if metric and not g.counts_as_stitch(i):
+            continue  # slip stitches lie flat in the fabric: no column, no shear (N3)
         for a in anchors[i]:
-            if a >= n:
-                continue
+            if a >= n or (metric and chsp_chain[a]):
+                continue  # a stitch worked into a slack loop does not shear against it (N4)
             for nb in (a - 1, a + 1):
                 if 0 <= nb < n and prounds[nb] == prounds[a] and nb != i and not (metric and (tch_chain[nb] or chsp_chain[nb])):
                     if metric and ref.has(i, a) and G[nb] == G[a]:

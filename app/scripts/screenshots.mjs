@@ -46,8 +46,43 @@ export const ROUTES = [
   { name: 'chart', path: '/chart', wait: 'main h1' },
   { name: 'sim', path: '/sim', wait: 'main h1' },
   { name: 'designer', path: '/designer', wait: 'main h1' },
-  { name: 'counter', path: '/counter', wait: 'main h1' },
-  { name: 'amigurumi', path: '/amigurumi', wait: 'main h1' },
+  // counter: fresh start, mid-round (Rnd 5), the end-of-round check, landing, tally, dark
+  ...(() => {
+    const doily = '/counter/fixture%3Asimple_doily';
+    const toRound = async (page, label) => {
+      await page.click('.ctr-roundbtn');
+      await page.locator('.ctr-rounds__btn', { hasText: label }).click();
+      await page.waitForTimeout(3600); // let the "Jumped to" toast go
+    };
+    const press = async (page, n) => { for (let i = 0; i < n; i++) await page.keyboard.press('ArrowRight'); await page.waitForTimeout(250); };
+    const toCheckpoint = async (page) => {
+      for (let i = 0; i < 400 && !(await page.$('.ctr-tap[data-state="checkpoint"]')); i++) await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(250);
+    };
+    return [
+      { name: 'counter', path: doily, wait: '.ctr-tap', prepare: async (page) => press(page, 3) },
+      { name: 'counter-midround', path: doily, wait: '.ctr-tap', prepare: async (page) => { await toRound(page, 'Rnd 5'); await press(page, 10); } },
+      { name: 'counter-endofround', path: doily, wait: '.ctr-tap', prepare: async (page) => { await toRound(page, 'Rnd 5'); await toCheckpoint(page); } },
+      { name: 'counter-dark', path: doily, wait: '.ctr-tap', scheme: 'dark', prepare: async (page) => { await toRound(page, 'Rnd 6'); await press(page, 5); } },
+      {
+        name: 'counter-landing', path: doily, wait: '.ctr-tap',
+        prepare: async (page) => {
+          await press(page, 40);
+          await page.goto(page.url().replace(/#.*$/, '#/counter/corpus%3Agranny-square-motif'));
+          await page.waitForSelector('.ctr-tap');
+          await page.waitForTimeout(400);
+          await press(page, 12);
+          await page.goto(page.url().replace(/#.*$/, '#/counter'));
+          await page.waitForSelector('.ctr-conts');
+          await page.waitForTimeout(300);
+        },
+      },
+      { name: 'counter-tally', path: '/counter/tally', wait: '.ctr-tap', prepare: async (page) => press(page, 7) },
+    ];
+  })(),
+  { name: 'amigurumi', path: '/amigurumi', wait: '.ami-editor' },
+  { name: 'amigurumi-pattern', path: '/amigurumi', wait: '.ami-editor', only: 'phone', prepare: async (page) => { await page.getByRole('tab', { name: /^Pattern/ }).click(); await page.waitForTimeout(300); } },
+  { name: 'gauge', path: '/amigurumi?tab=gauge', wait: '.ami-gauge' },
   { name: 'about', path: '/about', wait: 'main h1' },
 ];
 
