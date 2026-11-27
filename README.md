@@ -9,7 +9,7 @@ that graph.
 |---|---|
 | ![Chart](docs/screenshots/chart-doily-desktop.png) | ![Designer](docs/screenshots/designer-desktop.png) |
 | Symbol chart with the flatness band | Generative doily designer |
-| ![Editor](docs/screenshots/editor-error-desktop.png) | ![3D](docs/screenshots/sim-sphere-desktop.png) |
+| ![Editor](docs/screenshots/editor-error-desktop.png) | ![3D](docs/screenshots/sim-sc_sphere-desktop.png) |
 | Notation editor with positioned diagnostics | Physics view (sphere fixture) |
 
 <img src="docs/screenshots/counter-midround-phone.png" width="260" alt="Row counter on a phone"> <img src="docs/screenshots/amigurumi-phone.png" width="260" alt="Amigurumi shape tool on a phone"> <img src="docs/screenshots/chart-doily-phone.png" width="260" alt="Chart on a phone">
