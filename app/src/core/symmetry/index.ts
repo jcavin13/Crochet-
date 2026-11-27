@@ -220,21 +220,39 @@ function blocks(t: number[], p: number): BlockResult | null {
   const word = Array.from({ length: p }, (_, j) => t[(best!.at + j) % L]);
   const isWord = (s: number) => { for (let j = 0; j < p; j++) if (t[(s + j) % L] !== word[j]) return false; return true; };
   const occ: boolean[] = Array.from({ length: L }, (_, s) => isWord(s));
-  // start at an occurrence that follows a non-occurrence region if possible (so a bad block is
-  // not split across the start)
-  let start = best.at;
-  for (let s = 0; s < L; s++) if (occ[s] && !occ[mod(s - p, L)]) { start = s; break; }
-  let pos = 0, good = 0;
-  const bad: { start: number; len: number }[] = [];
-  while (pos < L) {
-    const s = (start + pos) % L;
-    if (occ[s] && pos + p <= L) { good++; pos += p; continue; }
-    let k = 1;
-    while (pos + k < L && !(occ[(start + pos + k) % L] && pos + k + p <= L)) k++;
-    bad.push({ start: s, len: k });
-    pos += k;
+  const walk = (start: number) => {
+    let pos = 0, good = 0;
+    const bad: { start: number; len: number }[] = [];
+    while (pos < L) {
+      const s = (start + pos) % L;
+      if (occ[s] && pos + p <= L) { good++; pos += p; continue; }
+      let k = 1;
+      while (pos + k < L && !(occ[(start + pos + k) % L] && pos + k + p <= L)) k++;
+      bad.push({ start: s, len: k });
+      pos += k;
+    }
+    // merge bad stretches separated by at most one good copy (a displaced stitch touches two copies)
+    const merged: { start: number; len: number }[] = [];
+    for (const x of bad) {
+      const prev = merged[merged.length - 1];
+      const off = mod(x.start - start, L);
+      if (prev && off - (mod(prev.start - start, L) + prev.len) <= p) {
+        const nl = off + x.len - mod(prev.start - start, L);
+        good -= Math.round((nl - prev.len - x.len) / p);
+        prev.len = nl;
+      } else merged.push({ ...x });
+    }
+    return { good, bad: merged, word, wordStart: start };
+  };
+  let best2: BlockResult | null = null;
+  for (let s = 0; s < L; s++) {
+    if (!occ[s] || occ[mod(s - p, L)] && best2) continue;
+    const r = walk(s);
+    const len = (x: BlockResult) => x.bad.reduce((a, y) => a + y.len, 0);
+    if (!best2 || r.bad.length < best2.bad.length || (r.bad.length === best2.bad.length && len(r) < len(best2))) best2 = r;
+    if (best2.bad.length <= 1 && len(best2) <= p + 2) break;
   }
-  return { good, bad, word, wordStart: start };
+  return best2;
 }
 
 function describeDiff(seg: Tok[], ref: Tok[], humanSeg: string[], humanRef: string[]): string {
@@ -262,7 +280,11 @@ function describeDiff(seg: Tok[], ref: Tok[], humanSeg: string[], humanRef: stri
     }
     return 'one repeat is worked differently';
   }
-  const fmt = (h: string[]) => h.join(', ');
+  const fmt = (h: string[]) => {
+    const runs: [string, number][] = [];
+    for (const x of h) { const last = runs[runs.length - 1]; if (last && last[0] === x) last[1]++; else runs.push([x, 1]); }
+    return runs.map(([x, k]) => (k > 1 ? `${k} ${x}` : x)).join(', ');
+  };
   return seg.length > ref.length
     ? `one repeat has ${seg.length - ref.length} extra item${seg.length - ref.length > 1 ? 's' : ''} (${fmt(humanSeg)} where the others have ${fmt(humanRef)})`
     : `one repeat is short by ${ref.length - seg.length} item${ref.length - seg.length > 1 ? 's' : ''} (${fmt(humanSeg)} where the others have ${fmt(humanRef)})`;
@@ -363,7 +385,7 @@ export function analyzeSymmetry(graph: Graph): SymmetryReport {
         if (!b) continue;
         const maxBad = Math.max(1, Math.floor(n / 6));
         const badLen = b.bad.reduce((a, x) => a + x.len, 0);
-        if (b.bad.length === 0 || b.bad.length > maxBad || b.good < n - maxBad || badLen > b.bad.length * (p + 3)) continue;
+        if (b.bad.length === 0 || b.bad.length > maxBad || b.good < n - 2 * maxBad || badLen > b.bad.length * (2 * p + 2)) continue;
         const el = S.rounds[r].elems;
         const nodes: number[] = [];
         let msgs: string[] = [];
@@ -374,12 +396,20 @@ export function analyzeSymmetry(graph: Graph): SymmetryReport {
         for (const e of el) if (e.stitch) stitchNo.set(el.indexOf(e), ++k);
         for (const seg of b.bad) {
           const idx = Array.from({ length: seg.len }, (_, j) => (seg.start + j) % L);
-          idx.forEach((i) => nodes.push(...el[i].nodes));
-          const numbers = idx.map((i) => stitchNo.get(i)).filter((x): x is number => x !== undefined);
+          // a substitution in one copy: only the elements that differ from the good copies
+          let hit = idx;
+          if (seg.len === p) {
+            const o = mod(seg.start - b.wordStart, p);
+            const diff = idx.filter((i, j) => toks[i].id !== toks[(b.wordStart + ((o + j) % p)) % L].id);
+            if (diff.length) hit = diff;
+          }
+          hit.forEach((i) => nodes.push(...el[i].nodes));
+          const numbers = hit.map((i) => stitchNo.get(i)).filter((x): x is number => x !== undefined);
           if (!numbers.length) {
             // a space only: name the stitches either side
-            for (let j = 1; j < L; j++) { const v = stitchNo.get(mod(seg.start - j, L)); if (v) { numbers.push(v); break; } }
-            for (let j = 0; j < L; j++) { const v = stitchNo.get((seg.start + seg.len + j) % L); if (v) { numbers.push(v); break; } }
+            const a0 = hit[0], a1 = hit[hit.length - 1];
+            for (let j = 1; j < L; j++) { const v = stitchNo.get(mod(a0 - j, L)); if (v) { numbers.push(v); break; } }
+            for (let j = 1; j < L; j++) { const v = stitchNo.get((a1 + j) % L); if (v) { numbers.push(v); break; } }
           }
           if (numbers.length) { stA = Math.min(stA, ...numbers); stB = Math.max(stB, ...numbers); }
           // reference: the word aligned at the segment start
@@ -480,7 +510,8 @@ function summarize(rounds: RoundSymmetry[], order: number, mirror: boolean, grou
     }
     out.push(`${parts.join('; ')}.`);
   }
-  const extra = rs.filter((r) => r.order > (r.cumulative ?? 1) && r.order > 1);
+  const firstDefect = defects.length ? Math.min(...defects.map((d) => d.round)) : Infinity;
+  const extra = rs.filter((r) => r.order > (r.cumulative ?? 1) && r.order > 1 && r.round < firstDefect);
   for (const r of extra.slice(0, 2)) {
     out.push(`${r.label} repeats ${r.order} times, but it sits on the rounds below so that the piece stays ${r.cumulative}-fold.`);
   }

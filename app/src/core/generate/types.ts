@@ -29,7 +29,11 @@ export type HookStitch = Stitch | { t: 'slst' };
 export type Item =
   | { k: 'st'; s: Stitch; n: number }
   | { k: 'ch'; n: number }
-  | { k: 'picot'; n: number };
+  | { k: 'picot'; n: number }
+  /** Inside a group: `sl st in 4th ch from hook` (a stitch with its own target; see Op 'hook'). */
+  | { k: 'hook'; s: HookStitch; nth: number }
+  /** Inside a group: `sl st in next 5 ch` (see Op 'along'). */
+  | { k: 'along'; s: HookStitch; count: number };
 
 /** Where an op is worked. `same` re-uses the place of the previous op (a space or a stitch). */
 export type Place = { to: 'st' } | { to: 'sp'; len: number } | { to: 'same' } | { to: 'ring' };

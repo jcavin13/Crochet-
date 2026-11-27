@@ -185,7 +185,7 @@ function densityCost(prev: Iface, m: number, idealSkip = 1): number {
 type Action = Item[] | 'skip';
 
 /** Ops from one action per previous stitch (and per space: the items worked into it). */
-function bandOps(prev: Iface, stAction: (i: number, e: Entry) => Action, spN: (len: number, i: number) => Item[]): Op[] {
+export function bandOps(prev: Iface, stAction: (i: number, e: Entry) => Action, spN: (len: number, i: number) => Item[]): Op[] {
   const ops: Op[] = [];
   let si = 0, pi = 0;
   for (const e of prev.entries) {

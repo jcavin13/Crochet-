@@ -12,7 +12,8 @@ const TOOL_TEXT: Record<string, string> = {
   editor: 'Type a pattern the way it is written in English. Every round is checked as you type — stitch counts, chain spaces, repeats — with the exact place a problem starts.',
   chart: 'The same pattern drawn as a radial symbol chart, the way doily charts are printed, with a per-round flatness check: will this round lie flat, cup or ruffle?',
   sim: 'A physics preview: the stitches become springs and the piece relaxes into its 3D shape, relaxed or blocked.',
-  designer: 'Pick a symmetry and a few motifs; get a new doily as editable notation that goes through the same checks.',
+  designer: 'Build a doily layer by layer with suggestions for what fits next; chain lengths, stitch counts and increases are solved so every round lies flat.',
+  snowflake: 'Six-pointed (or 5, 8, 12) thread snowflakes with picot, trefoil and fern arms — checked by how they block, with a pin-out template to print.',
   counter: 'For the sofa: one big button, the instruction you are on in large type, and your place remembered on this device.',
   amigurumi: 'Spheres, cones and custom profiles turned into round-by-round counts for your gauge.',
 };

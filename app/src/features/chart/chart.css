@@ -158,3 +158,17 @@
   .ch-print-area .ch-sym path.f { fill: #000 !important; }
   .ch-print-area .ch-reset, .ch-print-area .ch-tip { display: none !important; }
 }
+
+/* ---------------------------------------------------------------- symmetry overlay */
+.ch-symov__wedge { fill: var(--accent); opacity: 0.17; }
+.ch-symov__sector { stroke: var(--accent); stroke-width: 0.06; opacity: 0.7; }
+.ch-symov__sector.is-edge { stroke-width: 0.11; opacity: 1; }
+.ch-symov__axis { stroke: var(--indigo); stroke-width: 0.045; stroke-dasharray: 0.28 0.2; opacity: 0.8; }
+.ch-emph circle { fill: var(--warning); fill-opacity: 0.22; stroke: var(--warning); stroke-width: 0.16; }
+.ch-symkey { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--s-2); margin: var(--s-1) 0 0; color: var(--ink-2); }
+.ch-symkey__wedge, .ch-symkey__axis, .ch-symkey__emph { display: inline-block; width: 18px; height: 10px; border-radius: 2px; vertical-align: middle; }
+.ch-symkey__wedge { background: var(--accent-soft); border: 1.5px solid var(--accent); }
+.ch-symkey__axis { height: 0; border-top: 2px dashed var(--indigo); border-radius: 0; }
+.ch-symkey__emph { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--warning); background: color-mix(in srgb, var(--warning) 18%, transparent); }
+.ch-linkbtn { border: 0; background: none; padding: 0 2px; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; min-height: 0; }
+.ch-symcard .sy-rounds { max-height: 300px; overflow: auto; }

@@ -85,6 +85,7 @@ export function buildSequences(graph: Graph): Sequences {
   // space id → [round, element index]
   const spaceAt = new Map<number, [number, number]>();
   let dir: 1 | -1 = 1;
+  const beginExtra = new Set<number>();
 
   for (const R of graph.rounds) {
     if (R.turned) dir = (dir === 1 ? -1 : 1);
@@ -147,7 +148,8 @@ export function buildSequences(graph: Graph): Sequences {
         const alt = stitchBase(firstSt.n, 1);
         const cAlt = pending.filter((p) => p.e.base === alt.base).length;
         const cOrig = pending.filter((p) => p.e.base === firstSt.e.base).length;
-        if (cAlt > cOrig - 1) { firstSt.e.base = alt.base; firstSt.e.human = alt.human; }
+        const oneTarget = firstSt.n.into.every((a) => JSON.stringify(a) === JSON.stringify(firstSt.n.into[0]));
+        if (cAlt > cOrig - 1 && oneTarget) { firstSt.e.base = alt.base; firstSt.e.human = alt.human; beginExtra.add(firstSt.n.id); }
       }
     }
     rounds.push({ round: R.index, label: R.label, elems, dir });
@@ -182,6 +184,7 @@ export function buildSequences(graph: Graph): Sequences {
         }
         e.legs.push(leg);
       }
+      if (beginExtra.has(n.id) && e.legs.length) e.legs.push({ ...e.legs[0] });
     }
   }
   return { rounds, where, applicable };

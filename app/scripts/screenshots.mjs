@@ -22,6 +22,18 @@ const OUT = fileURLToPath(new URL('../../docs/screenshots/', import.meta.url));
  *   only?: 'desktop'|'phone', fullPage?: boolean, prepare?: (page: import('playwright').Page) => Promise<void> }} Shot
  * `path` is the hash route. `wait`: CSS selector to wait for. `prepare`: runs after load, before the shot.
  */
+/** Bring `el` to the top: inside its scrolling split pane on desktop (page scrolled to the panes), else the page (below the sticky header). */
+function scrollToInPane(el) {
+  const pane = el.closest('.ui-split__pane');
+  if (pane && getComputedStyle(pane).overflowY === 'auto' && pane.scrollHeight > pane.clientHeight + 4) {
+    const split = pane.closest('.ui-split');
+    window.scrollTo(0, split.getBoundingClientRect().top + window.scrollY - 8);
+    pane.scrollTop += el.getBoundingClientRect().top - pane.getBoundingClientRect().top - 8;
+  } else {
+    window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 72);
+  }
+}
+
 /** @type {Shot[]} */
 export const ROUTES = [
   { name: 'gallery', path: '/', wait: '.gal-hero' },
@@ -52,6 +64,42 @@ export const ROUTES = [
   { name: 'chart-petal', path: '/chart/corpus%3Apetal-doily-12', wait: '.ch-svg' },
   { name: 'chart-spiderweb', path: '/chart/corpus%3Aspiderweb-doily-10', wait: '.ch-svg' },
   { name: 'chart-granny', path: '/chart/corpus%3Agranny-square-motif', wait: '.ch-svg', only: 'desktop' },
+  // symmetry overlay (one repeat shaded, sector lines) and a symmetry defect shown on the chart
+  ...(() => {
+    const symOn = async (page) => {
+      await page.getByRole('switch', { name: 'Symmetry', exact: true }).check({ force: true });
+      await page.waitForTimeout(300);
+    };
+    return [
+      { name: 'chart-symmetry', path: '/chart/corpus%3Apetal-doily-12', wait: '.ch-svg', prepare: symOn },
+      { name: 'chart-symmetry-mirror', path: '/chart/fixture%3Asimple_doily', wait: '.ch-svg', only: 'desktop', prepare: symOn },
+      {
+        name: 'chart-symmetry-defect', path: '/chart/corpus%3Asunburst-dtr-doily-20', wait: '.ch-svg',
+        prepare: async (page) => {
+          await page.locator('.sy-defects button').first().click();
+          await page.waitForTimeout(300);
+          await page.evaluate(() => window.scrollTo(0, 0));
+        },
+      },
+    ];
+  })(),
+  // symmetry defect as a hint in the Problems list + the compact symmetry panel
+  { name: 'editor-symmetry', path: '/editor/corpus%3Asunburst-dtr-doily-20', wait: '.ed-box', only: 'desktop' },
+  // flatness assistant: ranked fixes for the ruffling round of the teaching pattern
+  {
+    name: 'editor-fixes', path: '/editor/corpus%3Ateaching-ruffle-shell-doily', wait: '.ed-box',
+    prepare: async (page) => {
+      const tab = page.getByRole('tab', { name: /Check/ });
+      if (await tab.isVisible().catch(() => false)) await tab.click();
+      await page.getByRole('button', { name: 'Suggest fixes' }).first().click();
+      await page.waitForSelector('.ed-fix', { timeout: 10_000 });
+      await page.locator('.ed-flat__list > li.is-off').first().evaluate((el) => {
+        el.scrollIntoView({ block: 'start' });
+        if (window.innerWidth >= 900) window.scrollTo(0, 0); else window.scrollBy(0, -96);
+      });
+      await page.waitForTimeout(300);
+    },
+  },
   { name: 'chart-doily-dark', path: '/chart/fixture%3Asimple_doily', wait: '.ch-svg', scheme: 'dark', only: 'desktop' },
   {
     name: 'chart-doily-tooltip', path: '/chart/fixture%3Asimple_doily', wait: '.ch-svg', only: 'desktop',
@@ -119,6 +167,50 @@ export const ROUTES = [
     },
   },
   { name: 'designer-dark', path: '/designer', wait: '.dz-controls', scheme: 'dark', only: 'desktop' },
+  // layer builder: a layer opened with its automatic-sizing explanation; the "add a round" suggestions
+  {
+    name: 'designer-layers', path: '/designer?kind=doily', wait: '.dz-rounds',
+    prepare: async (page) => {
+      await page.locator('.dz-round__main').nth(3).click();
+      await page.waitForSelector('.dz-sizing .dz-alt');
+      // desktop: scroll the layers pane only; phone: scroll the page to the layer list, below the sticky header
+      await page.locator('.dz-round[data-open="true"]').evaluate(scrollToInPane);
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: 'designer-suggestions', path: '/designer?kind=doily', wait: '.dz-rounds', only: 'desktop',
+    prepare: async (page) => {
+      // take the edging off so the suggestions are for an open lace round
+      for (const k of [8, 7]) {
+        await page.locator('.dz-round__main').nth(k).click();
+        await page.getByRole('button', { name: 'Remove this round' }).click();
+        await page.waitForTimeout(300);
+      }
+      await page.getByRole('button', { name: 'Add a round' }).click();
+      await page.waitForSelector('.dz-suglist', { timeout: 20_000 });
+      await page.getByRole('button', { name: 'Suggest the next 3 rounds' }).click();
+      await page.locator('.dz-suggest').evaluate(scrollToInPane);
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: 'snowflake', path: '/designer?kind=snowflake&view=preview', wait: '.sf-stage .sf-preview',
+    prepare: async (page) => { await page.locator('.sf-tabs').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - (window.innerWidth < 900 ? 72 : 8))); await page.waitForTimeout(300); },
+  },
+  { name: 'snowflake-design', path: '/designer?kind=snowflake', wait: '.sf-layers', only: 'phone' },
+  {
+    name: 'snowflake-gallery', path: '/designer?kind=snowflake&view=gallery', wait: '.sf-gallery', only: 'desktop',
+    prepare: async (page) => { await page.locator('.sf-tabs').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 8)); await page.waitForTimeout(300); },
+  },
+  {
+    name: 'snowflake-template', path: '/designer?kind=snowflake&view=template', wait: '.dz-template__svg svg', only: 'desktop',
+    prepare: async (page) => { await page.locator('.dz-template').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 8)); await page.waitForTimeout(300); },
+  },
+  {
+    name: 'snowflake-chart', path: '/designer?kind=snowflake&view=chart', wait: '.ch-svg', only: 'desktop',
+    prepare: async (page) => { await page.locator('.sf-tabs').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 8)); await page.waitForTimeout(300); },
+  },
   // counter: fresh start, mid-round (Rnd 5), the end-of-round check, landing, tally, dark
   ...(() => {
     const doily = '/counter/fixture%3Asimple_doily';

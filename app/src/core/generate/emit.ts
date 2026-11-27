@@ -61,7 +61,14 @@ export function sectorEntries(ops: Op[]): Entry[] {
     for (const it of items) {
       if (it.k === 'st') { for (let i = 0; i < it.n; i++) out.push(entryOf(it.s)); chainRun = false; }
       else if (it.k === 'ch') pushCh(it.n);
-      else chainRun = false; // picot interrupts a chain run
+      else if (it.k === 'hook') {
+        if (chainRun && out[out.length - 1]?.kind === 'sp') out.pop();
+        chainRun = false;
+        if (it.s.t !== 'slst') out.push(entryOf(it.s));
+      } else if (it.k === 'along') {
+        chainRun = false;
+        if (it.s.t !== 'slst') for (let i = 0; i < it.count; i++) out.push(entryOf(it.s as Stitch));
+      } else chainRun = false; // picot interrupts a chain run
     }
   };
   for (const op of ops) {
@@ -104,6 +111,8 @@ class Writer {
   item(it: Item): string {
     if (it.k === 'ch') return `ch ${it.n}`;
     if (it.k === 'picot') return it.n === 3 ? 'picot' : `ch-${it.n} picot`;
+    if (it.k === 'hook') return `${this.hookName(it.s)} in ${ordinal(it.nth)} ch from hook`;
+    if (it.k === 'along') return it.count === 1 ? `${this.hookName(it.s)} in next ch` : `${this.hookName(it.s)} in next ${it.count} ch`;
     return it.n === 1 ? this.name(it.s) : `${it.n} ${this.name(it.s)}`;
   }
   items(items: Item[], where: string): string {
@@ -171,6 +180,13 @@ class Writer {
       const lead = s.t === 'sc' ? 1 : s.t === 'hdc' || s.t === 'puff' ? 2 : 3;
       pieces.push(`ch ${lead}`);
       remaining = items;
+    }
+    // a group with hook-addressed stitches (a snowflake arm) must stay one group, so that its last
+    // stitch goes back into the group's place and not into the chain worked last
+    if (items.some((it) => it.k === 'hook' || it.k === 'along') || (items.some((it) => it.k === 'picot') && items.some((it) => it.k === 'ch'))) {
+      if (remaining.length) pieces.push(this.items(remaining, where));
+      if (eachRest) pieces.push(eachRest === 1 ? `${this.name(s)} in next st` : `${this.name(s)} in next ${eachRest} sts`);
+      return { pieces, used };
     }
     // the rest of the first group, in the same place; chains between its stitches written out
     let run: Item[] = [];

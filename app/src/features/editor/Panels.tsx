@@ -4,7 +4,33 @@ import type { Diagnostic, Pattern } from '@/app/coreApi';
 const sevIcon = { error: 'error', warning: 'alert', info: 'info' } as const;
 const sevOrder = { error: 0, warning: 1, info: 2 } as const;
 
-export function DiagnosticsList({ diagnostics, onJump, compilerReady }: { diagnostics: Diagnostic[]; onJump: (d: Diagnostic) => void; compilerReady: boolean }) {
+/** A non-compiler hint with a position (e.g. a symmetry defect), shown apart from diagnostics. */
+export interface Hint { message: string; line: number; col: number; endLine: number; endCol: number; kind: string }
+
+function HintsList({ hints, onJump }: { hints: Hint[]; onJump: (h: Hint) => void }) {
+  if (!hints.length) return null;
+  return (
+    <ul className="ed-diags ed-hints" aria-label="Hints">
+      {hints.map((h, i) => (
+        <li key={i}>
+          <button type="button" className="ed-diag" data-sev="hint" onClick={() => onJump(h)}>
+            <Icon name="sparkle" size={18} />
+            <span className="ed-diag__body">
+              <span className="ed-diag__msg">{h.message}</span>
+              <span className="ed-diag__meta">
+                line {h.line}, col {h.col}
+                <span aria-hidden="true"> · </span>
+                <span className="ed-hint-tag">{h.kind} hint · not an error</span>
+              </span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function DiagnosticsList({ diagnostics, onJump, compilerReady, hints = [] }: { diagnostics: Diagnostic[]; onJump: (d: Diagnostic) => void; compilerReady: boolean; hints?: Hint[] }) {
   if (!compilerReady) {
     return (
       <div className="ed-note">
@@ -13,16 +39,21 @@ export function DiagnosticsList({ diagnostics, onJump, compilerReady }: { diagno
       </div>
     );
   }
+  const jumpHint = (h: Hint) => onJump({ severity: 'info', code: 'I_COUNT_UNVERIFIED', ...h });
   if (diagnostics.length === 0) {
     return (
-      <div className="ed-note ed-note--ok">
-        <Icon name="check" />
-        <span>No problems. Every round checks out.</span>
-      </div>
+      <>
+        <div className="ed-note ed-note--ok">
+          <Icon name="check" />
+          <span>No problems. Every round checks out.</span>
+        </div>
+        <HintsList hints={hints} onJump={jumpHint} />
+      </>
     );
   }
   const sorted = [...diagnostics].sort((a, b) => a.line - b.line || a.col - b.col || sevOrder[a.severity] - sevOrder[b.severity]);
   return (
+    <>
     <ul className="ed-diags">
       {sorted.map((d, i) => (
         <li key={i}>
@@ -40,6 +71,8 @@ export function DiagnosticsList({ diagnostics, onJump, compilerReady }: { diagno
         </li>
       ))}
     </ul>
+    <HintsList hints={hints} onJump={jumpHint} />
+    </>
   );
 }
 
