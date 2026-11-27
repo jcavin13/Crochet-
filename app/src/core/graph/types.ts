@@ -29,7 +29,15 @@ export type LoopMod = 'flo' | 'blo' | 'fp' | 'bp';
 
 /** What one leg of a stitch is worked into: a node (stitch top or individual chain) or a space. */
 export type Anchor = NodeAnchor | SpaceAnchor;
-export interface NodeAnchor { node: number }
+/**
+ * `part` (optional, notation.md 3.9) says which part of the node is worked into:
+ *  - 'side': the end of the row that node is the edge stitch of ("sc in row end"), worked from the
+ *    side by a border round;
+ *  - 'base': the unused (bottom) loops of a chain, i.e. the other side of a foundation chain.
+ * Omitted: the top of the stitch, or the chain itself.
+ */
+export interface NodeAnchor { node: number; part?: AnchorPart }
+export type AnchorPart = 'side' | 'base';
 export interface SpaceAnchor { space: number }
 
 export type GroupKind = 'inc' | 'shell' | 'v';
@@ -113,6 +121,11 @@ export interface Meta {
   author?: string;
   year?: string;
   notes?: string;
+  /**
+   * Colour plan as written by the pattern (`colors:` header), e.g. "A Oatmeal #e8dcc8; B Sage
+   * #9caf88". Colour changes are not part of the stitch graph yet (notation.md 5).
+   */
+  colors?: string;
   extra?: Record<string, string>;
 }
 

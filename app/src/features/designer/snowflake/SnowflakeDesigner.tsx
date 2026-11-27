@@ -8,17 +8,20 @@ import {
   Badge, Button, Card, Icon, IconButton, Input, Page, PageHeader, SegmentedControl, ShapeBadge, Slider, SplitPane, Tabs, Toggle,
 } from '@/ui';
 import { ChartView } from '@/features/chart/ChartView';
-import { SimView } from '@/features/sim/SimView';
+import { SimView, type SimStatus } from '@/features/sim/SimView';
 import { SymmetryPanel } from '@/features/symmetry/SymmetryPanel';
 import { paramSetById, paramsFile } from '@/core/params';
+import { PIN_OVERSTRETCH } from '@/core/sim';
 import {
-  generateSnowflake, randomSnowflake, snowflakeVariations, planSnowflake, blockedShape, normaliseSpec, armSentence, snowflakeTemplateSvg,
+  generateSnowflake, snowflakePins, randomSnowflake, snowflakeVariations, planSnowflake, blockedShape, normaliseSpec, armSentence, snowflakeTemplateSvg,
   SNOWFLAKE_PRESETS, CENTRE_LABEL, BODY_LABEL, TIP_LABEL, MINOR_LABEL, CENTRE_BLURB, BODY_BLURB,
   type SnowflakeSpec, type SnowCentreStyle, type SnowBodyMotif, type TipStyle, type MinorStyle, type ValleyDepth, type BlockedShape,
 } from '@/core/generate/snowflake';
 import { RoundGlyph } from '../Thumbs';
 import { Stat, copyText, useSaveOpen } from '../DoilyDesigner';
 import { TemplateCard } from '../TemplateCard';
+import { YarnPanel } from '@/features/yarn/YarnPanel';
+import { useDesignYarn } from '../yarn';
 import type { SnowState } from '../state';
 import { SnowPreview } from './SnowPreview';
 import './snowflake.css';
@@ -71,6 +74,8 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
   const setView = (v: View) => { const n = new URLSearchParams(search); n.set('view', v); setSearch(n, { replace: true }); };
   const [pane, setPane] = useState(search.get('view') ? 'result' : 'design');
   const [blocked, setBlocked] = useState(true);
+  const [onTable, setOnTable] = useState(true);
+  const [simStatus, setSimStatus] = useState<SimStatus | null>(null);
   const [galleryCount, setGalleryCount] = useState(12);
 
   const patch = (p: Partial<SnowState>) => setState({ ...state, ...p });
@@ -80,6 +85,7 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
   const deferred = useDeferredValue(state);
   const params = useMemo(() => paramsOf(deferred.paramsId), [deferred.paramsId]);
   const res = useMemo(() => generateSnowflake(deferred.spec, params), [deferred.spec, params]);
+  const thread = useDesignYarn(res.pattern, params);
   const stale = deferred !== state;
   const { actions } = useSaveOpen(res.text);
   const constraints = { bold: state.bold, spiky: state.spiky, ornate: state.ornate, sizeCm: [Math.max(3, state.sizeCm - 1), state.sizeCm + 1] as [number, number], points: spec.points };
@@ -91,8 +97,36 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
     patch({ seed, spec: s });
   };
 
+  const pins = useMemo(() => snowflakePins(res), [res]);
+  const [showTemplate, setShowTemplate] = useState(true);
+  // the template drawn under the blocked piece: bridges, arms, branches and a small cross per pin
+  const templateSegs = useMemo(() => {
+    const sh = res.shape;
+    const out: number[][] = [];
+    for (const w of sh.web) out.push([w.a.x, w.a.y, w.pin.x, w.pin.y], [w.pin.x, w.pin.y, w.b.x, w.b.y]);
+    for (const a of sh.arms) for (const sg of [...a.spine, ...a.branches]) out.push([sg.a.x, sg.a.y, sg.b.x, sg.b.y]);
+    const c = Math.max(0.6, sh.tipR * 0.02);
+    for (const p of sh.pins) out.push([p.p.x - c, p.p.y, p.p.x + c, p.p.y], [p.p.x, p.p.y - c, p.p.x, p.p.y + c]);
+    return out;
+  }, [res]);
+  useEffect(() => { setSimStatus(null); }, [res]);
   const sh = res.shape;
   const check = res.check;
+  // second opinion from the 3D view (once it has pinned the piece out): does the template ask for
+  // more than the thread gives?
+  const simBlock = simStatus?.phase === 'ready' && blocked ? simStatus.block : undefined;
+  const simItem = simBlock?.pinStretch ? (() => {
+    const st = simBlock.pinStretch;
+    const pc = (x: number) => `${Math.round(x * 100)} %`;
+    const parts = `arms ${pc(st.spines)}, chain loops ${pc(st.chains)}, body ${pc(st.body)}`;
+    const over = Math.max(st.spines, st.chains, st.body) > PIN_OVERSTRETCH;
+    return over
+      ? { ok: false, text: `3D check: ${simBlock.message.replace(/\.$/, '')} (largest stretch: ${parts}) — this design does not block cleanly to the template; pin a little inside the marks, or lengthen the valley bridges.` }
+      : { ok: true, text: `3D check agrees: pinned to the template, nothing stretches more than ${pc(Math.max(st.spines, st.chains, st.body))} (${parts}).` };
+  })() : null;
+  // the check and the 3D view agree by construction: once the 3D view has pinned the piece out, its
+  // verdict is part of the check (a green check above a red "3D" badge was a bug)
+  const checkOk = check.ok && (!simItem || simItem.ok);
   const bodyCount = spec.body.length;
 
   const layers = (
@@ -101,6 +135,8 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
         const p = res.planned[i];
         const isArms = r.kind === 'arms';
         const bi = i - 1;
+        // a deferred (stale) result can have more body rounds than the spec just set: skip them
+        if (r.kind === 'body' && !spec.body[bi]) return null;
         return (
           <li key={i} className="dz-round" data-open="false">
             <div className="dz-round__row sf-layer">
@@ -236,28 +272,30 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
       </Card>
 
       <div className="dz-jump">
-        <span className="dz-summary">{check.ok ? <Badge tone="ok">crisp star</Badge> : <Badge tone="warning">check</Badge>}<span>{cm(sh.acrossMm)} across</span></span>
+        <span className="dz-summary">{checkOk ? <Badge tone="ok">crisp star</Badge> : <Badge tone="warning">check</Badge>}<span>{cm(sh.acrossMm)} across</span></span>
         <Button variant="primary" onClick={() => { setPane('result'); window.scrollTo({ top: 0 }); }}>Snowflake <Icon name="chevron-right" size={18} /></Button>
       </div>
     </div>
   );
 
   const checkCard = (
-    <Card className="dz-card sf-check" data-ok={check.ok}>
+    <Card className="dz-card sf-check" data-ok={checkOk}>
       <div className="dz-card__head">
         <span className="dz-label">Snowflake check</span>
-        {check.ok ? <Badge tone="ok" dot>blocks to a crisp star</Badge> : <Badge tone="warning" dot>needs a look</Badge>}
+        {checkOk ? <Badge tone="ok" dot>blocks to a crisp star</Badge> : <Badge tone="warning" dot>needs a look</Badge>}
+        {simItem && !simItem.ok && <Badge tone="warning" dot>3D view disagrees</Badge>}
         {stale && <Badge>updating…</Badge>}
       </div>
-      <p className="sf-check__sum">{check.summary}</p>
+      <p className="sf-check__sum">{check.ok && simItem && !simItem.ok ? `Check: ${simItem.text}` : check.summary}</p>
       <ul className="sf-check__items">
         {check.items.map((it) => (
           <li key={it.id} data-ok={it.ok}><Icon name={it.ok ? 'check' : 'alert'} size={16} /><span>{it.text}</span></li>
         ))}
+        {simItem && <li key="sim" data-ok={simItem.ok}><Icon name={simItem.ok ? 'check' : 'alert'} size={16} /><span>{simItem.text}</span></li>}
       </ul>
       <p className="small muted">
         The circle rule for flatness only fits the centre and body. The arm round is pointed: it is judged by the predicted pinned-out shape
-        (chains at rest length, picots pinned to points, branches at about 50°). Approximate — the 3D view with “blocked” is a second opinion.
+        (chains at rest length, picots pinned to points, branches at about 50°). Approximate — the 3D tab pins the simulated piece to these marks as a second opinion.
       </p>
     </Card>
   );
@@ -273,7 +311,7 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
         <Stat k="Rounds" v={String(res.stats.rounds)} />
         <Stat k="Stitches" v={res.stats.stitches.toLocaleString()} />
         <Stat k="Across" v={cm(res.stats.diameterMm)} hint={`point to point, blocked · ${params.label}`} />
-        <Stat k="Thread" v={`≈ ${res.stats.threadM.toFixed(1)} m`} hint="rough: summed stitch sizes" />
+        <Stat k="Thread" v={thread.value} hint={thread.hint} />
       </div>
       {resultTabs}
       {view === 'preview' && (
@@ -311,17 +349,27 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
       {view === 'chart' && (
         <Card flush className="dz-chart">
           {res.pattern ? <ChartView pattern={res.pattern} params={params} showFlatness={false} /> : <p className="dz-pad">The generated text did not compile.</p>}
-          <p className="small muted dz-pad">The symbol chart lays every round out on a circle, so each arm (a chain spine worked back down in slip stitches) is drawn as a long loop and its side picots bunch up. The Preview tab shows the arms as they block.</p>
+          <p className="small muted dz-pad">Symbol chart — on a narrow screen one arm is shown enlarged; work it ×{res.spec.points}. Switch to Whole to see the full snowflake.</p>
         </Card>
       )}
       {view === '3d' && res.pattern && (
         <Card flush className="sf-sim">
           <div className="sf-sim__bar">
             <SegmentedControl<'relaxed' | 'blocked'> label="Physics state" value={blocked ? 'blocked' : 'relaxed'} onChange={(v) => setBlocked(v === 'blocked')}
-              options={[{ value: 'blocked', label: 'Blocked (pinned)' }, { value: 'relaxed', label: 'Relaxed' }]} />
-            <span className="small muted">Approximate spring physics — a tendency, not a verdict.</span>
+              options={[{ value: 'blocked', label: 'Blocked (pinned)' }, { value: 'relaxed', label: 'Before blocking' }]} />
+            {blocked
+              ? <Toggle label="Show template" checked={showTemplate} onChange={setShowTemplate} />
+              : <Toggle label="Resting on a table" checked={onTable} onChange={setOnTable} />}
           </div>
-          <SimView pattern={res.pattern} params={params} blocked={blocked} style={{ height: 420 }} />
+          <SimView pattern={res.pattern} params={params} blocked={blocked} table={onTable} pins={pins} overlay={showTemplate ? templateSegs : undefined} style={{ height: 420 }} onStatus={setSimStatus} />
+          <p className="sf-sim__cap small muted" data-testid="sf-sim-caption">
+            {blocked
+              ? <>Pinned out on the blocking template: tips, branch tips and valleys held at the template’s {pins.length} pin marks, the rest of the thread settles flat between them.{showTemplate ? ' The template is drawn faintly underneath.' : ''}{simBlock ? ` ${simBlock.message}` : ''}</>
+              : onTable
+                ? <>Before blocking: the finished piece unpinned, resting on a table — arms lie roughly where they want to, valley chains hang loose.</>
+                : <>Before blocking, free in space (no table): the spring model has almost no stiffness against bending, so the body of thin lace crumples here even though it lies flat in reality — use “Resting on a table” for the real look.</>}
+            {' '}Approximate spring physics.
+          </p>
         </Card>
       )}
       {view === 'template' && (
@@ -330,6 +378,7 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
         </Card>
       )}
       {checkCard}
+      {res.pattern && <Card className="dz-card dz-yarn"><YarnPanel pattern={res.pattern} params={params} compact title="Thread" /></Card>}
       {res.pattern && <Card className="dz-card"><SymmetryPanel pattern={res.pattern} compact /></Card>}
       <Card className="dz-card">
         <div className="dz-card__head">

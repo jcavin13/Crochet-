@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { compilePattern } from '../notation';
 import { paramsFor } from '../params';
 import type { Pattern } from '../graph';
-import { boundsUpto, buildHitIndex, hitTest, layoutChart, roundAt, solveOrdered } from './index';
+import { boundsUpto, buildHitIndex, chartToSvg, hitTest, layoutChart, roundAt, solveOrdered, wedgeView } from './index';
 import type { ChartLayout } from './types';
 
 const fixDir = fileURLToPath(new URL('../../../../spec/fixtures/', import.meta.url));
@@ -108,8 +108,8 @@ describe('layoutChart', () => {
       if (R.first < 0) continue;
       const tops = L.nodes.slice(R.first, R.last + 1).filter((m) => m.kind === 'stitch' || (m.kind === 'tch' && p.graph.nodes[m.id].countsAs));
       if (tops.length < n) continue;
-      // the top of each stitch (a counting turning chain's top is r along its angle)
-      const top = (m: (typeof tops)[number]) => { const a0 = Math.atan2(-m.y, m.x); return { x: m.r * Math.cos(a0), y: -m.r * Math.sin(a0), r: m.r }; };
+      // the top of each stitch: r along its course angle s (a counting turning chain's too)
+      const top = (m: (typeof tops)[number]) => { const a0 = m.s; return { x: m.r * Math.cos(a0), y: -m.r * Math.sin(a0), r: m.r }; };
       const T = tops.map(top);
       for (const t of T) {
         const x = t.x * c + t.y * s, y = -t.x * s + t.y * c;
@@ -124,7 +124,30 @@ describe('layoutChart', () => {
         worst = Math.max(worst, best);
       }
     }
-    expect(worst).toBeLessThan(0.25);
+    // closed rounds exactly n-fold (seam tucked in); spiral rounds by angle
+    expect(worst).toBeLessThan(0.02);
+  });
+
+  it('one-repeat view of an ordinary doily: a wedge of 2π/n, axis up, away from the rounds\' start', () => {
+    const p = load(fixDir + 'simple_doily.cro')!;
+    const L = layoutChart(p.graph, paramsFor(p));
+    const W = wedgeView(L, 16)!;
+    expect(W.kind).toBe('repeat');
+    expect(W.half).toBeCloseTo(Math.PI / 16);
+    // every round has something in full ink, and the outermost round about 1/16 of its symbols
+    for (const R of L.rounds) {
+      let k = 0;
+      for (let id = R.first; id <= R.last; id++) if (W.inside[id] === 2) k++;
+      expect(k, R.label).toBeGreaterThan(0);
+    }
+    const R = L.rounds[L.rounds.length - 1];
+    let k = 0;
+    for (let id = R.first; id <= R.last; id++) if (W.inside[id] === 2) k++;
+    expect(Math.abs(k * 16 - (R.last - R.first + 1))).toBeLessThanOrEqual(16 * 2);
+    // rotated so the wedge's axis is up: its symbols sit round x = 0
+    const xs = W.layout.nodes.filter((m) => W.inside[m.id] === 2).map((m) => m.cx);
+    expect(Math.abs(xs.reduce((a, b) => a + b, 0) / xs.length)).toBeLessThan(0.6);
+    expect(chartToSvg(L, { wedge: W, mono: true })).toContain('One repeat of 16');
   });
 
   it('lays out 2500 nodes in well under 100 ms', () => {

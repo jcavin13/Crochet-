@@ -1,7 +1,7 @@
 // The counter for one pattern: a pointer into the stitch graph, driven by one big tap zone.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useCurrentPattern, patternHref } from '@/app';
+import { useCurrentPattern, patternHref, useStitchParams } from '@/app';
 import { usePersistentState, useSettings } from '@/store';
 import {
   Button, ConfirmDialog, Dialog, EmptyState, Icon, Menu, SegmentedControl, buttonClass, toast,
@@ -17,6 +17,10 @@ import { click, useKeys, useReducedMotion, useTapSwipe, useWakeLock, vibrate, vi
 import { NotationLine } from './NotationLine';
 import { DEFAULT_PREFS, PREFS_KEY, progressKey, writeIndexEntry, type CounterPrefs } from './persist';
 import { CtrIcon } from './icons';
+import type { ParamSet } from '@/core/params';
+import { formatLength, formatMass, formatRange, nodeLengths, remainingFromLengths, resolveYarn } from '@/core/yarn';
+import { useYarnFor } from '@/features/yarn/useYarn';
+import { YarnPanel } from '@/features/yarn/YarnPanel';
 
 const GRAN_OPTIONS: { value: Granularity; label: string; title: string }[] = [
   { value: 'stitch', label: 'Stitch', title: 'One tap per stitch' },
@@ -121,6 +125,16 @@ function Counter({ id, pattern, title }: { id: string; pattern: Pattern; title: 
   const finished = pos.finished;
   const [checkpoint, setCheckpoint] = useState<number | null>(null);
   const wake = useWakeLock(P.wake);
+
+  // yarn still to work from here (the panel's yarn choice for this weight is shared)
+  const yParams = useStitchParams(pattern).selected as unknown as ParamSet;
+  const yChoice = useYarnFor(yParams);
+  const yarnRes = useMemo(() => resolveYarn(yParams, yChoice.spec), [yParams, yChoice.spec]);
+  const yarnLengths = useMemo(() => nodeLengths(graph, yParams, yarnRes), [graph, yParams, yarnRes]);
+  const yarnLeft = useMemo(() => remainingFromLengths(graph, yarnLengths, nodeIndex, yarnRes), [graph, yarnLengths, nodeIndex, yarnRes]);
+  const ballM = (yarnRes.ballGrams * yarnRes.metersPer100g) / 100;
+  const yarnHeadsUp = !finished && yarnLeft.nextBreak && (yarnLeft.nextBreak.metersUntil <= 0.15 * ballM || yarnLeft.nextBreak.round <= pos.round + 1)
+    ? yarnLeft.nextBreak : undefined;
 
   // keep the "continue" index up to date
   useEffect(() => {
@@ -280,6 +294,11 @@ function Counter({ id, pattern, title }: { id: string; pattern: Pattern; title: 
               {Math.round(pos.pieceFraction * 100)}% of the piece
               {pc?.roundRemainingMs !== undefined && !finished && checkpoint === null && <> · {fmtDuration(pc.roundRemainingMs).startsWith('<') ? '' : '~'}{fmtDuration(pc.roundRemainingMs)} left in round</>}
             </div>
+            {!finished && (
+              <div className="ctr-yarn" title={`Likely ${formatRange(yarnLeft.net.metersLow, yarnLeft.net.metersHigh, yChoice.units)} (${yarnRes.status} estimate)`}>
+                Yarn left to work: ≈ {formatLength(yarnLeft.net.meters, yChoice.units)} <span>({formatMass(yarnLeft.net.grams!, yChoice.units)})</span>
+              </div>
+            )}
           </div>
         </section>
 
@@ -294,6 +313,12 @@ function Counter({ id, pattern, title }: { id: string; pattern: Pattern; title: 
           </button>
         )}
 
+        {yarnHeadsUp && (
+          <div className="ctr-yarnwarn" role="status">
+            <Icon name="info" size={16} />
+            <span>Heads-up: a {formatMass(yarnRes.ballGrams, yChoice.units)} ball runs out in about {formatLength(yarnHeadsUp.metersUntil, yChoice.units)}{yarnHeadsUp.round !== pos.round ? <>, around {yarnHeadsUp.label}</> : ' — in this round'} (if you started with a full ball). Have the next one ready.</span>
+          </div>
+        )}
         {P.chartOpen && <div className="ctr-minichart ctr-phone-only" data-no-tap>{chart(false)}</div>}
 
         <div
@@ -362,6 +387,9 @@ function Counter({ id, pattern, title }: { id: string; pattern: Pattern; title: 
             />
           </div>
         )}
+        <div className="ctr-card">
+          <YarnPanel pattern={pattern} params={yParams} compact title="Yarn" />
+        </div>
         <div className="ctr-card">
           <h2 className="ctr-card__title">Note for {graph.rounds[curRound]?.label}</h2>
           <NoteEditor key={curRound} value={p?.notes[curRound] ?? ''} rows={2} onSave={(t) => update((s) => setNote(s, curRound, t, Date.now()))} />

@@ -10,10 +10,11 @@ import { Component, Suspense, lazy, useEffect, useMemo, useState, type ReactNode
 import type { Pattern } from '@/core/graph';
 import { analyzeFlatness, type RoundClass } from '@/core/flatness';
 import { paramsFor, type ParamSet } from '@/core/params';
-import type { BlockSummary, SimPhase } from '@/core/sim';
+import { outlinePins, type BlockPin, type BlockSummary, type Network, type RegionReport, type SimPhase } from '@/core/sim';
 import { useSettings } from '@/store';
 import { SegmentedControl, ShapeBadge, Slider } from '@/ui';
 import type { MetricSummary } from './protocol';
+import { regionsSentence } from './explain';
 import { SvgView } from './SvgView';
 import { buildTopology, readPalette, rotationToY, strainScale, type ColorBy, type ColorInputs, type Palette } from './topology';
 import { useSimulation, type SimMode } from './useSimulation';
@@ -39,6 +40,24 @@ export interface SimStatus {
   converged?: boolean;
   /** strain shown at full colour in 'strain' colouring */
   strainScale: number;
+  /**
+   * Per-region shape (body / each side / each corner) of a piece with rows, a border or polygon
+   * rounds — core/sim `regionShape` of the relaxed full piece; undefined for other pieces.
+   */
+  regions?: RegionReport;
+}
+
+/**
+ * Segments of the reference outline of a piece with rows / a border / polygon rounds, in the frame
+ * of `outlinePins` (shown faintly under the blocked piece): the outermost outline curve.
+ */
+export function outlineOverlay(net: Network): number[][] | null {
+  const o = net.outline;
+  if (!o) return null;
+  const rounds = [...o.courses.keys()].sort((a, b) => a - b);
+  const poly = rounds.length ? o.courses.get(rounds[rounds.length - 1])!.poly : o.body;
+  if (!poly) return null;
+  return poly.V.map((v, j) => { const w = poly.V[(j + 1) % poly.V.length]; return [v[0], v[1], w[0], w[1]]; });
 }
 
 export interface SimViewProps {
@@ -62,6 +81,43 @@ export interface SimViewProps {
   resetViewKey?: number | string;
   /** Force the 2D projected rendering (optional; also used when WebGL is unavailable). */
   forceSvg?: boolean;
+  /**
+   * Relaxed state "resting on a table": grown flat, then let go on a table under a weak weight
+   * (core/sim/table.ts). A viewer option for pieces meant to lie flat; it never changes the shape
+   * classification of the plain sim. Default false.
+   */
+  table?: boolean;
+  /** Explicit pins `{node, x, y}` (mm, any rigid frame) for the blocked state. Default: physics.md §6. */
+  pins?: BlockPin[];
+  /**
+   * Line segments [x1, y1, x2, y2] in the pins' frame (e.g. the blocking template's outline), drawn
+   * faintly under the blocked piece, placed by the same rigid fit as the pins. Shown when blocked.
+   */
+  overlay?: number[][];
+}
+
+/**
+ * Map the pins' frame onto the blocked piece: the 3D positions of the pinned nodes are an exact
+ * rigid image of the pins (the solver fixes them there), so p = c + x·a + y·b by least squares.
+ */
+export function overlayToPiece(pins: BlockPin[], positions: ArrayLike<number>, segs: number[][]): Float32Array | null {
+  const P = pins.filter((p) => Number.isFinite(positions[3 * p.node]));
+  if (P.length < 3) return null;
+  // normal equations of [1 x y] → xyz
+  const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], Y = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (const p of P) {
+    const r = [1, p.x, p.y];
+    for (let i = 0; i < 3; i++) { for (let j = 0; j < 3; j++) M[i][j] += r[i] * r[j]; for (let d = 0; d < 3; d++) Y[i][d] += r[i] * positions[3 * p.node + d]; }
+  }
+  const det = (m: number[][]) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const D = det(M);
+  if (Math.abs(D) < 1e-9) return null;
+  const sol = [0, 1, 2].map((d) => [0, 1, 2].map((i) => det(M.map((row, r) => row.map((v, c) => (c === i ? Y[r][d] : v)))) / D));
+  const out = new Float32Array(segs.length * 6);
+  segs.forEach((sg, k) => {
+    for (let e = 0; e < 2; e++) for (let d = 0; d < 3; d++) out[6 * k + 3 * e + d] = sol[d][0] + sol[d][1] * sg[2 * e] + sol[d][2] * sg[2 * e + 1];
+  });
+  return out;
 }
 
 let webglCache: boolean | null = null;
@@ -115,7 +171,7 @@ export function SimView(props: SimViewProps) {
   const upto = Math.max(0, Math.min(nRounds - 1, controls ? ownRound : (props.uptoRound ?? nRounds - 1)));
   const blocked = controls ? ownBlocked : !!props.blocked;
 
-  const { network, error, frame, mode } = useSimulation(pattern, params, upto, blocked);
+  const { network, error, frame, mode } = useSimulation(pattern, params, upto, blocked, { table: props.table, pins: props.pins });
   const topology = useMemo(() => (network ? buildTopology(network) : null), [network]);
   const palette = usePalette();
   const [glFailed, setGlFailed] = useState(false);
@@ -130,20 +186,26 @@ export function SimView(props: SimViewProps) {
   useEffect(() => { setAxis([0, 0, 1]); }, [network]);
   const fm = frame?.metric;
   useEffect(() => {
-    if (fm && frame && frame.step.shownRound === nRounds - 1 && !blocked) setAxis(fm.axis);
-  }, [fm, frame, nRounds, blocked]);
+    // on a table the table's normal (+z) is up; the shape metric's axis of a piece that lies flat
+    // can point anywhere in its plane
+    if (fm && frame && frame.step.shownRound === nRounds - 1 && !blocked && !props.table) setAxis(fm.axis);
+  }, [fm, frame, nRounds, blocked, props.table]);
   const rotation = useMemo(() => rotationToY(axis), [axis]);
   // flat pieces (and blocked ones) are best seen from well above, 3D shapes from the side
   const [elevation, setElevation] = useState(55);
+  // a flat piece with an outline (rows, a border, a polygon) is shown from straight above
+  // (an outlined piece that waves or puckers somewhere: from an angle, so the waves show)
+  const outlined = !!network?.outline;
+  const regionsFlat = frame?.regions ? frame.regions.overall === 'flat' : true;
   useEffect(() => {
-    if (fm && frame && frame.step.shownRound === nRounds - 1) setElevation(fm.class === 'flat' ? 58 : 28);
-  }, [fm, frame, nRounds]);
-  const elev = blocked ? 62 : elevation;
+    if (fm && frame && frame.step.shownRound === nRounds - 1) setElevation(fm.class === 'flat' ? (outlined ? (regionsFlat ? 88 : 38) : 58) : 28);
+  }, [fm, frame, nRounds, outlined, regionsFlat]);
+  const elev = blocked ? 86 : props.table ? 80 : elevation;
 
   const [strain, setStrain] = useState<Float32Array | undefined>(undefined);
   useEffect(() => { if (frame?.strain) setStrain(frame.strain); }, [frame]);
   const sScale = useMemo(() => strainScale(strain, network?.slack), [strain, network]);
-  const colors = useMemo<ColorInputs>(() => ({ by: colorBy, palette, strain: colorBy === 'strain' ? strain : undefined, roundClass, strainScale: sScale }), [colorBy, palette, strain, roundClass, sScale]);
+  const colors = useMemo<ColorInputs>(() => ({ by: colorBy, palette, strain: colorBy === 'strain' ? strain : undefined, roundClass, strainScale: sScale, border: topology?.border }), [colorBy, palette, strain, roundClass, sScale, topology]);
 
   const done = !!frame?.step.done;
   const phase: SimStatus['phase'] = error ? 'error' : frame ? frame.step.phase : 'starting';
@@ -151,15 +213,21 @@ export function SimView(props: SimViewProps) {
     onStatus?.({
       phase, nRounds, roundsGrown: frame?.step.roundsGrown ?? 0, shownRound: frame?.step.shownRound ?? upto,
       metric: frame?.metric, block: frame?.block, error: error ?? undefined, mode, renderer: useGl ? 'webgl' : 'svg',
-      nNodes: network?.nNodes ?? 0, accuracy: frame?.accuracy, converged: frame?.converged, strainScale: sScale,
+      nNodes: network?.nNodes ?? 0, accuracy: frame?.accuracy, converged: frame?.converged, strainScale: sScale, regions: frame?.regions,
     });
-  }, [phase, frame?.step.roundsGrown, frame?.step.shownRound, frame?.metric, frame?.block, frame?.converged, error, mode, useGl, nRounds, upto, network, onStatus, sScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, frame?.step.roundsGrown, frame?.step.shownRound, frame?.metric, frame?.block, frame?.converged, frame?.regions, error, mode, useGl, nRounds, upto, network, onStatus, sScale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fitKey = `${network ? network.nNodes : 0}|${resetViewKey ?? ''}|${blocked}|${done ? 'done' : 'live'}|${axis.join(',')}|${elev}`;
   const positions = frame?.positions ?? null;
-  const svg = topology && <SvgView topology={topology} positions={positions} rotation={rotation} colors={colors} highlightNode={highlightNode} elevation={elev} />;
+  // a piece with an outline blocks to its reference outline (core/sim createSim); draw that outline
+  const autoPins = useMemo(() => (network && !props.pins?.length ? outlinePins(network) : null), [network, props.pins]);
+  const pinsShown = props.pins?.length ? props.pins : autoPins;
+  const overlaySegs = useMemo(() => props.overlay ?? (autoPins && network ? outlineOverlay(network) : null), [props.overlay, autoPins, network]);
+  const overlay3 = useMemo(() => (blocked && done && positions && overlaySegs?.length && pinsShown?.length ? overlayToPiece(pinsShown, positions, overlaySegs) : null), [blocked, done, positions, overlaySegs, pinsShown]);
+  const svg = topology && <SvgView topology={topology} positions={positions} rotation={rotation} colors={colors} highlightNode={highlightNode} elevation={elev} overlay={overlay3} />;
   const solving = !error && !done;
-  const label = phase === 'blocking' ? 'Blocking…' : phase === 'relaxing' ? 'Relaxing…' : 'Solving…';
+  const prog = frame?.step.progress;
+  const label = phase === 'blocking' ? `Pinning out…${prog !== undefined ? ` ${Math.round(prog * 100)} %` : ''}` : phase === 'relaxing' ? 'Relaxing…' : 'Solving…';
 
   return (
     <div className={['sim-view', controls && 'sim-view--controls', className].filter(Boolean).join(' ')} style={style}>
@@ -171,7 +239,7 @@ export function SimView(props: SimViewProps) {
             <GlBoundary fallback={svg} onError={() => setGlFailed(true)}>
               <Suspense fallback={svg}>
                 <Scene3D topology={topology} positions={positions} rotation={rotation} colors={colors} highlightNode={highlightNode}
-                  fitKey={fitKey} autoFit elevation={elev} onContextLost={() => setGlFailed(true)} />
+                  fitKey={fitKey} autoFit elevation={elev} onContextLost={() => setGlFailed(true)} overlay={overlay3} />
               </Suspense>
             </GlBoundary>
           ) : svg
@@ -195,7 +263,12 @@ export function SimView(props: SimViewProps) {
           <div className="sim-controls__row">
             <SegmentedControl label="Boundary" value={ownBlocked ? 'blocked' : 'relaxed'} onChange={(v) => setOwnBlocked(v === 'blocked')}
               options={[{ value: 'relaxed', label: 'Relaxed' }, { value: 'blocked', label: 'Blocked' }]} />
-            {frame?.metric && !ownBlocked && (
+            {frame?.metric && !ownBlocked && frame.regions && (
+              <span className="sim-readout small" data-regions={frame.regions.overall}>
+                <ShapeBadge shape={frame.regions.overall === 'flat' ? 'flat' : 'ruffle'}>{frame.regions.overall === 'flat' ? 'lies flat' : 'not flat'}</ShapeBadge> {regionsSentence(frame.regions)}
+              </span>
+            )}
+            {frame?.metric && !ownBlocked && !frame.regions && (
               <span className="sim-readout small">
                 <ShapeBadge shape={frame.metric.class}>{`tends to ${frame.metric.class === 'flat' ? 'lie flat' : frame.metric.class}`}</ShapeBadge> A {fmt(frame.metric.A)} · W {fmt(frame.metric.W)}
                 {(frame.converged === false || frame.accuracy === 'fast') && <> · <em>{frame.converged === false ? 'approximate — did not fully settle' : 'approximate (fast solve)'}</em></>}

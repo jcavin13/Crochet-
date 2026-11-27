@@ -20,6 +20,10 @@ Publications that use the symbols should credit "Source: Craft Yarn Council www.
 | Chain | open oval along the course (tangent to the arc it lies on; tangential when stacked as a turning chain) | CYC |
 | Slip stitch | filled dot | CYC |
 | Picot | small loop sitting on top of the previous stitch, closed by a dot at its base; its size grows with the chain count (`ch-5 picot` is larger) | CYC: "small loop of 3 chains closed with a dot" |
+| Picot on an arm | on a snowflake / pointed-doily arm (a chain spine worked back along): a pointed loop leaving the spine at about 50°, rooted beside the spine between two chain ovals (not on one); single fronds alternate sides, a pair made together ("picot, picot") is one frond each side, mirror images about the spine; the returning sl st dots keep to the side away from a single frond. Beside a tip loop at about 88° (trefoil leaves) | drawn the way the picot blocks; leaflet charts draw the same thing as a loop of chain ovals |
+| Cluster / bobble at an arm tip | the cluster stands on the spine's last chain pointing out along the arm; the chains skipped before it are its turning chain, stacked beside it in line with the spine | as a 3-dc cluster with its ch-3 is charted |
+| Valley bridge (pointed round) | the chains from arm base to arm base drawn as they are pinned out: a V to a pin on the bisector (the designer Preview's pin), apex softened; through a valley anchor sc when there is one. A long bridge is drawn as a compact V with its ovals closer together (and smaller), never overlapping | the chart shows the count; the Preview and template show the length |
+| Pointed round outline | no tint (a filled star reads as a flower): a faint dashed line through the arm tips and the valley pins — what the round is pinned out to | — |
 | FLO / BLO | a small arc under the stem: FLO `⌣` (opening outward), BLO `⌢` (opening inward) | CYC front-/back-loop marks |
 | FP / BP | a hook at the foot of the stem, curling to one side for FP and to the other for BP | CYC post-stitch hooks (the side the hook curls to is a drawing convention; **unverified** against the CYC artwork) |
 | Magic ring | a circle with a short tail at the centre | CYC "adjustable ring" |
@@ -66,3 +70,13 @@ The legend and tooltips use the app's US/UK setting. Abbreviations come from `st
 (`nameOf`); full names: US sc *single crochet*, hdc *half double crochet*, dc *double crochet*,
 tr *treble crochet*, dtr *double treble crochet*; UK dc *double crochet*, htr *half treble crochet*,
 tr *treble crochet*, dtr *double treble crochet*, trtr *triple treble crochet*.
+
+## One arm / one repeat view
+
+An n-fold piece (core/symmetry) can be shown as one repeat wedge enlarged, "work it ×n"
+(`wedgeView`): one arm of a snowflake (the longest arms; the one nearest 12 o'clock that does not
+hold a round's start), or one repeat of a doily, rotated so its axis points up (the glyphs are
+regenerated from the rotated positions, so an sc's × stays upright). The repeat itself is drawn
+in full ink, its neighbours in the wedge (the previous bridge, stitches on the wedge's edges) in
+half-tone, the rest ghosted. The Chart page and the designer's Chart tab open on it for pointed
+pieces on narrow screens; SVG / PNG export follows the view shown.

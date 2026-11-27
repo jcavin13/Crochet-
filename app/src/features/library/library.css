@@ -26,3 +26,4 @@
   .lib-empty .ui-empty { padding: var(--s-5) var(--s-4); }
   .lib-empty .ui-empty__art svg { width: 48px; height: 48px; }
 }
+.lib-yarn { font-variant-numeric: tabular-nums; white-space: nowrap; }

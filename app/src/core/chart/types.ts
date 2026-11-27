@@ -7,6 +7,7 @@
  */
 import type { LoopMod, StitchType } from '../graph';
 import type { RoundFlatness } from '../flatness';
+import type { FrameSpec } from './frames';
 
 export type Pt = { x: number; y: number };
 
@@ -65,6 +66,10 @@ export interface ChartNode {
   fan?: boolean;
   /** For picots: the base point is (x, y); `rot` points outward. */
   role?: 'join' | 'ringjoin' | 'travel';
+  /** Part of a radial arm (a chain spine worked back along, or a pointed chain loop): its place on the arm. */
+  arm?: 'spine' | 'tip' | 'back' | 'branch' | 'loop';
+  /** Glyph size factor (picots on arms are drawn as larger loops). Default 1. */
+  scale?: number;
 }
 
 export interface ChartSpace {
@@ -104,6 +109,44 @@ export interface ChartRound {
   s0: number;
   /** Analytic flatness for this round (radial only). */
   flat?: RoundFlatness;
+  /**
+   * Pointed round (radial): it has arms — chain spines worked back along, or long chain loops with
+   * a picot at the top — that stand far beyond the ring. Such a round is judged by blocking, not by
+   * the circular flatness rule; its band is drawn as `outline` instead of a ring.
+   */
+  pointed?: boolean;
+  /** Pointed rounds: the outer outline, a radius per angle (`outlineN` points at angles 2πi/N, counter-clockwise from 3 o'clock). */
+  outline?: number[];
+  /**
+   * The round's course is not a circle / a row (frames.ts): a polygon round from the centre, a
+   * round round a foundation chain (stadium) or a border round round a body worked in rows. Its
+   * band and edge are drawn as this shape at heights r0..r.
+   */
+  frame?: FrameSpec;
+  /** A border round worked round a body in rows (notation.md 3.9). */
+  border?: boolean;
+  /** Pointed rounds: the arms (base angle, base radius and tip radius) in working order. */
+  arms?: ChartArm[];
+  /**
+   * Pointed rounds: the blocking outline — a closed polygon through the arm tips and the pins of
+   * the valley bridges between them (drawn as a faint dashed line, like the designer's Preview).
+   */
+  hull?: Pt[];
+}
+
+export interface ChartArm {
+  kind: 'spine' | 'loop';
+  /** First and last node id of the arm (contiguous in working order). */
+  first: number;
+  last: number;
+  /** Course angle of the arm (radians, counter-clockwise from 3 o'clock). */
+  s: number;
+  /** Radius of the arm's base and of its tip (chart units). */
+  r0: number;
+  r1: number;
+  /** Spine chains (base → tip), the tip loop's chains, and the stitches worked back along the spine. */
+  spine: number[];
+  tip: number[];
 }
 
 export interface Bounds { minX: number; minY: number; maxX: number; maxY: number }
@@ -118,6 +161,12 @@ export interface ChartLayout {
   /** Centre ring (radial): magic ring or chain ring. */
   ring?: { kind: 'magic' | 'chain'; r: number; space: number };
   bounds: Bounds;
+  /**
+   * Shape beyond circles and rows: a polygon from the centre (n corners, rounds `from`… drawn as
+   * polygons), a piece worked round a foundation chain (stadium), or a body in rows with a border
+   * worked round it (`rect` = the body's rectangle, rounds `from`… are border rounds).
+   */
+  shape?: { kind: 'polygon'; n: number; from: number } | { kind: 'stadium'; from: number } | { kind: 'border'; from: number; rect: Pt[] };
 }
 
 export interface LayoutOptions {
@@ -129,4 +178,12 @@ export interface LayoutOptions {
   startAngle?: number;
   /** Force a layout mode. Default: 'rows' if any round is a Row, else 'radial'. */
   mode?: 'radial' | 'rows';
+  /** Lay closed rounds of an n-fold piece out exactly n-fold (core/symmetry). Default true. */
+  symmetric?: boolean;
+  /**
+   * Polygons, stadiums and borders (frames.ts): cornered pieces from the centre drawn as polygons,
+   * pieces worked round a foundation chain as stadiums, border rounds round a body in rows as
+   * rounded rectangles. Default true; false draws every closed round as a circle / a row.
+   */
+  shapes?: boolean;
 }

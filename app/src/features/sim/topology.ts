@@ -23,6 +23,8 @@ export interface Topology {
   nNodes: number;
   nParticles: number;
   nRounds: number;
+  /** per round: 1 = a border round worked round rows (tinted distinctly) */
+  border: Uint8Array;
   /** stitch posts: anchor → top, one per (node, anchor particle) */
   stitches: Segments;
   /** the yarn along the course: node i−1 → i */
@@ -32,6 +34,14 @@ export interface Topology {
   nodeRound: Int32Array;
   /** mean course width (scale for markers) */
   wbar: number;
+  /**
+   * Picots, drawn as small closed loops of their chains standing off their base stitch (a picot is
+   * one graph node, at the picot's tip; drawing the yarn through it made a picot pair look like a
+   * bowtie). `base`: the stitch the picot is made on (the last non-picot node before it).
+   */
+  picots: { node: Int32Array; base: Int32Array; chains: Uint8Array; round: Int32Array; count: number };
+  /** Chain width (picot loop size). */
+  wch: number;
 }
 
 function segs(list: { a: number; b: number; r: number; round: number; spring: number; light: number }[]): Segments {
@@ -65,19 +75,81 @@ export function buildTopology(net: Network): Topology {
     }
   }
   const yarn: Parameters<typeof segs>[0] = [];
+  const isPicot = (i: number) => g.nodes[i].type === 'picot';
   for (let i = 1; i < n; i++) {
     const nd = g.nodes[i];
-    const light = chsp[i] || chsp[i - 1] || nd.role === 'tch' || g.nodes[i - 1].role === 'tch' ? 1 : 0;
-    yarn.push({ a: i - 1, b: i, r: (light ? 0.075 : 0.1) * wbar, round: nd.round, spring: springOf(i - 1, i), light });
+    if (isPicot(i)) continue;
+    // the yarn runs past picots: from the last node before a run of picots to the node after it
+    let a = i - 1;
+    while (a > 0 && isPicot(a)) a--;
+    if (isPicot(a) || g.nodes[a].round !== nd.round && a !== i - 1) continue;
+    const light = chsp[i] || chsp[a] || nd.role === 'tch' || g.nodes[a].role === 'tch' ? 1 : 0;
+    yarn.push({ a, b: i, r: (light ? 0.075 : 0.1) * wbar, round: nd.round, spring: springOf(a, i), light });
   }
+  const pn: number[] = [], pb: number[] = [], pc: number[] = [], pr: number[] = [];
+  for (let i = 1; i < n; i++) {
+    if (!isPicot(i)) continue;
+    let b = i - 1;
+    while (b > 0 && isPicot(b)) b--;
+    if (isPicot(b)) continue;
+    pn.push(i); pb.push(b); pc.push(Math.max(2, Math.min(12, g.nodes[i].chains ?? 3))); pr.push(g.nodes[i].round);
+  }
+  const picots = { node: Int32Array.from(pn), base: Int32Array.from(pb), chains: Uint8Array.from(pc), round: Int32Array.from(pr), count: pn.length };
+  const wch = net.params.stitches.ch?.width ?? wbar;
   const nodeRadius = new Float32Array(n);
   const nodeRound = new Int32Array(n);
   for (let i = 0; i < n; i++) {
     const t = g.nodes[i].type;
-    nodeRadius[i] = (t === 'ch' || t === 'slst' ? 0.12 : 0.2) * Math.min(net.width[i], wbar * 1.5);
+    nodeRadius[i] = t === 'picot' ? 0 : (t === 'ch' || t === 'slst' ? 0.12 : 0.2) * Math.min(net.width[i], wbar * 1.5);
     nodeRound[i] = g.nodes[i].round;
   }
-  return { nNodes: n, nParticles: P, nRounds: g.rounds.length, stitches: segs(stitches), yarn: segs(yarn), nodeRadius, nodeRound, wbar };
+  const border = Uint8Array.from(g.rounds.map((_, r) => (net.outline?.roundKind[r] === 'border' ? 1 : 0)));
+  return { nNodes: n, nParticles: P, nRounds: g.rounds.length, border, stitches: segs(stitches), yarn: segs(yarn), nodeRadius, nodeRound, wbar, picots, wch };
+}
+
+/** Segments per drawn picot loop. */
+export const PICOT_SEGS = 12;
+
+/**
+ * Picot loops in view space (after rotation R, axis up = +Y): for each picot, PICOT_SEGS + 1 points
+ * of a closed teardrop from its base stitch out to the picot's tip, perimeter ≈ chains × w_ch. The
+ * loop points from the base to the picot node (a spine picot at its ±50°/±60° layout direction, a
+ * blocked picot at its pin); when the picot node sits on its base (an ordinary round), outwards from
+ * the piece's centre. It lies in the piece's plane (horizontal in view space). Writes
+ * 3·(PICOT_SEGS + 1) numbers per picot into `out` (NaN when not placed).
+ */
+export function picotLoops(t: Topology, pos: ArrayLike<number>, R: number[], centre: [number, number, number], out: Float32Array): Float32Array {
+  const K = PICOT_SEGS + 1;
+  const tr = (p: number): [number, number, number] => {
+    const x = pos[3 * p], y = pos[3 * p + 1], z = pos[3 * p + 2];
+    return [R[0] * x + R[1] * y + R[2] * z, R[3] * x + R[4] * y + R[5] * z, R[6] * x + R[7] * y + R[8] * z];
+  };
+  for (let k = 0; k < t.picots.count; k++) {
+    const o = 3 * K * k;
+    const B = tr(t.picots.base[k]), T = tr(t.picots.node[k]);
+    if (!Number.isFinite(B[0]) || !Number.isFinite(T[0])) { out.fill(NaN, o, o + 3 * K); continue; }
+    const C = t.picots.chains[k] * t.wch;
+    let ux = T[0] - B[0], uy = T[1] - B[1], uz = T[2] - B[2];
+    let d = Math.hypot(ux, uy, uz);
+    if (d < 0.25 * C) { ux = B[0] - centre[0]; uy = 0; uz = B[2] - centre[2]; const m = Math.hypot(ux, uz); if (m > 1e-9) { ux /= m; uz /= m; } else { ux = 1; uz = 0; } d = 0; }
+    else { ux /= d; uy /= d; uz /= d; }
+    // length: the picot reaches its node when pinned/laid out, else about a third of its perimeter
+    const L = d > 0 ? Math.min(d, 0.48 * C) : 0.36 * C;
+    const W = Math.max(0.25 * L, (2 * C) / Math.PI - L);
+    // side vector: in the horizontal plane, perpendicular to u
+    let vx = -uz, vy = 0, vz = ux;
+    const vm = Math.hypot(vx, vy, vz);
+    if (vm < 1e-6) { vx = 1; vy = 0; vz = 0; } else { vx /= vm; vz /= vm; }
+    for (let j = 0; j < K; j++) {
+      const th = (2 * Math.PI * j) / PICOT_SEGS;
+      const s = (L * (1 - Math.cos(th))) / 2;
+      const w = (W / 2) * Math.sin(th) * Math.sqrt((1 - Math.cos(th)) / 2);
+      out[o + 3 * j] = B[0] + s * ux + w * vx;
+      out[o + 3 * j + 1] = B[1] + s * uy + w * vy;
+      out[o + 3 * j + 2] = B[2] + s * uz + w * vz;
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -87,6 +159,8 @@ export type RGB = [number, number, number];
 
 export interface Palette {
   roundA: RGB; roundB: RGB; chain: RGB; ink: RGB; muted: RGB;
+  /** border rounds (rounds worked round rows) */
+  borderA: RGB; borderB: RGB;
   flat: RGB; cup: RGB; ruffle: RGB; tension: RGB; compression: RGB; neutral: RGB;
   highlight: RGB; bg: RGB; dark: boolean;
 }
@@ -119,6 +193,8 @@ export function readPalette(el: Element = document.documentElement): Palette {
   return {
     roundA: accent,
     roundB: dark ? mix(indigo, [1, 1, 1], 0.25) : indigo,
+    borderA: v('--shape-flat', [0, 0.48, 0.35]),
+    borderB: mix(v('--shape-flat', [0, 0.48, 0.35]), dark ? [1, 1, 1] : ink, 0.4),
     chain: mix(ink, bg, 0.35),
     ink,
     muted: v('--ink-3', [0.48, 0.43, 0.37]),
@@ -157,10 +233,12 @@ export interface ColorInputs {
   roundClass?: RoundClass[];
   /** full-colour strain (default 0.1) */
   strainScale?: number;
+  /** per round: 1 = border round (Topology.border) */
+  border?: Uint8Array;
 }
 
-export function roundColor(r: number, nRounds: number, p: Palette): RGB {
-  const base = r % 2 === 0 ? p.roundA : p.roundB;
+export function roundColor(r: number, nRounds: number, p: Palette, border = false): RGB {
+  const base = border ? (r % 2 === 0 ? p.borderA : p.borderB) : r % 2 === 0 ? p.roundA : p.roundB;
   // gentle ramp so neighbouring rounds of the same colour are still distinguishable
   const t = nRounds > 1 ? r / (nRounds - 1) : 0;
   return mix(base, p.dark ? [1, 1, 1] : [1, 0.98, 0.94], 0.28 * t);
@@ -179,7 +257,7 @@ export function segmentColor(s: Segments, k: number, nRounds: number, c: ColorIn
   if (c.by === 'flatness') {
     const cls = c.roundClass?.[s.round[k]];
     col = cls === 'flat' ? p.flat : cls === 'cup' ? p.cup : cls === 'ruffle' ? p.ruffle : p.muted;
-  } else col = roundColor(s.round[k], nRounds, p);
+  } else col = roundColor(s.round[k], nRounds, p, c.border?.[s.round[k]] === 1);
   if (s.light[k]) col = mix(col, p.chain, 0.55);
   else if (yarn) col = mix(col, p.ink, 0.25);
   return col;
@@ -192,7 +270,7 @@ export function nodeColor(t: Topology, i: number, c: ColorInputs): RGB {
     const cls = c.roundClass?.[t.nodeRound[i]];
     return cls === 'flat' ? p.flat : cls === 'cup' ? p.cup : cls === 'ruffle' ? p.ruffle : p.muted;
   }
-  return mix(roundColor(t.nodeRound[i], t.nRounds, p), p.ink, 0.12);
+  return mix(roundColor(t.nodeRound[i], t.nRounds, p, t.border[t.nodeRound[i]] === 1), p.ink, 0.12);
 }
 
 // ---------------------------------------------------------------------------------------------

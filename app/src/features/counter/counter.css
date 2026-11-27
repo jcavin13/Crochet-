@@ -261,3 +261,14 @@
   .ctr-now__text.is-md { font-size: 1.7rem; }
 }
 .ctr-nowrap { white-space: nowrap; }
+
+/* ---------------------------------------------------------------- yarn left */
+.ctr-yarn { font-size: var(--text-xs); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.ctr-yarn span { color: var(--ink-3); }
+.ctr-yarnwarn {
+  display: flex; align-items: flex-start; gap: var(--s-2); flex: none;
+  padding: var(--s-2) var(--s-3); border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--info) 35%, transparent); background: var(--info-soft, var(--surface-2));
+  font-size: var(--text-sm); color: var(--ink);
+}
+.ctr-yarnwarn svg { flex: none; margin-top: 2px; color: var(--info); }

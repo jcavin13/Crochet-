@@ -1,5 +1,5 @@
 /**
- * The spring network of spec/physics.md §1–3 as amended by lab/SPEC_NOTES.md (C1–C5, N1–N4):
+ * The spring network of spec/physics.md §1–3 as amended by lab/SPEC_NOTES.md (C1–C5, N1–N7):
  * a line-by-line port of `lab/src/crolab/network.py` (`variant="metric"`).
  *
  * Particle indexing (C5): particle i < nNodes is node i (the top of the stitch); particles
@@ -10,9 +10,12 @@
  */
 import type { Graph, Node, Pattern } from '../graph';
 import { analyzeFlatness } from '../flatness';
+import { borderLists } from '../graph/targets';
 import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../params';
 import { hyp, sq } from './lbfgs';
 import { dsin, npMean } from './detmath';
+import { armBases, findPointedLoops, findSpines, type PointedLoop, type Spine } from './spine';
+import { buildOutline, type Outline } from './outline';
 
 export const COURSE = 0, WALE = 1, SHEAR = 2, BEND_COURSE = 3, BEND_WALE = 4;
 export type SpringKind = 0 | 1 | 2 | 3 | 4;
@@ -43,6 +46,12 @@ export interface Network {
   height: Float64Array;
   graph: Graph;
   params: ParamSet;
+  /** Spines (chains with stitches worked back along them), SPEC_NOTES N5. */
+  spines: Spine[];
+  /** Pointed loops (`ch ≥ 4, picot, ch ≥ 4` off one stitch, nothing worked into them), SPEC_NOTES N6. */
+  pointedLoops: PointedLoop[];
+  /** Planar reference layout of rows, borders and polygon rounds (SPEC_NOTES N8–N10), or null. */
+  outline: Outline | null;
 }
 
 /** Plain-object view of the springs (for tests and debugging). */
@@ -86,11 +95,38 @@ function param(set: ParamSet, t: string, key: 'width' | 'height' | 'stiffness'):
   return p[key];
 }
 
-export function resolveAnchorParticles(g: Graph, spaceParticle: Map<number, number>): number[][] {
+/**
+ * Seam slip stitches of arm spaces (SPEC_NOTES N7): a chain space that carries an arm (a member is
+ * the base of a spine or of a pointed loop) and whose first member is a slip stitch that starts its
+ * round (only slip stitches before it in the round: `sl st in next ch-2 sp, ch 1, (sc, <arm>, sc) in
+ * same sp`). Returns that slip stitch per space. In such a space the slip stitch takes no share of
+ * the chains: the other members are distributed as if it were not there, and it attaches to the
+ * chain of the first of them (it only carries the hook to where the round's first stitch is made;
+ * stitches worked into a space slide along the loop, so the arm sits where it sits in every repeat).
+ */
+export function seamSlipStitches(g: Graph, bases: Set<number>): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const s of g.spaces) {
+    if (s.kind !== 'chsp') continue;
+    const mem = nodesInSpace(g, s.id);
+    if (mem.length < 2 || !mem.some((v) => bases.has(v))) continue;
+    const f = mem[0], nd = g.nodes[f];
+    if (nd.type !== 'slst') continue;
+    const rd = g.rounds[nd.round];
+    let lead = true;
+    for (let i = rd.first; i < f; i++) if (g.nodes[i].type !== 'slst') lead = false;
+    if (lead) out.set(s.id, f);
+  }
+  return out;
+}
+
+export function resolveAnchorParticles(g: Graph, spaceParticle: Map<number, number>, seam: Map<number, number> = new Map()): number[][] {
   const orderInSpace = new Map<number, Map<number, number>>();
   for (const s of g.spaces) {
     const m = new Map<number, number>();
-    nodesInSpace(g, s.id).forEach((nid, idx) => m.set(nid, idx + 1));
+    // N7: a seam slip stitch of an arm space takes no share; it attaches where the first other member does
+    const sl = seam.get(s.id);
+    nodesInSpace(g, s.id).filter((v) => v !== sl).forEach((nid, idx) => m.set(nid, idx + 1));
     orderInSpace.set(s.id, m);
   }
   const out: number[][] = [];
@@ -105,7 +141,7 @@ export function resolveAnchorParticles(g: Graph, spaceParticle: Map<number, numb
         const chains = sp.chains;
         const ord = orderInSpace.get(s)!;
         const m = ord.size;
-        const jj = ord.get(nd.id)!;
+        const jj = ord.get(nd.id) ?? 1;   // N7: the seam slip stitch goes where the first other member goes
         if (sp.kind === 'ring' && chains.length === 0) p = spaceParticle.get(s)!;
         else if (sp.kind === 'ring') {
           const n = chains.length;
@@ -155,7 +191,13 @@ function courseGroups(g: Graph, w: Float64Array, wEff: Float64Array, h: Float64A
   const flRound = new Map<number, { cls: string; cMin: number; cMax: number; rho: number; r: number }>();
   if (g.spaces.some((sp) => sp.kind === 'chsp')) {
     const rep = analyzeFlatness(g, params, { tol: cfg.flatness?.tol, chainSlackMin: cfg.flatness?.chain_slack_min, chainNominal: cfg.flatness?.chain_nominal });
-    for (const row of rep.rounds) flRound.set(row.round, { cls: row.class, cMin: row.cMin, cMax: row.cMax, rho: row.rho, r: row.r });
+    // the circle rule's chain fraction is for rounds round a centre: rows and border rounds (where
+    // core/flatness now reports rho = 0) are left out, as the lab does
+    const border = borderLists(g);
+    for (const row of rep.rounds) {
+      if (g.rounds[row.round]?.kind === 'row' || border.has(row.round)) continue;
+      flRound.set(row.round, { cls: row.class, cMin: row.cMin, cMax: row.cMax, rho: row.rho, r: row.r });
+    }
   }
   const chainFrac = new Map<number, number>();
   for (const [r, row] of flRound) {
@@ -339,7 +381,8 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
     prounds.push(s.round);
   }
   const nParticles = n + spaceParticle.size;
-  const anchors = resolveAnchorParticles(g, spaceParticle);
+  const pointedLoops = findPointedLoops(g, w);
+  const anchors = resolveAnchorParticles(g, spaceParticle, seamSlipStitches(g, armBases(g, pointedLoops)));
 
   const ringLen = new Map<number, number>();
   for (const [s, p] of spaceParticle) {
@@ -405,6 +448,57 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
     push(i, b, L, kb, BEND_WALE);
   }
 
+  // N8–N10: rows, border rounds and polygon rounds take their reference cells from the planar
+  // layout (outline.ts): wale, shear and wale-bend rest lengths are layout distances; course
+  // springs keep the stitch widths, bent by the chord/arc ratio of the reference curve; the
+  // foundation span takes the first row's length
+  const outline = buildOutline(g, wEff, w, h, cfg.flatness?.chain_nominal ?? 0.85, cfg.flatness?.tol ?? 0.1);
+  if (outline) applyOutline(outline, g.nodes.map((nd) => nd.round), counting, chspChain, Lc, gi, gj, gL, gt);
+
+  // N5: every spring between two nodes of one spine takes its rest length from the spine's flat
+  // reference layout; course bends along the stem and along the return row get course stiffness
+  const spines = findSpines(g, w, h, param(params, 'ch', 'width'));
+  if (spines.length) {
+    const owner = new Map<number, number>();
+    const stem = new Set<number>(), ret = new Set<number>();
+    spines.forEach((sp, si) => {
+      for (const v of sp.pos.keys()) owner.set(v, si);
+      for (const v of sp.stem) stem.add(v);
+      for (const v of sp.ret) ret.add(v);
+    });
+    for (let idx = 0; idx < gi.length; idx++) {
+      const a = gi[idx], b = gj[idx];
+      const sa = owner.get(a), sb = owner.get(b);
+      if (sa === undefined || sa !== sb) continue;
+      const pa = spines[sa].pos.get(a)!, pb = spines[sa].pos.get(b)!;
+      gL[idx] = hyp(pa[0] - pb[0], pa[1] - pb[1]);
+      if (gt[idx] === BEND_COURSE) {
+        const lo = Math.min(a, b);
+        const trip = [lo, lo + 1, lo + 2];
+        if (trip.every((v) => stem.has(v)) || trip.every((v) => ret.has(v))) gk[idx] = kc * Math.min(sCourse[lo], sCourse[lo + 1], sCourse[lo + 2]);
+      }
+    }
+  }
+
+  // N6: pointed loops are starched open loops: every spring between two nodes of one loop (its feet
+  // included) takes its rest length from the loop's flat layout and is two-sided; course bends along
+  // the loop get course stiffness
+  const loopOwner = new Map<number, number>();
+  if (pointedLoops.length) {
+    pointedLoops.forEach((pl, li) => { for (const v of pl.pos.keys()) loopOwner.set(v, li); });
+    for (let idx = 0; idx < gi.length; idx++) {
+      const a = gi[idx], b = gj[idx];
+      const la = loopOwner.get(a), lb = loopOwner.get(b);
+      if (la === undefined || la !== lb) continue;
+      const pa = pointedLoops[la].pos.get(a)!, pb = pointedLoops[la].pos.get(b)!;
+      gL[idx] = hyp(pa[0] - pb[0], pa[1] - pb[1]);
+      if (gt[idx] === BEND_COURSE) {
+        const lo = Math.min(a, b);
+        gk[idx] = kc * Math.min(sCourse[lo], sCourse[lo + 1], sCourse[lo + 2]);
+      }
+    }
+  }
+
   // C4: duplicates keep the largest k; on a tie the first generated
   const best = new Map<number, number>();
   for (let idx = 0; idx < gi.length; idx++) {
@@ -421,7 +515,8 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
   keep.forEach((idx, s) => {
     const a = Math.min(gi[idx], gj[idx]), b = Math.max(gi[idx], gj[idx]);
     I[s] = a; J[s] = b; L[s] = gL[idx]; K[s] = gk[idx]; kind[s] = gt[idx];
-    if (gt[idx] === COURSE || gt[idx] === BEND_COURSE) {
+    const lo = loopOwner.get(a);
+    if ((gt[idx] === COURSE || gt[idx] === BEND_COURSE) && !(lo !== undefined && lo === loopOwner.get(b))) {
       for (let q = a; q <= b && q < n; q++) if (chspChain[q]) { slack[s] = 1; break; }
     }
   });
@@ -430,6 +525,61 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
   return {
     nNodes: n, nParticles, m, I, J, L, k: K, kind, slack, springs,
     particleRound: Int32Array.from(prounds), virtualSpace, spaceParticle, anchors,
-    width: w, height: h, graph: g, params,
+    width: w, height: h, graph: g, params, spines, pointedLoops, outline,
   };
+}
+
+/** SPEC_NOTES N8–N10: rest lengths from the outline layout (crolab.network._apply_outline). */
+function applyOutline(o: Outline, round: number[], counting: boolean[], chsp: Uint8Array, Lc: (a: number, b: number) => number,
+  gi: number[], gj: number[], gL: number[], gt: number[]) {
+  const n = round.length;
+  const has = (p: number) => p < n && o.has[p] === 1;
+  const dist = (a: number, b: number) => hyp(o.qx[a] - o.qx[b], o.qy[a] - o.qy[b]);
+  const span = new Set(o.span);
+  const ocourse = (i: number) => o.roundKind[round[i]] === 'border' || o.roundKind[round[i]] === 'polygon' || o.roundKind[round[i]] === 'polybase';
+  for (let idx = 0; idx < gi.length; idx++) {
+    const a = gi[idx], b = gj[idx], t = gt[idx];
+    if (t === WALE || t === SHEAR || t === BEND_WALE) {
+      if (counting[a] && has(a) && has(b) && !(o.colScale[b] > 0)) gL[idx] = dist(a, b);
+      // the base round of a polygon worked into a magic ring: spokes to the n-gon's centre
+      else if (t === WALE && b >= n && counting[a] && has(a) && o.roundKind[round[a]] === 'polybase') gL[idx] = hyp(o.qx[a], o.qy[a]);
+      continue;
+    }
+    // course and course bend: a < b, b − a ∈ {1, 2}
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    if (t === COURSE && (o.colScale[lo] > 0 || o.colScale[hi] > 0)) {
+      gL[idx] = Lc(lo, hi) * (o.colScale[lo] > 0 ? o.colScale[lo] : o.colScale[hi]);
+      continue;
+    }
+    if (!has(lo) || !has(hi)) continue;
+    if (span.has(lo) && span.has(hi) && (hi - lo === 1 || span.has(lo + 1))) {
+      let L = 0.5 * (o.c[lo] + o.c[hi]);
+      if (hi - lo === 2) L += o.c[lo + 1];
+      gL[idx] = L;
+    } else if (round[lo] === round[hi] && o.roundKind[round[lo]] === 'row') {
+      // a chain space in a row spans the stitches it skips (its chains' c is the row's stitch width):
+      // its (slack) springs take the layout distance; the rest of a row is straight (unchanged)
+      let slackish = false;
+      for (let q = lo; q <= hi; q++) if (chsp[q]) slackish = true;
+      if (slackish) gL[idx] = dist(lo, hi);
+    } else if (round[lo] !== round[hi]) {
+      if (counting[lo] && counting[hi]) gL[idx] = dist(lo, hi);
+    } else if (ocourse(lo)) {
+      let slackish = false;
+      for (let q = lo; q <= hi; q++) if (chsp[q]) slackish = true;
+      const poly = o.courses.get(round[lo])?.poly ?? (o.roundKind[round[lo]] === 'polybase' ? o.base : undefined);
+      if (slackish || !poly) continue;
+      const Sa = o.S[lo], Sb = o.S[hi];
+      if (!Number.isFinite(Sa) || !Number.isFinite(Sb)) continue;
+      let path = Sb - Sa;
+      path -= poly.P * Math.floor(path / poly.P + 0.5);
+      path = Math.abs(path);
+      if (path < 1e-9) continue;
+      let arc = 0;
+      for (let q = lo; q < hi; q++) arc += 0.5 * (Lc(q, q) * o.lam[q] + Lc(q + 1, q + 1) * o.lam[q + 1]);
+      // the reference chord (corner bend and height steps included), scaled from the reference
+      // path to the stitches' own (compliant) length
+      gL[idx] = (dist(lo, hi) * arc) / path;
+    }
+  }
 }

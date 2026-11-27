@@ -3,6 +3,10 @@ metrics `spec/fixtures/<name>.lab.json` (physics.md §5). Uses the compiled grap
 `<name>.graph.json` when present, else the lab builder (solid fixtures only; lace fixtures
 without a compiled graph are skipped). Exits non-zero if a class differs from expected.json.
 
+Extra references with an outline layout (rows / borders / polygons, SPEC_NOTES N8-N10; today
+`spec/fixtures/extra/blanket_border`) get `spec/fixtures/extra/<name>.lab.json` too: the same metric
+record plus the per-region report (`crolab.regions`); they must come out flat everywhere.
+
 Options: --check (do not write; also compare with the committed lab.json, floats within the
 tolerance of `crolab.compare`, and exit non-zero if one is stale), --only NAME[,NAME].
 """
@@ -50,6 +54,31 @@ def lab_record(name: str, pattern: dict, source: str, res=None) -> tuple[dict, o
     return rec, res
 
 
+def regions_record(res) -> dict | None:
+    """The per-region report of a result, floats to 4 decimals."""
+    from .regions import region_shape
+    rep = region_shape(res.network, res.positions)
+    if rep is None:
+        return None
+
+    def rd(d):
+        return {k: (r4(v) if isinstance(v, float) else v) for k, v in d.items()}
+    return {"kind": rep["kind"], "overall": rep["overall"], "body": rd(rep["body"]),
+            "sides": [rd(x) for x in rep["sides"]], "corners": [rd(x) for x in rep["corners"]]}
+
+
+def outline_extras() -> list[tuple[str, object]]:
+    """Extra references whose network has an outline layout."""
+    from .export_network import extra_sources
+    from .network import build_network
+    out = []
+    for name, p in extra_sources():
+        pat = G.load(p)
+        if build_network(pat).outline is not None:
+            out.append((name, pat))
+    return out
+
+
 def dumps(rec: dict) -> str:
     return json.dumps(rec, indent=1, ensure_ascii=False) + "\n"
 
@@ -84,6 +113,26 @@ def main(argv=None) -> int:
               + note)
         if not a.check:
             (FIXTURES_DIR / f"{name}.lab.json").write_text(dumps(rec), encoding="utf-8")
+    for name, pat in outline_extras():
+        if a.only and name not in a.only.split(","):
+            continue
+        t0 = time.perf_counter()
+        rec, res = lab_record(name, pat, "compiled")
+        rec["regions"] = regions_record(res)
+        dt = time.perf_counter() - t0
+        ok = rec["class"] == "flat" and rec["regions"] is not None and rec["regions"]["overall"] == "flat"
+        bad += not ok
+        note = "" if ok else "   <-- NOT FLAT"
+        path = FIXTURES_DIR / "extra" / f"{name}.lab.json"
+        if a.check:
+            diff = lab_diff(rec, json.loads(path.read_text(encoding="utf-8"))) if path.exists() else ["missing"]
+            if diff:
+                bad += 1
+                note += "   <-- STALE " + "; ".join(diff[:3])
+        print(f"{name:20s} {'extra':9s} {'flat':8s} {rec['class']:8s} {rec['A']:7.4f} {rec['W']:7.4f} {rec['Rg']:7.2f} {dt:5.1f}s"
+              + f"  regions {rec['regions']['overall'] if rec['regions'] else '-'}" + note)
+        if not a.check:
+            path.write_text(dumps(rec), encoding="utf-8")
     return 1 if bad else 0
 
 

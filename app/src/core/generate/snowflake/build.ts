@@ -22,6 +22,9 @@ import { anchorOps, bandOps, spaceSlots, spread } from '../motifs';
 import { predictRound, startState, type FlatState } from '../predict';
 import type { Entry, Iface, Item, Op, ParamValue, RoundParams, Stitch } from '../types';
 import { blockedShape, judge } from './geometry';
+import { tautRoundRadii, type V2 } from './taut';
+import { pulledBody } from './bodypull';
+import type { Graph } from '../../graph';
 import type {
   ArmSpec, MinorSpec, SlotRole, SnowBodyMotif, SnowCentreStyle, SnowPlannedRound, SnowRound, SnowflakeResult, SnowflakeSpec,
 } from './types';
@@ -263,22 +266,28 @@ export interface ArmLayout { anchors: ArmAnchor[]; bridges: { from: number; to: 
 
 const TARGET_RATIO = { deep: 1.08, medium: 1.3, shallow: 1.6 } as const;
 
-/** Bridge chains for a gap between anchors at radius R0 separated by `dFrac` of a repeat. */
-export function bridgeChains(R0: number, dFrac: number, n: number, depth: keyof typeof TARGET_RATIO, params: ParamSet): number {
-  const wch = stitchParam(params, 'ch').width * simConfig.block_stretch;
-  const gap = 2 * R0 * Math.sin((Math.PI * dFrac) / n);
-  return Math.max(1, Math.round((TARGET_RATIO[depth] * gap) / wch));
+/**
+ * Bridge chains for a straight gap of `gapMm` between the two stitches it joins (taut body): the
+ * bridge runs stitch → k chains → stitch, a thread of k·w_ch + w_sc, and is sized so that this
+ * length at block stretch is `TARGET_RATIO[depth]` × the gap.
+ */
+export function bridgeChains(gapMm: number, depth: keyof typeof TARGET_RATIO, params: ParamSet): number {
+  const wch = stitchParam(params, 'ch').width, wsc = stitchParam(params, 'sc').width;
+  return Math.max(1, Math.ceil((TARGET_RATIO[depth] * gapMm / simConfig.block_stretch - wsc) / wch - 0.25));
 }
 
-function armRound(spec: SnowflakeSpec, prev: SnowPlannedRound, R0: number, params: ParamSet): { ops: Op[]; layout: ArmLayout } {
-  const n = spec.points;
-  const ops: Op[] = [];
-  const anchors: ArmAnchor[] = [];
+/** Thread length (rest) of a bridge of k chains between two sc: sc → ch … ch → sc. */
+export const bridgeLength = (k: number, params: ParamSet) => k * stitchParam(params, 'ch').width + stitchParam(params, 'sc').width;
+
+/** Where the arm round's groups go: the loops (or stitches) of the round below and what each carries. */
+interface ArmPlace { frac: number; role: SlotRole; len: number }
+interface ArmStructure { lace: boolean; pos: ArmPlace[]; kinds: (ArmAnchor['kind'] | null)[] }
+
+function armStructure(spec: SnowflakeSpec, prev: SnowPlannedRound): ArmStructure {
   const minorOn = spec.minor.style !== 'none';
   const lace = prev.entries.some((e) => e.kind === 'sp');
   // positions: chain loops of the round below (lace), else its stitches
-  type Pos = { frac: number; role: SlotRole; len: number };
-  let pos: Pos[];
+  let pos: ArmPlace[];
   if (lace) {
     const { slots } = spaceSlots(prev.entries);
     const fr = slotFractions(prev.entries);
@@ -287,13 +296,10 @@ function armRound(spec: SnowflakeSpec, prev: SnowPlannedRound, R0: number, param
     const a = prev.entries.length;
     pos = range(0, a - 1).map((i) => ({ frac: i / a, role: i === 0 ? 'point' : i === Math.floor(a / 2) ? 'minor' : 'valley', len: 0 }));
   }
-  const kindOf = (p: Pos): ArmAnchor['kind'] | null => {
+  const kindOf = (p: ArmPlace): ArmAnchor['kind'] | null => {
     if (p.role === 'point') return 'point';
     if (p.role === 'minor' && minorOn) return 'minor';
-    if (spec.valley.anchor && (p.role === 'valley' || p.role === 'minor')) {
-      // one valley anchor per gap: the loop nearest the middle of the gap it sits in
-      return 'valley';
-    }
+    if (spec.valley.anchor && (p.role === 'valley' || p.role === 'minor')) return 'valley';
     return null;
   };
   let kinds = pos.map(kindOf);
@@ -313,34 +319,119 @@ function armRound(spec: SnowflakeSpec, prev: SnowPlannedRound, R0: number, param
     });
     kinds = kinds.map((k, i) => (k === 'valley' && !keep.has(i) ? null : k));
   }
-  const anchored = pos.map((p, i) => ({ p, k: kinds[i], i })).filter((x) => x.k);
-  const fracs = anchored.map((x) => x.p.frac);
-  const bridges: ArmLayout['bridges'] = [];
-  const chainsFor = (j: number) => {
-    const from = fracs[j], to = j + 1 < fracs.length ? fracs[j + 1] : 1;
-    const ch = spec.valley.chains ?? bridgeChains(R0, to - from, n, spec.valley.depth, params);
-    bridges.push({ from, to, chains: ch });
-    return ch;
-  };
+  return { lace, pos, kinds };
+}
+
+/** The arm round's ops: `(sc, <arm>, sc)` per point / minor point, a lone sc per valley anchor, bridges between. */
+function armOps(st: ArmStructure, chainsFor: (j: number) => number, point: Item[], minor: Item[]): { ops: Op[]; anchors: ArmAnchor[] } {
+  const ops: Op[] = [];
+  const anchors: ArmAnchor[] = [];
   let skipSt = 0;
   const flushSkip = () => { if (skipSt) { ops.push({ k: 'skipSt', n: skipSt }); skipSt = 0; } };
   let aj = 0;
-  pos.forEach((p, i) => {
-    const k = kinds[i];
-    const place = lace ? { to: 'sp' as const, len: p.len } : { to: 'st' as const };
+  st.pos.forEach((p, i) => {
+    const k = st.kinds[i];
+    const place = st.lace ? { to: 'sp' as const, len: p.len } : { to: 'st' as const };
     if (!k) {
-      if (lace) ops.push({ k: 'skipSp', len: p.len }); else skipSt++;
+      if (st.lace) ops.push({ k: 'skipSp', len: p.len }); else skipSt++;
       return;
     }
     flushSkip();
     anchors.push({ frac: p.frac, kind: k });
-    if (k === 'point') ops.push({ k: 'into', place, items: [st('sc'), ...spineOps(spec.arm), st('sc')] });
-    else if (k === 'minor') ops.push({ k: 'into', place, items: [st('sc'), ...minorOps(spec.minor, spec.arm.back), st('sc')] });
-    else ops.push({ k: 'into', place, items: [st('sc')] });
+    if (k === 'point') ops.push({ k: 'into', place, items: [st_('sc'), ...point, st_('sc')] });
+    else if (k === 'minor') ops.push({ k: 'into', place, items: [st_('sc'), ...minor, st_('sc')] });
+    else ops.push({ k: 'into', place, items: [st_('sc')] });
     ops.push({ k: 'ch', n: chainsFor(aj++) });
   });
   flushSkip();
-  return { ops, layout: { anchors, bridges } };
+  return { ops, anchors };
+}
+const st_ = (t: 'sc') => st(t);
+
+/** Body + arm-round anchors pulled out by the arms (bodypull.ts), one repeat; cached per body and arm structure. */
+export interface TautArmRound {
+  /** Per anchor of one repeat, in working order: its first and last stitch (`sc` of `(sc, <arm>, sc)`; a valley sc is both). Mathematical frame (y up), centre at the origin. */
+  anchors: { kind: ArmAnchor['kind']; first: V2; last: V2 }[];
+  /** Mean radius of the stitch tops of each centre/body round. */
+  rings: number[];
+}
+const tautCache = new Map<string, TautArmRound | null>();
+
+function tautArmRound(spec: SnowflakeSpec, planned: SnowPlannedRound[], st: ArmStructure, params: ParamSet): TautArmRound | null {
+  const n = spec.points;
+  const key = JSON.stringify([n, params.id, planned.map((p) => [p.ops, p.ringChains, p.prevLead]), st.kinds]);
+  if (tautCache.has(key)) return tautCache.get(key)!;
+  // the arm round with a picot standing in for each arm: same stitches into the same places
+  // bridges of about the right length (the arm round's wale rest lengths depend on its course, N1),
+  // sized on the flatness circle; they carry no force in the pull
+  const body = planned[planned.length - 1];
+  const fr = st.pos.filter((_, i) => st.kinds[i]).map((p) => p.frac);
+  const R0c = body.r + stitchParam(params, 'sc').height;
+  const probeCh = (j: number) => spec.valley.chains ?? bridgeChains(2 * R0c * Math.sin((Math.PI * ((j + 1 < fr.length ? fr[j + 1] : 1) - fr[j])) / n), spec.valley.depth, params);
+  const probe = armOps(st, probeCh, [{ k: 'picot', n: 3 }], [{ k: 'picot', n: 3 }]);
+  const lead = planned[planned.length - 1].entries.some((e) => e.kind === 'sp') ? spaceSlots(planned[planned.length - 1].entries).leading : 0;
+  const rounds = [...planned.map((p, i) => ({ ops: p.ops, prevLead: p.prevLead, ring: i === 0 ? { chains: p.ringChains ?? 0 } : undefined })), { ops: probe.ops, prevLead: lead, ring: undefined }];
+  const text = [`params: ${params.id}`, ...rounds.map((r, i) => `Rnd ${i + 1}: ${writeRound({ sector: r.ops, repeats: n, terms: 'US', prevLead: r.prevLead, ring: r.ring, fastenOff: i === rounds.length - 1 })}.`)].join('\n') + '\n';
+  let out: TautArmRound | null = null;
+  const g = compilePattern(text).pattern?.graph;
+  if (g) {
+    const last = g.rounds.length - 1;
+    const groups = armGroups(g, last);
+    const A = probe.anchors.length;
+    const T = blockingTension(params);
+    const wch = stitchParam(params, 'ch').width;
+    const reach = (q: number) => { const k = probe.anchors[q % A]?.kind; return k === 'point' ? spec.arm.length * wch : k === 'minor' ? Math.max(3, spec.minor.length) * wch : 1e3; };
+    const pos = groups.length === n * A ? pulledBody(g, params, groups.flatMap((x, q) => (x.first === x.last
+      ? [{ node: x.first, force: T, group: q, reach: reach(q) }]
+      : [{ node: x.first, force: T / 2, group: q, reach: reach(q) }, { node: x.last, force: T / 2, group: q, reach: reach(q) }]))) : [];
+    if (groups.length === n * A) {
+      const rep = n > 1 ? 1 : 0;
+      const anchors = probe.anchors.map((a, q) => {
+        const gr = groups[rep * A + q];
+        const f = pos[gr.first], l = pos[gr.last];
+        return f && l ? { kind: a.kind, first: f, last: l } : null;
+      });
+      if (anchors.every(Boolean)) out = { anchors: anchors as TautArmRound['anchors'], rings: tautRoundRadii(g, pos, last - 1) };
+    }
+  }
+  if (tautCache.size > 300) tautCache.clear();
+  tautCache.set(key, out);
+  return out;
+}
+
+/**
+ * The tension a blocked snowflake is pinned to: the force that stretches a chain by block_stretch
+ * (k_course · s_ch · (block_stretch − 1)). Pinning pulls every thread path with about this force, so
+ * each part stretches by T / its stiffness: chain loops and bridges by block_stretch, an arm's
+ * doubled cord (chains + return row) much less.
+ */
+export function blockingTension(params: ParamSet): number {
+  return simConfig.k_course * stitchParam(params, 'ch').stiffness * (simConfig.block_stretch - 1);
+}
+
+/** Stretch factor of an arm under the blocking tension: a spine is chains and its return row side by side; a pointed loop two chain strands. */
+export function armStretch(arm: Pick<ArmSpec, 'tip' | 'back'>, params: ParamSet): number {
+  const sCh = stitchParam(params, 'ch').stiffness;
+  const ea = simConfig.k_course * (arm.tip === 'loop' ? 2 * sCh : sCh + stitchParam(params, arm.back === 'sc' ? 'sc' : 'slst').stiffness);
+  return 1 + blockingTension(params) / ea;
+}
+
+/** Groups of the arm round (round r): an arm's `sc … sc` worked into one place, or a lone sc; first/last stitch ids. */
+export function armGroups(g: Graph, r: number): { first: number; last: number }[] {
+  const rd = g.rounds[r];
+  const ids: number[] = [];
+  for (let i = rd.first; i <= rd.last; i++) {
+    const nd = g.nodes[i];
+    if (!nd.into.length || nd.type === 'slst' || nd.type === 'ch' || nd.type === 'picot') continue;
+    if (nd.into.every((a) => ('space' in a ? g.spaces[a.space].round < r : g.nodes[a.node].round < r))) ids.push(i);
+  }
+  const key = (i: number) => JSON.stringify(g.nodes[i].into);
+  const out: { first: number; last: number }[] = [];
+  for (let k = 0; k < ids.length; k++) {
+    const a = ids[k], b = ids[k + 1];
+    if (b !== undefined && key(a) === key(b) && b - a > 1) { out.push({ first: a, last: b }); k++; } else out.push({ first: a, last: a });
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ planning */
@@ -350,6 +441,8 @@ export interface SnowPlan {
   layout: ArmLayout;
   warnings: string[];
   ringChains: number;
+  /** The body pulled taut with the arm round's anchor stitches on it (null if the probe did not compile). */
+  taut: TautArmRound | null;
 }
 
 const BEAM = 8;
@@ -448,11 +541,32 @@ export function planSnowflake(specIn: SnowflakeSpec, params: ParamSet, opts: { b
   const best = ranked[0].x;
   const planned = best.rounds.slice();
   const body = planned[planned.length - 1];
-  const R0 = body.r + stitchParam(params, 'sc').height;
   if (needMinor && (spaceSlots(body.entries).slots.length || body.entries.length) < 2) {
     warnings.push('The round below the arms has only one position per point, so the minor points were left out (add a body round with two loops per point).');
   }
-  const arms = armRound(spec, body, R0, params);
+  const struct = armStructure(spec, body);
+  const taut = tautArmRound(spec, planned, struct, params);
+  // bridges: from the last stitch of one anchor to the first of the next, across the taut body
+  const bridges: ArmLayout['bridges'] = [];
+  const nA = struct.kinds.filter(Boolean).length;
+  const fracs = struct.pos.filter((_, i) => struct.kinds[i]).map((p) => p.frac);
+  const gapOf = (j: number) => {
+    if (taut) {
+      const a = taut.anchors[j].last, b0 = taut.anchors[(j + 1) % nA].first;
+      const t = j + 1 < nA ? 0 : (2 * Math.PI) / n;
+      const b: V2 = [b0[0] * Math.cos(t) - b0[1] * Math.sin(t), b0[0] * Math.sin(t) + b0[1] * Math.cos(t)];
+      return Math.hypot(b[0] - a[0], b[1] - a[1]);
+    }
+    const from = fracs[j], to = j + 1 < fracs.length ? fracs[j + 1] : 1;
+    return 2 * (body.r + stitchParam(params, 'sc').height) * Math.sin((Math.PI * (to - from)) / n);
+  };
+  const chainsFor = (j: number) => {
+    const ch = spec.valley.chains ?? bridgeChains(gapOf(j), spec.valley.depth, params);
+    bridges.push({ from: fracs[j], to: j + 1 < fracs.length ? fracs[j + 1] : 1, chains: ch });
+    return ch;
+  };
+  const armsOps = armOps(struct, chainsFor, spineOps(spec.arm), minorOps(spec.minor, spec.arm.back));
+  const arms = { ops: armsOps.ops, layout: { anchors: armsOps.anchors, bridges } as ArmLayout };
   const entries = sectorEntries(arms.ops);
   const p = predictRound(entries, n, { k: planned.length, r: body.r }, params);
   planned.push({
@@ -460,7 +574,7 @@ export function planSnowflake(specIn: SnowflakeSpec, params: ParamSet, opts: { b
     e: p.e, eMin: p.eMin, eMax: p.eMax, cls: p.cls, rho: p.rho, r: p.r,
     prevLead: body.entries.some((e) => e.kind === 'sp') ? spaceSlots(body.entries).leading : 0,
   });
-  return { planned, layout: arms.layout, warnings, ringChains: planned[0].ringChains ?? 0 };
+  return { planned, layout: arms.layout, warnings, ringChains: planned[0].ringChains ?? 0, taut };
 }
 
 function armParams(spec: SnowflakeSpec): RoundParams {
@@ -554,7 +668,7 @@ export function generateSnowflake(specIn: SnowflakeSpec, params: ParamSet): Snow
     rounds: rounds.length,
     stitches: rounds.reduce((a, r) => a + r.stitches, 0),
     diameterMm: shape.acrossMm,
-    threadM: pattern ? yarnOf(pattern, params) : 0,
+    ...(() => { const y = pattern ? yarnOf(pattern, params) : { meters: 0, grams: 0 }; return { threadM: y.meters, threadG: y.grams }; })(),
   };
   return { spec, text, pattern, flatness, rounds, planned, shape, check, stats, warnings, diagnostics };
 }

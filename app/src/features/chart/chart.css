@@ -25,7 +25,7 @@
 .ch-view.is-zoomed .ch-svg { touch-action: none; }
 .ch-svg:active { cursor: grabbing; }
 
-.ch-sym path { fill: none; stroke: var(--ink); stroke-width: 0.065; stroke-linecap: round; stroke-linejoin: round; }
+.ch-sym path { fill: none; stroke: var(--ink); stroke-width: var(--ch-sw, 0.065); stroke-linecap: round; stroke-linejoin: round; }
 .ch-sym path.f { fill: var(--ink); stroke: none; }
 .ch-alt path { stroke: var(--indigo); }
 .ch-alt path.f { fill: var(--indigo); stroke: none; }
@@ -44,6 +44,55 @@
 .ch-edge { fill: none; stroke-width: 0.06; stroke-linecap: round; }
 .ch-edge--cup { stroke: var(--shape-cup); stroke-dasharray: 0.45 0.3; }
 .ch-edge--ruffle { stroke: var(--shape-ruffle); stroke-dasharray: 0.1 0.2; }
+/* pointed round (snowflake arms, pointed loops): judged by blocking — no tint, only the faint dashed
+   outline it is pinned out to (arm tips and valley pins) */
+.ch-hull { fill: none; stroke: var(--ink-3); stroke-width: 0.035; stroke-dasharray: 0.26 0.2; stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; }
+
+/* one-repeat view: the repeat in full ink, its neighbours in half-tone, the rest ghosted */
+.ch-ctx { opacity: 0.4; }
+.ch-ghost { opacity: 0.1; }
+.ch-viewbar {
+  position: absolute;
+  bottom: var(--s-2);
+  left: var(--s-2);
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  z-index: 1;
+}
+.ch-viewbar button {
+  min-height: 32px;
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ch-viewbar button[aria-pressed='true'] { background: var(--ink); color: var(--surface); font-weight: 600; }
+.ch-viewbar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ch-viewnote {
+  position: absolute;
+  left: var(--s-2);
+  top: var(--s-2);
+  margin: 0;
+  max-width: 45%;
+  padding: 2px var(--s-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.3;
+  pointer-events: none;
+}
+.ch-view.is-arm { max-height: min(78vh, 900px); }
 
 .ch-labels text {
   font: 600 0.42px var(--font-body);
@@ -104,6 +153,7 @@
 .ch-toolbar > * { min-width: 0; }
 .ch-stage { padding: var(--s-2); }
 .ch-stage .ch-view { max-height: max(420px, calc(100vh - 250px)); margin-inline: auto; }
+.ch-stage .ch-view.is-arm { max-height: max(520px, calc(100vh - 140px)); }
 .ch-slider { flex: 1 1 240px; }
 .ch-toggles { display: flex; flex-direction: column; gap: var(--s-2); }
 .ch-segs { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
@@ -128,6 +178,7 @@
 }
 .ch-swatch--cup { background: var(--shape-cup-soft); border: 1.5px dashed var(--shape-cup); }
 .ch-swatch--ruffle { background: var(--shape-ruffle-soft); border: 1.5px dotted var(--shape-ruffle); }
+.ch-swatch--pointed { height: 0; border: 0; border-top: 2px dashed var(--ink-3); border-radius: 0; }
 
 .ch-report { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 420px; overflow: auto; }
 .ch-report li { display: grid; grid-template-columns: auto 1fr; gap: var(--s-2); align-items: start; padding: var(--s-1) var(--s-2); border-radius: var(--radius-sm); font-size: var(--text-sm); }
@@ -140,6 +191,8 @@
 .ch-page.is-print .ch-sym path { stroke: #000; }
 .ch-page.is-print .ch-sym path.f { fill: #000; }
 .ch-page.is-print .ch-labels text { fill: #000; stroke: #fff; }
+.ch-page.is-print .ch-ghost { opacity: 0.06; }
+.ch-page.is-print .ch-hull { stroke: #666; }
 
 @media (max-width: 899px) {
   .ch-page .ch-layout { grid-template-columns: minmax(0, 1fr); }
@@ -156,7 +209,8 @@
   .ch-print-area .ch-svg { height: auto; max-height: 90vh; }
   .ch-print-area .ch-sym path { stroke: #000 !important; }
   .ch-print-area .ch-sym path.f { fill: #000 !important; }
-  .ch-print-area .ch-reset, .ch-print-area .ch-tip { display: none !important; }
+  .ch-print-area .ch-reset, .ch-print-area .ch-tip, .ch-print-area .ch-viewbar { display: none !important; }
+  .ch-print-area .ch-ghost { display: none; }
 }
 
 /* ---------------------------------------------------------------- symmetry overlay */
@@ -172,3 +226,14 @@
 .ch-symkey__emph { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--warning); background: color-mix(in srgb, var(--warning) 18%, transparent); }
 .ch-linkbtn { border: 0; background: none; padding: 0 2px; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; min-height: 0; }
 .ch-symcard .sy-rounds { max-height: 300px; overflow: auto; }
+
+/* a pattern too big to chart: a message instead of the chart */
+.ch-view.ch-toobig {
+  aspect-ratio: auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  padding: var(--s-4);
+  border: 1px dashed var(--border-strong);
+}
+.ch-toobig p { margin: 0; color: var(--ink-2); }

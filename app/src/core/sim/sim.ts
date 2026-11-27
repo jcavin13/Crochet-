@@ -7,9 +7,11 @@
 import type { Graph, Pattern } from '../graph';
 import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../params';
 import { hyp, now } from './lbfgs';
-import { setupBlock, type BlockResult, type BlockSetup } from './blocking';
-import { shapeMetric, type ShapeMetric } from './metrics';
+import { setupBlock, type BlockPin, type BlockResult, type BlockSetup, type PinStretch } from './blocking';
+import { networkMetric, type ShapeMetric } from './metrics';
 import { buildNetwork, type Network } from './network';
+import { outlinePins } from './outline';
+import { regionShape, type RegionReport } from './regions';
 import { Grower } from './solve';
 
 export interface CreateSimOptions {
@@ -27,6 +29,18 @@ export interface CreateSimOptions {
   gtolRound?: number;
   gtolFinal?: number;
   network?: Network;
+  /**
+   * Viewer option, not the shared spec (see table.ts): grow flat, then rest the piece on a table
+   * under a weak weight. The relaxed state shown is the resting one; blocking starts from the flat
+   * grown state. Default false (the plain free relaxation of physics.md).
+   */
+  table?: boolean;
+  /**
+   * Explicit pins for the blocked state of the last round (see BlockPin). Default: a piece with an
+   * outline (rows, border, polygon) is pinned to its reference outline (outlinePins: a border's outer
+   * round to its rectangle); any other piece physics.md §6.
+   */
+  pins?: BlockPin[];
 }
 
 export const AUTO_REFERENCE_MAX_NODES = 600;
@@ -42,6 +56,10 @@ export interface BlockSummary {
   buckleFraction: number;
   compressedFraction: number;
   converged: boolean;
+  /** With explicit pins: the largest stretch per part. */
+  pinStretch?: PinStretch;
+  /** With explicit pins: number of pinned nodes. */
+  pinCount?: number;
 }
 
 export interface StepResult {
@@ -52,6 +70,8 @@ export interface StepResult {
   /** Rounds relaxed so far (growth progress), and the round being shown. */
   roundsGrown: number;
   shownRound: number;
+  /** Blocking: fraction of the pinned solve done (pin continuation stages), 0…1. */
+  progress?: number;
 }
 
 export interface SimHandle {
@@ -72,6 +92,12 @@ export interface SimHandle {
   converged(): boolean | undefined;
   /** Shape metric of the shown relaxed state (undefined until solved). */
   metric(): ShapeMetric | undefined;
+  /**
+   * Per-region shape (body / each side / each corner) of a piece with rows, a border or polygon
+   * rounds (core/sim/regions.ts), for the relaxed full piece; undefined for other pieces, other
+   * rounds, or until solved.
+   */
+  regions(): RegionReport | undefined;
   /** Blocking summary of the shown round (undefined unless blocked and solved). */
   block(): BlockSummary | undefined;
   /** Per-spring strain |d|/L − 1 of the shown state (NaN where not made). */
@@ -86,12 +112,13 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
   const want = opts.accuracy ?? 'auto';
   const accuracy: 'reference' | 'fast' = want === 'auto' ? (net.nNodes <= AUTO_REFERENCE_MAX_NODES ? 'reference' : 'fast') : want;
   const tol = accuracy === 'fast' ? FAST_TOLERANCES : { gtolRound: 1e-6, gtolFinal: 1e-8 };
-  const grower = new Grower(net, cfg, { gtolRound: opts.gtolRound ?? tol.gtolRound, gtolFinal: opts.gtolFinal ?? tol.gtolFinal });
+  const grower = new Grower(net, cfg, { gtolRound: opts.gtolRound ?? tol.gtolRound, gtolFinal: opts.gtolFinal ?? tol.gtolFinal, table: !!opts.table });
   const positions = new Float32Array(3 * net.nParticles).fill(NaN);
   let target = clampRound(opts.uptoRound ?? nRounds - 1);
   let blocked = !!opts.blocked;
   const blockCache = new Map<number, BlockResult>();
   const metricCache = new Map<number, ShapeMetric>();
+  let regionCache: RegionReport | null | undefined;
   let blockJob: { round: number; setup: BlockSetup } | null = null;
   let shown: Float64Array | null = null;
   let lastEnergy = 0;
@@ -133,12 +160,19 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
     // 2. blocked state of the target round
     const cached = blockCache.get(target);
     if (cached) { show(cached.positions); lastEnergy = cached.energy; return res(true, 'ready'); }
-    if (!blockJob || blockJob.round !== target) blockJob = { round: target, setup: setupBlock(net, X, cfg) };
+    if (!blockJob || blockJob.round !== target) {
+      // table mode: block from the flat grown state (the snapshot of an earlier round is flat too)
+      const start = opts.table && target === nRounds - 1 && grower.planar ? grower.planar : X;
+      // a piece with an outline (rows, border, polygon) blocks to its reference outline by default
+      const pins = target === nRounds - 1 ? (opts.pins ?? (net.outline ? outlinePins(net) ?? undefined : undefined)) : undefined;
+      // pinned blocking is a picture for the viewer: a looser tolerance (it converges in a second)
+      blockJob = { round: target, setup: setupBlock(net, start, cfg, pins?.length ? 1e-6 : 1e-8, pins) };
+    }
     const st = blockJob.setup.opt.run(deadline);
     const br = blockJob.setup.finish();
     lastEnergy = br.energy;
     show(br.positions);
-    if (st === 'running') return res(false, 'blocking');
+    if (st === 'running') return { ...res(false, 'blocking'), progress: blockJob.setup.opt.progress() };
     blockCache.set(target, br);
     blockJob = null;
     return res(true, 'ready');
@@ -163,10 +197,17 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
       if (!X) return undefined;
       let m = metricCache.get(target);
       if (!m) {
-        m = shapeMetric(X.subarray(0, 3 * net.nNodes), net.particleRound.subarray(0, net.nNodes), cfg);
+        m = networkMetric(net, X, cfg);
         metricCache.set(target, m);
       }
       return m;
+    },
+    regions() {
+      if (!net.outline || target !== nRounds - 1) return undefined;
+      const X = relaxedState(target);
+      if (!X) return undefined;
+      if (regionCache === undefined) regionCache = regionShape(net, X);
+      return regionCache ?? undefined;
     },
     block() {
       if (!blocked) return undefined;
@@ -174,6 +215,7 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
       return b && {
         verdict: b.verdict, message: b.message, meanAbsStrain: b.meanAbsStrain, maxAbsStrain: b.maxAbsStrain,
         buckleFraction: b.buckleFraction, compressedFraction: b.compressedFraction, converged: b.converged,
+        pinStretch: b.pinStretch, pinCount: b.pins?.length,
       };
     },
     strain() {

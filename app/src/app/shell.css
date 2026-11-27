@@ -60,9 +60,9 @@
     display: flex; align-items: center; gap: var(--s-2);
     height: calc(var(--topbar-h) + var(--safe-top));
     padding: var(--safe-top) calc(var(--s-2) + var(--safe-right)) 0 calc(var(--s-4) + var(--safe-left));
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
-    backdrop-filter: saturate(1.4) blur(10px);
-    -webkit-backdrop-filter: saturate(1.4) blur(10px);
+    /* opaque: content scrolling under a see-through bar (tab rows, headings) read as overlapping
+       the header on phones, especially in dark mode or where backdrop-filter is unsupported */
+    background: var(--bg);
     border-bottom: 1px solid var(--border);
   }
   .shell-top .shell-brand__name { font-size: var(--text-md); }

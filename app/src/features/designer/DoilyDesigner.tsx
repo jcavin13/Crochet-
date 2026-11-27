@@ -17,6 +17,8 @@ import { LayerBuilder, paramSummary, pct } from './LayerBuilder';
 import { SuggestionsPanel } from './Suggestions';
 import { TemplateCard } from './TemplateCard';
 import { RedoIcon, UndoIcon } from './icons';
+import { YarnPanel } from '@/features/yarn/YarnPanel';
+import { useDesignYarn } from './yarn';
 import { clampSym, compute, resolveUnlocked, shareCode, toLayers, type DesignerState, type Layer, type Mode } from './state';
 
 const HEIGHTS: Height[] = ['sc', 'hdc', 'dc', 'tr'];
@@ -101,6 +103,7 @@ export function DoilyDesigner({ state, setState, kindSwitch }: { state: Designer
   const plan = useMemo(() => planDoily(spec, params), [spec, params]);
   const stale = deferred !== state;
   const { actions } = useSaveOpen(result.text);
+  const yarn = useDesignYarn(result.pattern, params);
 
   const setLayers = (rounds: Layer[]) => commit({ rounds }, { presetId: undefined });
   const selRound = selected !== null ? result.rounds.find((r) => r.source === selected && !r.auto) : undefined;
@@ -174,7 +177,7 @@ export function DoilyDesigner({ state, setState, kindSwitch }: { state: Designer
             </div>
           </div>
           <LayerBuilder
-            layers={state.rounds} spec={spec} plan={plan} result={result} params={params}
+            layers={state.rounds} spec={spec} plan={plan} result={result} params={params} yarnPerRound={yarn.perRound} yarnUnits={yarn.units}
             selected={selected} onSelect={(i) => { setSelected(i); setScrub(null); }}
             onChange={(rounds) => setLayers(rounds)} onAdd={() => setAddOpen(true)}
           />
@@ -296,7 +299,7 @@ export function DoilyDesigner({ state, setState, kindSwitch }: { state: Designer
         <Stat k="Rounds" v={String(result.stats.rounds)} />
         <Stat k="Stitches" v={result.stats.stitches.toLocaleString()} />
         <Stat k="Diameter" v={cm(result.stats.diameterMm)} hint={state.targetCm ? `target ${state.targetCm} cm · ${params.label}` : params.label} />
-        <Stat k="Yarn" v={`≈ ${result.stats.yarnM < 10 ? result.stats.yarnM.toFixed(1) : Math.round(result.stats.yarnM)} m`} hint="rough: summed stitch sizes" />
+        <Stat k="Yarn" v={yarn.value} hint={yarn.hint} />
       </div>
 
       <Card flush className="dz-chart">
@@ -311,6 +314,12 @@ export function DoilyDesigner({ state, setState, kindSwitch }: { state: Designer
           />
         </div>
       </Card>
+
+      {result.pattern && (
+        <Card className="dz-card dz-yarn">
+          <YarnPanel pattern={result.pattern} params={params} compact />
+        </Card>
+      )}
 
       {result.pattern && (
         <Card className="dz-card">

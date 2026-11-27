@@ -118,9 +118,11 @@ export interface LabelMatch {
   end: number;
   /** 0-based index just after the label (before the colon) */
   labelEnd: number;
+  /** "Rows 2-120 (even):" — only the rows of that parity in the range (notation.md 1) */
+  parity?: 'odd' | 'even';
 }
 
-const LABEL_RE = /^(\s*)(rnds?|rounds?|r|rows?)\s*(\d+)(?:\s*(?:-|–|—|to)\s*(\d+))?\s*:/i;
+const LABEL_RE = /^(\s*)(rnds?|rounds?|r|rows?)\s*(\d+)(?:\s*(?:-|–|—|to)\s*(\d+)(?:\s*\(\s*(odd|even)\s*\))?)?\s*:/i;
 const FOUNDATION_RE = /^(\s*)(foundation|start|setup)\s*:/i;
 const HEADER_RE = /^(\s*)([A-Za-z][\w-]*)\s*:(.*)$/;
 
@@ -132,10 +134,12 @@ export function matchLabel(line: string): LabelMatch | undefined {
     const kind = lw.startsWith('row') ? 'row' : 'round';
     const from = parseInt(m[3], 10);
     const to = m[4] !== undefined ? parseInt(m[4], 10) : from;
-    return {
+    const out: LabelMatch = {
       kind, word, from, to, range: m[4] !== undefined,
       start: m[1].length, end: m[0].length, labelEnd: m[0].replace(/\s*:$/, '').length,
     };
+    if (m[5]) out.parity = m[5].toLowerCase() as 'odd' | 'even';
+    return out;
   }
   m = FOUNDATION_RE.exec(line);
   if (m) {

@@ -11,6 +11,7 @@ import {
   type GenerateResult, type GeneratedRound, type MotifId, type ParamValue, type Plan,
 } from '@/core/generate';
 import type { ParamSet } from '@/core/params';
+import { formatLength, type YarnUnits } from '@/core/yarn';
 import type { DoilySpec } from '@/core/generate';
 import { RoundGlyph } from './Thumbs';
 import {
@@ -49,10 +50,20 @@ export interface LayerBuilderProps {
   onChange: (layers: Layer[], label: string) => void;
   /** Open the "add a round" panel. */
   onAdd: () => void;
+  /** Net yarn per graph round, metres (core/yarn, the user's yarn): "this round ≈ 1.2 m". */
+  yarnPerRound?: number[];
+  yarnUnits?: YarnUnits;
 }
 
-export function LayerBuilder({ layers, spec, plan, result, params, selected, onSelect, onChange, onAdd }: LayerBuilderProps) {
+export function LayerBuilder({ layers, spec, plan, result, params, selected, onSelect, onChange, onAdd, yarnPerRound, yarnUnits = 'metric' }: LayerBuilderProps) {
   const made = (i: number) => result.rounds.filter((r) => r.source === i);
+  /** yarn of a layer: its main round and the rounds added for it */
+  const layerYarn = (outs: GeneratedRound[]) => {
+    if (!yarnPerRound?.length || !outs.length) return undefined;
+    let m = 0;
+    for (const r of outs) m += yarnPerRound[r.number - 1] ?? 0;
+    return m > 0 ? m : undefined;
+  };
   return (
     <div className="dz-stack">
       <ol className="dz-rounds" aria-label="Rounds, from the centre out">
@@ -87,7 +98,12 @@ export function LayerBuilder({ layers, spec, plan, result, params, selected, onS
                       {main ? <>{plainSentence(main.motif, main.params, main.repeats)}{anyAuto ? <span className="dz-why"> — chosen to lie flat</span> : <span className="dz-why"> — your numbers</span>}</> : 'could not be placed'}
                     </span>
                   </span>
-                  {main && <span className="dz-round__dia" title="Running diameter after this round">{cm(2 * main.r)}</span>}
+                  {main && (
+                    <span className="dz-round__side">
+                      <span className="dz-round__dia" title="Running diameter after this round">{cm(2 * main.r)}</span>
+                      {layerYarn(outs) !== undefined && <span className="dz-round__yarn small muted" title="Yarn for this round (and any round added for it), your yarn">this round ≈ {formatLength(layerYarn(outs)!, yarnUnits)}</span>}
+                    </span>
+                  )}
                 </button>
               </div>
               {isOpen && main && (

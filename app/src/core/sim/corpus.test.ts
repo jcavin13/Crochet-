@@ -9,11 +9,25 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { compilePattern } from '../notation';
+import { paramsFor } from '../params';
 import { surveyPattern } from './survey';
+import { buildNetwork, seamSlipStitches } from './network';
+import { armBases } from './spine';
 
 const dir = fileURLToPath(new URL('../../../../data/corpus/', import.meta.url));
 const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.cro')).sort() : [];
 const BUDGET_MS = 60_000; // per pattern; ~6 s on an idle 4-core machine for the largest
+
+describe('corpus: the snowflake-only rules leave every doily alone (SPEC_NOTES N6/N7)', () => {
+  it('no corpus pattern has a pointed loop or an arm seam, so its network is what it was', () => {
+    for (const f of files) {
+      const p = compilePattern(readFileSync(dir + f, 'utf8')).pattern!;
+      const net = buildNetwork(p, paramsFor(p));
+      expect(net.pointedLoops.length, f).toBe(0);
+      expect(seamSlipStitches(p.graph, armBases(p.graph, net.pointedLoops)).size, f).toBe(0);
+    }
+  });
+});
 
 describe('corpus sim smoke (fast tolerances)', () => {
   it('there is a corpus', () => expect(files.length).toBeGreaterThanOrEqual(16));

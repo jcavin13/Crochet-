@@ -3,9 +3,10 @@ import { useId, useMemo, type ReactNode } from 'react';
 import { Badge, Button, Card, SegmentedControl, Toggle } from '@/ui';
 import { useStitchParams } from '@/app';
 import { usePersistentState } from '@/store';
-import { circle, convertGauge, gaugeFromParams, hat, rectangle, tube, type AmiStitch, type Gauge } from '@/core/amigurumi';
+import { circle, convertGauge, gaugeFromParams, hat, paramsFromGauge, rectangle, tube, type AmiStitch, type Gauge } from '@/core/amigurumi';
 import { paramSetById, paramsFile } from '@/core/params';
 import { PatternOutput } from './PatternOutput';
+import { YarnPanel } from '@/features/yarn/YarnPanel';
 
 interface GaugeState {
   stitch: AmiStitch;
@@ -100,6 +101,21 @@ export function GaugeTab() {
     }
   }, [st, g, valid, params]);
 
+  // yarn from stitch counts at *your* gauge (the calculators can describe pieces too big to compile)
+  const gp = useMemo(() => (valid ? paramsFromGauge(g, st.stitch, params) : params), [g, st.stitch, params, valid]);
+  const yarnCounts = useMemo(() => {
+    if (!res) return null;
+    const s = st.stitch;
+    const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+    return {
+      rect: { ch: res.rect.foundationChain, [s]: res.rect.stitches * res.rect.rows, 'turning ch': (res.rect.rows - 1) * res.rect.turningChain },
+      circle: { [s]: sum(res.circle.counts) },
+      tube: { ch: res.tube.stitches, 'sl st': 1, [s]: res.tube.stitches * res.tube.rounds },
+      hat: { [s]: sum(res.hat.counts) },
+    };
+  }, [res, st.stitch]);
+  const yarn = (k: keyof NonNullable<typeof yarnCounts>) => yarnCounts && <YarnPanel counts={yarnCounts[k]} params={gp} compact className="ami-yarnline" />;
+
   return (
     <div className="ami-gauge">
       <Card className="ami-gauge__main">
@@ -144,6 +160,7 @@ export function GaugeTab() {
               ['Foundation chain', `${res.rect.foundationChain} (incl. ${res.rect.turningChain} turning ch)`],
               ['Finished size', `${f1(res.rect.actualWidthCm)} × ${f1(res.rect.actualHeightCm)} cm`],
             ]} />
+            {yarn('rect')}
             <PatternDetails text={res.rect.text} />
           </Card>
 
@@ -161,6 +178,7 @@ export function GaugeTab() {
               ['Finished', `⌀ ${f1(res.circle.actualDiameterCm)} cm`],
             ]} />
             <p className="small muted mono ami-seq">{res.circle.counts.join(' · ')}</p>
+            {yarn('circle')}
             <PatternDetails text={res.circle.text} />
           </Card>
 
@@ -178,6 +196,7 @@ export function GaugeTab() {
               ['Rounds', <b key="r">{res.tube.rounds}</b>],
               ['Finished', `${f1(res.tube.actualCircumferenceCm)} cm around × ${f1(res.tube.actualHeightCm)} cm`],
             ]} />
+            {yarn('tube')}
             <PatternDetails text={res.tube.text} />
           </Card>
 
@@ -196,6 +215,7 @@ export function GaugeTab() {
               ['Finished', `${f1(res.hat.actualCircumferenceCm)} cm around, ${f1(res.hat.actualHeightCm)} cm tall`],
             ]} />
             {res.hat.warnings.map((m, i) => <p key={i} className="small"><Badge tone="warning">Check</Badge> {m}</p>)}
+            {yarn('hat')}
             <PatternDetails text={res.hat.text} />
           </Card>
 

@@ -115,3 +115,4 @@
 .ami-hint { background: var(--info-soft); border-radius: var(--radius); padding: var(--s-2) var(--s-3); }
 .ami-details > summary { cursor: pointer; font-weight: 600; min-height: var(--tap); display: flex; align-items: center; color: var(--accent); }
 .ami-details[open] > summary { margin-bottom: var(--s-2); }
+.ami-yarnline { margin-top: var(--s-2); }

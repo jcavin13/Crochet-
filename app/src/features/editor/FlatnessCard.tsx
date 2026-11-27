@@ -1,19 +1,23 @@
 /**
  * Flatness card: per-round flat / cup / ruffle with the analytic message; for rounds that are not
  * flat, ranked notation fixes from the assistant (preview + one-tap apply), "Fix all rounds",
- * "Undo last fix", and a "what should this round be" calculator on every round.
+ * "Undo last fix", and a "what should this round be" calculator on every round judged by the
+ * circle rule. Cornered rounds (squares, hexagons… worked from the centre; borders round rows) are
+ * judged by the polygon / edge-fit rules and say what to change in the corner group instead.
  */
 import { useEffect, useMemo, useState } from 'react';
 import type { Pattern } from '@/core/graph';
 import { analyzeFlatness, type RoundFlatness } from '@/core/flatness';
 import type { ParamSet } from '@/core/params';
 import type { SymmetryReport } from '@/core/symmetry';
-import { fixAll, needsFix, suggestCountsForRound, suggestRoundFixes, type FixSuggestion } from '@/core/assist';
+import { cornerAdvice, fixAll, isCornered, needsFix, suggestCountsForRound, suggestRoundFixes, type FixSuggestion } from '@/core/assist';
 import type { BaseType } from '@/core/notation';
 import { Badge, Button, Icon, ShapeBadge, toast } from '@/ui';
 
+const SHAPE_WORD: Record<number, string> = { 3: 'triangle', 4: 'square', 5: 'pentagon', 6: 'hexagon', 8: 'octagon' };
+
 function RoundBadge({ r }: { r: RoundFlatness }) {
-  if (r.class === 'n/a') return <Badge tone="outline">n/a</Badge>;
+  if (r.class === 'n/a') return <Badge tone="outline">{r.shape === 'rows' ? 'rows' : 'n/a'}</Badge>;
   if (r.slackOnly) return <ShapeBadge shape="flat">loose loops</ShapeBadge>;
   return <ShapeBadge shape={r.class} />;
 }
@@ -38,8 +42,11 @@ export function FlatnessCard({ pattern, text, params, symmetry, busy, onApply, o
   useEffect(() => { setFixes(null); setOpen(null); }, [text]);
 
   if (!flat.applicable) {
-    return <p className="muted small" style={{ margin: 0 }}>Worked in rows — the flatness check and its fixes apply to pieces worked in the round.</p>;
+    return <p className="muted small" style={{ margin: 0 }}>Worked in rows — the flatness check and its fixes apply to pieces worked in the round and to borders worked round rows.</p>;
   }
+  const shapeNote = flat.polygon
+    ? `Judged as a ${flat.polygon.stadium ? 'rectangle' : SHAPE_WORD[flat.polygon.n] ?? `${flat.polygon.n}-gon`} from ${pattern.graph.rounds[flat.polygon.from]?.label ?? 'its first cornered round'} on: the corners carry the increases (polygon rule), the rounds before by the circle rule.`
+    : flat.rounds.some((r) => r.shape === 'border') ? 'Rows are not judged; the border rounds by the edge fit (each side) and the polygon rule (each corner).' : 'Analytic check — rounds treated as circles.';
   const bad = flat.rounds.filter((r) => needsFix(r));
   const suggest = (round: number) => {
     setOpen(round);
@@ -84,12 +91,13 @@ export function FlatnessCard({ pattern, text, params, symmetry, busy, onApply, o
               <div className="ed-flat__row">
                 <RoundBadge r={r} />
                 <button type="button" className="ed-flat__msg" onClick={() => line && onJump(line)} title={line ? `Go to line ${line}` : undefined}>{r.message}</button>
-                {r.class !== 'n/a' ? (
+                {r.class !== 'n/a' && !isCornered(r) ? (
                   <button type="button" className={`ed-flat__calc${calc === r.round ? ' is-on' : ''}`} aria-expanded={calc === r.round} onClick={() => setCalc(calc === r.round ? null : r.round)} title="What should this round be?" aria-label={`What should ${r.label} be?`}>
                     ≈?
                   </button>
                 ) : <span />}
               </div>
+              {needs && cornerAdvice(r) && <p className="ed-flat__advice small" data-corner-advice="1">{cornerAdvice(r)}</p>}
               {needs && (
                 <div className="ed-flat__more">
                   <Button size="sm" variant={isOpen ? 'primary' : 'default'} icon="sparkle" onClick={() => (isOpen ? setOpen(null) : suggest(r.round))} disabled={busy} aria-expanded={isOpen}>
@@ -102,7 +110,9 @@ export function FlatnessCard({ pattern, text, params, symmetry, busy, onApply, o
                 <div className="ed-fixes" role="region" aria-label={`Fixes for ${r.label}`}>
                   {working === r.round && <p className="muted small">Trying edits to {r.label}…</p>}
                   {fixes?.round === r.round && working !== r.round && (fixes.list.length === 0
-                    ? <p className="muted small" style={{ margin: 0 }}>No small edit to this round makes it flat while keeping every later round working and the symmetry intact. The calculator (≈?) shows what a flat round needs here.</p>
+                    ? <p className="muted small" style={{ margin: 0 }}>{isCornered(r)
+                      ? 'No corner-group edit to this round makes it flat while keeping every later round working — change the corner group by hand as above.'
+                      : 'No small edit to this round makes it flat while keeping every later round working and the symmetry intact. The calculator (≈?) shows what a flat round needs here.'}</p>
                     : (
                       <ol className="ed-fixes__list">
                         {fixes.list.map((s, i) => <FixItem key={i} s={s} best={i === 0} onApply={() => onApply(s.text, s.label)} disabled={busy || text !== s.base} />)}
@@ -115,7 +125,7 @@ export function FlatnessCard({ pattern, text, params, symmetry, busy, onApply, o
         })}
       </ul>
       <p className="muted small" style={{ margin: 'var(--s-2) 0 0' }}>
-        Fixes are edits to the notation, checked by the compiler (later rounds included), keeping the symmetry; counts update automatically. Analytic check — rounds treated as circles.
+        Fixes are edits to the notation, checked by the compiler (later rounds included), keeping the symmetry (and, on cornered rounds, the corners); counts update automatically. {shapeNote}
       </p>
     </div>
   );

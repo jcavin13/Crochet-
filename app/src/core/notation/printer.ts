@@ -9,7 +9,7 @@
  */
 import type { Terms } from '../graph/types';
 import type {
-  CountAnn, CountPart, Item, PatternAst, Place, RoundAst, StitchSpec, Target, Times, Unit,
+  CountAnn, CountPart, Extent, Item, PatternAst, Place, RoundAst, StitchSpec, Target, Times, Unit,
 } from './ast';
 import { nameOf, skipWord } from './vocab';
 
@@ -51,7 +51,7 @@ class Printer {
     const L = r.label;
     let label: string;
     if (L.kind === 'foundation') label = 'Foundation';
-    else if (L.range) label = `${L.kind === 'row' ? 'Rows' : 'Rnds'} ${L.from}-${L.to}`;
+    else if (L.range) label = `${L.kind === 'row' ? 'Rows' : 'Rnds'} ${L.from}-${L.to}${L.parity ? ` (${L.parity})` : ''}`;
     else label = `${L.kind === 'row' ? 'Row' : 'Rnd'} ${L.from}`;
     let s = `${label}: ${this.items(r.items)}.`;
     if (r.count) s += ` ${this.count(r.count)}`;
@@ -89,6 +89,8 @@ class Printer {
         return 'mr';
       case 'turn':
         return 'turn';
+      case 'otherSide':
+        return 'working along the other side of the chain';
       case 'fasten':
         return 'fasten off';
       case 'group': {
@@ -105,7 +107,7 @@ class Printer {
 
   times(t: Times): string {
     if (t.kind === 'n') return `x${t.n}`;
-    return t.kind === 'end' ? 'to end' : t.kind;
+    return extentText(t.kind);
   }
 
   stitchName(s: StitchSpec): string {
@@ -149,12 +151,14 @@ class Printer {
       case 'topOf':
         return p.what === 'tch' ? 'top of tch' : `top of beg ch${p.chains !== undefined ? `-${p.chains}` : ''}`;
       case 'next':
+        // "3 sc in corner": the corner is always the next one
+        if (p.unit.kind === 'corner' && (p.n ?? 1) === 1) return 'corner';
         return `next ${p.n !== undefined && p.n !== 1 ? `${p.n} ` : ''}${this.unit(p.unit, p.n ?? 1)}`;
       case 'each': {
         let s = 'each ';
         if (p.n !== undefined) s += `of next ${p.n} `;
         s += this.unit(p.unit, 1);
-        if (p.extent) s += p.extent === 'end' ? ' to end' : ` ${p.extent}`;
+        if (p.extent) s += ` ${extentText(p.extent)}`;
         return s;
       }
       case 'fromHook':
@@ -179,6 +183,10 @@ class Printer {
       }
       case 'ch':
         return pl ? 'chs' : 'ch';
+      case 'rowEnd':
+        return pl ? 'row ends' : 'row end';
+      case 'corner':
+        return pl ? 'corners' : 'corner';
     }
   }
 
@@ -203,6 +211,10 @@ class Printer {
         return `${p.n} ${p.text}`;
     }
   }
+}
+
+function extentText(e: Extent): string {
+  return e === 'end' ? 'to end' : e === 'corner' ? 'across to corner' : e;
 }
 
 function ordinal(n: number): string {

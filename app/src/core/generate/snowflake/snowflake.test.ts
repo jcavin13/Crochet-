@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compilePattern } from '../../notation';
+import { estimateYarn } from '../../yarn';
 import { paramSetById } from '../../params';
 import { analyzeSymmetry } from '../../symmetry';
 import {
@@ -191,6 +192,10 @@ describe('snowflake generator details', () => {
     expect(r.stats.diameterMm / 10).toBeGreaterThan(4);
     expect(r.stats.diameterMm / 10).toBeLessThan(12);
     expect(r.stats.threadM).toBeGreaterThan(0.5);
+    // core/yarn's nominal estimate (net), the same figure the thread panel starts from
+    const est = estimateYarn(r.pattern!, THREAD);
+    expect(r.stats.threadM).toBeCloseTo(est.net.meters, 9);
+    expect(r.stats.threadG).toBeCloseTo(est.net.grams!, 9);
     expect(r.check.summary).toMatch(/^Blocks to a crisp star: tip radius \d+\.\d cm, valley radius \d+\.\d cm, .* clear each other by/);
   });
 });

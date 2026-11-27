@@ -1,0 +1,15 @@
+title: Blanket corner reference (dc rectangle, 3-round border with shells)
+terms: US
+yarn: medium-4
+hook: 5.0mm
+params: worsted-4_5.0mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: Reference for the sim's row and border rules (lab/SPEC_NOTES.md N8-N9, P9): an 11 x 5 dc rectangle, an sc edge round (2 sc per dc row end, 1 in the middle row's, 3 sc corners), an sc round, and a shell edging (sc, 5-dc shells, 5-dc corner fans; 13 stitches per side). Not a canonical fixture: spec/fixtures/extra/blanket_border.network.json pins its spring network and one growth placement, lab vs app.
+
+Foundation: ch 14.
+Row 1: dc in 4th ch from hook, dc in each ch across. (11)
+Rows 2-5: ch 3 (counts as dc), dc in each st across. (11)
+Rnd 1: ch 1, 3 sc in corner, sc in each st across to corner, 3 sc in corner, 2 sc in next row end, 2 sc in next row end, sc in next row end, 2 sc in next row end, 2 sc in next row end, 3 sc in corner, sc in each ch across to corner, 3 sc in corner, 2 sc in next row end, 2 sc in next row end, sc in next row end, 2 sc in next row end, 2 sc in next row end, join. (48)
+Rnd 2: ch 1, *sc in each st across to corner, 3 sc in corner* x4, sc in each st across, join. (56)
+Rnd 3: ch 1, sk next st, sc in next st, 5 dc in corner, *sc in next st, (sk next 2 sts, 5 dc in next st, sk next 2 sts, sc in next st) x2, 5 dc in corner* x3, sc in next st, sk next 2 sts, 5 dc in next st, sk next 2 sts, sc in next st, sk next 2 sts, 5 dc in next st, sk next st, join. (72) Fasten off.

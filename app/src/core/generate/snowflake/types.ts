@@ -100,9 +100,9 @@ export interface Seg { a: Pt; b: Pt }
 export interface Bridge {
   /** Chains in the bridge. */
   chains: number;
-  /** Straight gap between its anchors, mm. */
+  /** Straight gap between the two sc it joins (body pulled taut), mm. */
   gapMm: number;
-  /** Rest length / gap: < 0.95 pulls tight, > 2.2 sags. */
+  /** Thread (sc → chains → sc) at block stretch / straight gap between its sc: < 0.97 too short, > 2.2 sags. */
   ratio: number;
   /** Where the bridge is pinned (its midpoint pulled outward). */
   pin: Pt;
@@ -134,6 +134,28 @@ export interface BlockedShape {
   web: { a: Pt; pin: Pt; b: Pt }[];
   /** Body radii of each centre/body round, mm. */
   rings: number[];
+  /**
+   * Pin points of every anchor of the arm round, in working order (repeat by repeat), for mapping
+   * the template onto stitches (the 3D view's blocked solve): an arm's tip, its trefoil side picots
+   * and its branch picots (in working order); a valley anchor's sc. `web` lists the bridges in the
+   * same order.
+   */
+  anchorPins: AnchorPins[];
+  /**
+   * Largest thread stretch pinning to this template asks for: block_stretch − 1 (every pin is where
+   * the thread reaches at block stretch), more where a bridge is too short to reach its pin.
+   */
+  pinStretch: number;
+}
+
+export interface AnchorPins {
+  kind: 'point' | 'minor' | 'valley';
+  /** Arm tip, or the valley sc. */
+  tip: Pt;
+  /** Trefoil side picots, in working order. */
+  sides: Pt[];
+  /** Branch picots, in working order (outermost pair first). */
+  branches: Pt[];
 }
 
 export interface SnowCheckItem {
@@ -155,8 +177,10 @@ export interface SnowStats {
   stitches: number;
   /** Across the points when blocked, mm. */
   diameterMm: number;
-  /** Rough thread length, m. */
+  /** Thread length, m: core/yarn nominal estimate, net (generate.ts `yarnOf`). */
   threadM: number;
+  /** Thread, grams (core/yarn nominal estimate, net; with threadM). */
+  threadG: number;
 }
 
 export interface SnowflakeResult {

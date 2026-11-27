@@ -39,7 +39,14 @@ export type Unit =
   /** sp / ch-sp / ch-3 sp / loop; `chains` set for ch-N sp. `word` is for printing. */
   | { kind: 'space'; chains?: number; word: 'sp' | 'loop' }
   /** an individual chain */
-  | { kind: 'ch' };
+  | { kind: 'ch' }
+  /**
+   * The end of a row, worked into from the side when a border round goes along the side of a
+   * piece worked in rows (notation.md 3.9): `sc in each row end across`, `2 dc in next row end`.
+   */
+  | { kind: 'rowEnd' }
+  /** A corner of a border round (notation.md 3.9): `3 sc in corner`, `(sc, ch 2, sc) in next corner`. */
+  | { kind: 'corner' };
 
 export type Place =
   | { kind: 'ring' }
@@ -48,8 +55,8 @@ export type Place =
   | { kind: 'topOf'; what: 'tch' | 'beg ch'; chains?: number }
   /** [next] [n] unit; `n` = number of targets (default 1). */
   | { kind: 'next'; n?: number; unit: Unit }
-  /** each [of next n] unit [around|across|to end] */
-  | { kind: 'each'; n?: number; unit: Unit; extent?: 'around' | 'across' | 'end' }
+  /** each [of next n] unit [around|across|to end|across to corner] */
+  | { kind: 'each'; n?: number; unit: Unit; extent?: Extent }
   /** Nth ch from hook */
   | { kind: 'fromHook'; ordinal: number };
 
@@ -60,9 +67,16 @@ export interface Target {
   span: Span;
 }
 
+/**
+ * How far an `each` place or a `*…*` repeat runs: `around`, `across`, `to end`, or `across to
+ * corner` (= `to corner`, `to next corner`; notation.md 3.9). In a round that has corners,
+ * `across` also stops at the next corner.
+ */
+export type Extent = 'around' | 'across' | 'end' | 'corner';
+
 export type Times =
   | { kind: 'n'; n: number }
-  | { kind: 'around' | 'across' | 'end' };
+  | { kind: Extent };
 
 export interface StitchItem {
   kind: 'stitch';
@@ -108,6 +122,11 @@ export interface RingJoinItem { kind: 'ringJoin'; span: Span }
 /** mr / magic ring / magic circle */
 export interface RingItem { kind: 'ring'; span: Span }
 export interface TurnItem { kind: 'turn'; span: Span }
+/**
+ * "working along the other side of the chain" (notation.md 3.9): the chain cursor turns round the
+ * end of the chain just worked and runs back along its unused loops.
+ */
+export interface OtherSideItem { kind: 'otherSide'; span: Span }
 export interface FastenItem { kind: 'fasten'; span: Span }
 
 export interface GroupItem {
@@ -138,6 +157,7 @@ export type Item =
   | RingJoinItem
   | RingItem
   | TurnItem
+  | OtherSideItem
   | FastenItem
   | GroupItem
   | RepeatItem;
@@ -172,6 +192,11 @@ export interface RoundLabel {
   to: number;
   /** true when written as a range (Rnds 6-10) */
   range: boolean;
+  /**
+   * "Rows 2-120 (even):" — the instruction is worked on the rows of that parity only; the rows
+   * of the other parity come from a neighbouring label ("Rows 3-121 (odd):"). notation.md 1.
+   */
+  parity?: 'odd' | 'even';
   span: Span;
 }
 

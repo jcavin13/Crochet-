@@ -12,6 +12,8 @@ export type Settings = {
   paramsSet: string;
   /** Last pattern opened in any feature; routes without :id fall back to it. */
   lastPatternId?: string;
+  /** Units for yarn amounts: metres and grams, or yards and ounces. */
+  yarnUnits?: 'metric' | 'imperial';
 };
 
 export const SETTINGS_KEY = 'crochet-tools:settings';

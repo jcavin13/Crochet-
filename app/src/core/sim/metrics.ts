@@ -52,7 +52,7 @@ export function eigSym3(Ain: number[][]): { values: number[]; vectors: number[][
  * X: flat [3·n] positions of the real (node) particles (extra entries ignored); nodeRounds: round
  * per node. Rows with NaN are particles not yet made and are skipped.
  */
-export function shapeMetric(X: ArrayLike<number>, nodeRounds: ArrayLike<number>, config: SimConfig = defaultConfig): ShapeMetric {
+export function shapeMetric(X: ArrayLike<number>, nodeRounds: ArrayLike<number>, config: SimConfig = defaultConfig, opts: { pca?: boolean } = {}): ShapeMetric {
   const n = nodeRounds.length;
   const sel: number[] = [];
   for (let i = 0; i < n; i++) if (!Number.isNaN(X[3 * i])) sel.push(i);
@@ -76,7 +76,7 @@ export function shapeMetric(X: ArrayLike<number>, nodeRounds: ArrayLike<number>,
     const f = centroidOf(rounds[0]), l = centroidOf(rounds[rounds.length - 1]);
     const a = [l[0] - f[0], l[1] - f[1], l[2] - f[2]];
     const na = hyp(a[0], a[1], a[2]);
-    if (Rg > 0 && na > config.axis_min * Rg) {
+    if (!opts.pca && Rg > 0 && na > config.axis_min * Rg) {
       axis = [a[0] / na, a[1] / na, a[2] / na];
       axisKind = 'rounds';
     } else {
@@ -120,4 +120,19 @@ export function shapeMetric(X: ArrayLike<number>, nodeRounds: ArrayLike<number>,
     outer = k ? s / k : 0;
   }
   return { class: cls, A, W, Rg, outer_radius: outer, axis, centroid: c, axisKind };
+}
+
+/**
+ * A piece made in rows has no axis its rounds march along: its first and last rows lie side by
+ * side, so the round-centroid axis would lie in the fabric (SPEC_NOTES "Shape metric": row pieces
+ * use the PCA axis, the normal of a flat piece). Every other piece: physics.md §5 unchanged.
+ */
+export function usesPcaAxis(g: { rounds: { kind: string }[] }): boolean {
+  return g.rounds.some((r) => r.kind === 'row');
+}
+
+/** shapeMetric of the real particles of a network's positions (axis rule as above). */
+export function networkMetric(net: { nNodes: number; particleRound: Int32Array; graph: { rounds: { kind: string }[] } }, X: ArrayLike<number>, config: SimConfig = defaultConfig): ShapeMetric {
+  const Xs = 'subarray' in X ? (X as Float64Array).subarray(0, 3 * net.nNodes) : X;
+  return shapeMetric(Xs, net.particleRound.subarray(0, net.nNodes), config, { pca: usesPcaAxis(net.graph) });
 }

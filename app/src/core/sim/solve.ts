@@ -13,6 +13,7 @@ import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../pa
 import { Lbfgs, springEnergy, now, type SpringSet } from './lbfgs';
 import { buildNetwork, nodesInSpace, roundNodeIds, WALE, type Network } from './network';
 import { dcos, dsin, npMean, npSum } from './detmath';
+import { addTableEnergy, type TableOptions } from './table';
 
 export const GOLDEN = 2.399963;
 
@@ -25,6 +26,12 @@ export interface SolveOptions {
   config?: SimConfig;
   /** Reuse a network built earlier. */
   network?: Network;
+  /**
+   * Viewer-level option (not part of the shared spec): grow the piece flat in the xy-plane, then
+   * let it go resting on a table — see table.ts. Off by default; classification and agreement never
+   * use it.
+   */
+  table?: boolean | TableOptions;
 }
 
 export interface SimResult {
@@ -72,6 +79,13 @@ export class Placer {
   private readonly ringMembers = new Map<number, number[]>();
   private roundCentroid: V3 = [0, 0, 0];
   private readonly g: Graph;
+
+  /**
+   * Viewer-level (table mode only, not the shared spec): the P3 radial fallback points away from
+   * the centroid of the piece *before this round* instead of the running centroid, which the
+   * round's own earlier nodes pull off-centre (a spoked chain-ring centre then starts folded).
+   */
+  radialFromRoundCentroid = false;
 
   constructor(readonly net: Network, private readonly cfg: SimConfig) {
     this.g = net.graph;
@@ -139,10 +153,20 @@ export class Placer {
       set(X, i, add(c, [R * dcos(th), R * dsin(th), 0]));
     }
     const byP3 = new Map<number, string>();
+    const o = net.outline;
+    const p9 = !!o && (o.roundKind[r] === 'foundation' || o.roundKind[r] === 'row' || o.roundKind[r] === 'border' || o.roundKind[r] === 'polygon');
+    const fr = p9 ? this.outlineFrame() : null;
+    const [e1, e2] = fr ? [fr.e1, fr.e2] : [Z, Z];
     for (const i of ids) {
       if (this.ringChain.has(i)) continue;
       const A = net.anchors[i];
-      if (A.length === 1 && A[0] >= nn) {
+      const b9 = p9 && o!.has[i] ? this.outlineBase(i, r) : -1;
+      if (b9 >= 0) {
+        // P9: in the reference layout — in the fitted plane of the piece when the fit is planar,
+        // else relative to a placed reference particle (SPEC_NOTES P9)
+        if (fr!.planar) set(X, i, add(fr!.c, add(scale(e1, o!.qx[i] - fr!.q[0]), scale(e2, o!.qy[i] - fr!.q[1]))));
+        else set(X, i, add(get(X, b9), add(scale(e1, o!.qx[i] - o!.qx[b9]), scale(e2, o!.qy[i] - o!.qy[b9]))));
+      } else if (A.length === 1 && A[0] >= nn) {
         // P2
         const p = A[0];
         const s = net.virtualSpace.get(p)!;
@@ -160,7 +184,7 @@ export class Placer {
         let [u, nv] = unit(v);
         if (nv < 1e-9) {
           const t = this.tangent(A[0]);
-          let w = sub(base, this.centroid());
+          let w = sub(base, this.radialFromRoundCentroid ? this.roundCentroid : this.centroid());
           w = sub(w, scale(t, dot3(w, t)));
           [u, nv] = unit(w);
           if (nv < 1e-6) {
@@ -201,6 +225,10 @@ export class Placer {
       }
       k += run.length;
     }
+    // P7 spines: radially outward from their base, in their reference layout
+    this.placeSpines(r);
+    // P8 pointed loops: likewise, a narrow outward loop with the picot at its apex
+    this.placePointedLoops(r);
     // P4' chain-space loops on an outward arc
     this.placeLoops(r, ids);
     // P6 perturbation
@@ -212,11 +240,130 @@ export class Placer {
     return added;
   }
 
+  /**
+   * P9 base of node i: its first anchor particle that has a reference position and is placed, else
+   * the nearest earlier node that has one and is placed; −1 if none.
+   */
+  private outlineBase(i: number, r: number): number {
+    const o = this.net.outline!, X = this.X, nn = this.net.nNodes;
+    for (const a of this.net.anchors[i]) if (a < nn && o.has[a] && isPlaced(X, a)) return a;
+    for (let j = i - 1; j >= 0; j--) if (o.has[j] && isPlaced(X, j)) return j;
+    return -1;
+  }
+
+  /**
+   * P9 frame: the orthonormal in-plane frame (e1, e2) of the least-squares affine map from the
+   * reference layout to the placed positions, over every placed node with a reference position,
+   * with the centroids c (positions) and q (references) (crolab.sim._outline_frame). `planar`:
+   * the references span a plane (det S > 1e-9 tr(S)²). Collinear references (the foundation chain
+   * alone): e1 along the fitted direction of the line, e2 = unit(z × e1) (fallback unit(e1 × x));
+   * fewer than two: x, y.
+   */
+  outlineFrame(): { e1: V3; e2: V3; c: V3; q: [number, number]; planar: boolean } {
+    const o = this.net.outline!, X = this.X;
+    const ps: number[] = [];
+    for (let p = 0; p < this.net.nNodes; p++) if (o.has[p] && isPlaced(X, p)) ps.push(p);
+    if (ps.length < 2) return { e1: [1, 0, 0], e2: [0, 1, 0], c: [0, 0, 0], q: [0, 0], planar: false };
+    const qx = npMean(ps.map((p) => o.qx[p])), qy = npMean(ps.map((p) => o.qy[p]));
+    const xb: V3 = [npMean(ps.map((p) => X[3 * p])), npMean(ps.map((p) => X[3 * p + 1])), npMean(ps.map((p) => X[3 * p + 2]))];
+    let sxx = 0, sxy = 0, syy = 0;
+    const cx: V3 = [0, 0, 0], cy: V3 = [0, 0, 0];
+    for (const p of ps) {
+      const ux = o.qx[p] - qx, uy = o.qy[p] - qy;
+      sxx += ux * ux; sxy += ux * uy; syy += uy * uy;
+      for (let d = 0; d < 3; d++) { const v = X[3 * p + d] - xb[d]; cx[d] += v * ux; cy[d] += v * uy; }
+    }
+    const tr = sxx + syy;
+    if (!(tr > 0)) return { e1: [1, 0, 0], e2: [0, 1, 0], c: xb, q: [qx, qy], planar: false };
+    const det = sxx * syy - sxy * sxy;
+    let e1: V3, e2: V3;
+    const planar = det > 1e-9 * tr * tr;
+    if (planar) {
+      const m1 = scale(add(scale(cx, syy), scale(cy, -sxy)), 1 / det);
+      const m2 = scale(add(scale(cy, sxx), scale(cx, -sxy)), 1 / det);
+      let [u, nu] = unit(m1);
+      if (nu < 1e-12) u = [1, 0, 0];
+      e1 = u;
+      [e2, nu] = unit(sub(m2, scale(e1, dot3(m2, e1))));
+      if (nu < 1e-12) e2 = this.perp(e1);
+    } else {
+      // collinear: q̂ = principal direction of the references, e_q its fitted image
+      let qh: [number, number] = sxx >= syy ? [sxx, sxy] : [sxy, syy];
+      const nq = Math.sqrt(qh[0] * qh[0] + qh[1] * qh[1]);
+      qh = nq > 0 ? [qh[0] / nq, qh[1] / nq] : [1, 0];
+      let [eq, ne] = unit(add(scale(cx, qh[0]), scale(cy, qh[1])));
+      if (ne < 1e-12) eq = [1, 0, 0];
+      const ep = this.perp(eq);
+      e1 = add(scale(eq, qh[0]), scale(ep, -qh[1]));
+      e2 = add(scale(eq, qh[1]), scale(ep, qh[0]));
+    }
+    return { e1, e2, c: xb, q: [qx, qy], planar };
+  }
+
+  private perp(e: V3): V3 {
+    let [v, nv] = unit(cross(Z, e));
+    if (nv < 1e-9) [v] = unit(cross(e, [1, 0, 0]));
+    return v;
+  }
+
+  /**
+   * P7 (crolab.sim._place_spines): every spine of round r whose base is placed is laid out in its
+   * reference layout (s, t): x = x_base + s u + t v, u = unit(x_base − centroid before the round)
+   * (fallback +x), v = unit(z × u) (fallback unit(u × x)).
+   */
+  private placeSpines(r: number) {
+    const { net, g, X } = this;
+    for (const sp of net.spines) {
+      if (g.nodes[sp.stem[0]].round !== r || !isPlaced(X, sp.base)) continue;
+      const o = get(X, sp.base);
+      let [u, nu] = unit(sub(o, this.roundCentroid));
+      if (nu < 1e-9) u = [1, 0, 0];
+      let [t, nt] = unit(cross(Z, u));
+      if (nt < 1e-9) [t] = unit(cross(u, [1, 0, 0]));
+      for (const v of sp.nodes) {
+        const [s_, t_] = sp.pos.get(v)!;
+        set(X, v, add(add(o, scale(u, s_)), scale(t, t_)));
+      }
+    }
+  }
+
+  /**
+   * P8 (crolab.sim._place_pointed_loops): every pointed loop (N6) of round r whose base and close
+   * are placed is laid out like a spine (P7): x = x_base + s u + σ t v, with u, v as in P7 and
+   * σ = −1 when the close node lies on the −v side of the base ((x_close − x_base)·v < 0), else +1.
+   */
+  private placePointedLoops(r: number) {
+    const { net, g, X } = this;
+    for (const pl of net.pointedLoops) {
+      if (g.nodes[pl.base].round !== r || !isPlaced(X, pl.base) || !isPlaced(X, pl.close)) continue;
+      const o = get(X, pl.base);
+      let [u, nu] = unit(sub(o, this.roundCentroid));
+      if (nu < 1e-9) u = [1, 0, 0];
+      let [t, nt] = unit(cross(Z, u));
+      if (nt < 1e-9) [t] = unit(cross(u, [1, 0, 0]));
+      const sg = dot3(sub(get(X, pl.close), o), t) < 0 ? -1 : 1;
+      for (const v of pl.nodes) {
+        const [s_, t_] = pl.pos.get(v)!;
+        set(X, v, add(add(o, scale(u, s_)), scale(t, sg * t_)));
+      }
+    }
+  }
+
+  private p9Placed(i: number): boolean {
+    const o = this.net.outline;
+    if (!o || !o.has[i]) return false;
+    const k = o.roundKind[this.g.nodes[i].round];
+    return k === 'foundation' || k === 'row' || k === 'border' || k === 'polygon';
+  }
+
   private placeLoops(r: number, ids: number[]) {
     const { net, g, X } = this;
     const idset = new Set(ids);
+    const inLoop = new Set<number>();
+    for (const pl of net.pointedLoops) for (const v of pl.nodes) inLoop.add(v);
     for (const sp of g.spaces) {
-      if (sp.kind !== 'chsp' || sp.round !== r || !sp.chains.length) continue;
+      if (sp.kind !== 'chsp' || sp.round !== r || !sp.chains.length || inLoop.has(sp.chains[0])) continue;
+      if (this.p9Placed(sp.chains[0])) continue;   // P9 placed them in the reference layout
       const ch = sp.chains;
       const a = ch[0] - 1, b = ch[ch.length - 1] + 1;
       if (!idset.has(a) || !idset.has(b) || !isPlaced(X, a) || !isPlaced(X, b)) continue;
@@ -315,7 +462,7 @@ export function springStrain(net: Network, X: Float64Array): Float64Array {
 // ---------------------------------------------------------------------------------------------
 // growth as a resumable state machine
 // ---------------------------------------------------------------------------------------------
-export type GrowPhase = 'round' | 'final' | 'done';
+export type GrowPhase = 'round' | 'final' | 'release' | 'done';
 
 export class Grower {
   readonly placer: Placer;
@@ -336,9 +483,17 @@ export class Grower {
   private readonly gtolFinal: number;
   private readonly maxIter: number;
   private readonly maxIterFinal: number;
+  private readonly table: TableOptions | null;
+  private readonly cfg: SimConfig;
+  /** Table mode: the planar grown state (before the release onto the table). */
+  planar: Float64Array | null = null;
+  /** Table mode: stop after the planar growth (no release onto the table). */
+  planarOnly = false;
 
-  constructor(readonly net: Network, cfg: SimConfig, opts: { uptoRound?: number; gtolRound?: number; gtolFinal?: number; maxIter?: number; maxIterFinal?: number } = {}) {
+  constructor(readonly net: Network, cfg: SimConfig, opts: { uptoRound?: number; gtolRound?: number; gtolFinal?: number; maxIter?: number; maxIterFinal?: number; table?: boolean | TableOptions } = {}) {
     this.placer = new Placer(net, cfg);
+    this.cfg = cfg;
+    if (opts.table) this.placer.radialFromRoundCentroid = true;
     const R = net.graph.rounds.length;
     this.lastRound = opts.uptoRound === undefined ? R - 1 : Math.min(opts.uptoRound, R - 1);
     this.gtolRound = opts.gtolRound ?? 1e-6;
@@ -347,6 +502,7 @@ export class Grower {
     // the lab allows 20000 for every L-BFGS run; the final gtol 1e-8 pass on the near-isometric
     // flat circles can need ~40000 from a slightly different path
     this.maxIterFinal = opts.maxIterFinal ?? 50000;
+    this.table = opts.table ? (opts.table === true ? {} : opts.table) : null;
     if (this.lastRound < 0) this.phase = 'done';
   }
 
@@ -357,7 +513,24 @@ export class Grower {
     const mask = this.placer.placedMask();
     this.sub = subProblem(this.net, mask);
     const sp = this.sub.springs;
-    this.opt = new Lbfgs((x, g) => springEnergy(sp, x, g), gather(this.placer.X, this.sub.idx), { gtol, maxIter });
+    let fg = (x: Float64Array, g: Float64Array) => springEnergy(sp, x, g);
+    const table = this.table;
+    if (table && this.phase !== 'release') {
+      // table mode, growth: strictly in the xy-plane (z = 0, no z gradient)
+      const X = this.placer.X;
+      for (let p = 0; p < this.net.nParticles; p++) if (mask[p]) X[3 * p + 2] = 0;
+      fg = (x, g) => { const E = springEnergy(sp, x, g); for (let q = 2; q < g.length; q += 3) g[q] = 0; return E; };
+    } else if (table) {
+      // release: a small deterministic lift off the table (P6-like), then gravity + table in 3D
+      const X = this.placer.X, w = this.net.width;
+      const wbar = npMean(Array.from(w));
+      for (let p = 0; p < this.net.nParticles; p++) {
+        if (mask[p]) X[3 * p + 2] = 0.5 * this.cfg.perturb_eps * wbar * (1 + dsin(GOLDEN * (p + 1)));
+      }
+      const opts = { ...table, z0: table.z0 ?? -1e-3 };
+      fg = (x, g) => addTableEnergy(x, g, springEnergy(sp, x, g), opts);
+    }
+    this.opt = new Lbfgs(fg, gather(this.placer.X, this.sub.idx), { gtol, maxIter });
   }
 
   /** Write the optimiser's current iterate into X (for live display). */
@@ -368,7 +541,8 @@ export class Grower {
     while (this.phase !== 'done') {
       if (!this.opt) {
         if (this.phase === 'round') { this.round++; this.placer.placeRound(this.round); this.start(this.gtolRound, this.maxIter); }
-        else this.start(this.gtolFinal, this.maxIterFinal);
+        else if (this.phase === 'final') this.start(this.gtolFinal, this.maxIterFinal);
+        else this.start(this.gtolRound, this.maxIterFinal);
       }
       const opt = this.opt!;
       const st = opt.run(deadline);
@@ -382,8 +556,12 @@ export class Grower {
         this.roundEnergies.push(opt.f);
         this.roundConverged.push(st === 'converged' || opt.gnorm <= 10 * this.gtolRound);
         if (this.round >= this.lastRound) this.phase = 'final';
-      } else {
+      } else if (this.phase === 'final') {
         this.converged = st === 'converged' || opt.gnorm <= 10 * this.gtolFinal;
+        if (this.table) { this.planar = Float64Array.from(this.placer.X); this.phase = this.planarOnly ? 'done' : 'release'; }
+        else this.phase = 'done';
+      } else {
+        this.converged = this.converged && (st === 'converged' || opt.gnorm <= 10 * this.gtolRound);
         this.phase = 'done';
       }
       if (deadline !== Infinity && now() >= deadline) return this.phase === 'done';

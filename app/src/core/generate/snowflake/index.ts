@@ -13,6 +13,8 @@ export {
 } from './build';
 export type { SnowPlan, ArmLayout, ArmAnchor } from './build';
 export { blockedShape, judge } from './geometry';
+export { snowflakePins } from './pins';
+export type { SnowPin } from './pins';
 export { randomSnowflake, mutateSnowflake, snowflakeVariations, fitSize, quickCheck, SNOWFLAKE_PRESETS } from './random';
 export type { SnowConstraints, SnowPreset, SnowEval } from './random';
 export { snowflakeTemplateSvg, doilyTemplateSvg } from './template';

@@ -36,3 +36,24 @@ export function closedShapeNote(rounds: { closing?: boolean; class: RoundClass }
   return 'This is a closed 3D form. The simulation has no stuffing, so the piece relaxes like an empty bag (flattened or bell-shaped), not into the stuffed shape.';
 }
 
+
+/** The words for a region's verdict ("waves", "puckers", "cups", "ruffles", "curls"). */
+const REGION_VERB: Record<string, string> = { waves: 'waves', puckers: 'puckers', cup: 'cups', ruffle: 'ruffles', curling: 'curls' };
+
+/**
+ * One line for the per-region report of a piece with rows, a border or a polygon (core/sim
+ * regionShape): "Lies flat: body, 4 sides and 4 corners." or "Left side waves · Top left corner
+ * cups; the rest lies flat."
+ */
+export function regionsSentence(rep: { overall: string; body: { class: string }; sides: { label: string; class: string }[]; corners: { label: string; class: string }[] }): string {
+  const parts = rep.sides.length || rep.corners.length;
+  if (rep.overall === 'flat') {
+    return parts ? `Lies flat: body, ${rep.sides.length} sides and ${rep.corners.length} corners.` : 'The rows lie flat.';
+  }
+  const bad: string[] = [];
+  if (rep.body.class !== 'flat') bad.push(`the body ${REGION_VERB[rep.body.class] ?? rep.body.class}`);
+  for (const s of rep.sides) if (s.class !== 'flat') bad.push(`${s.label} ${REGION_VERB[s.class] ?? s.class}`);
+  for (const c of rep.corners) if (c.class !== 'flat') bad.push(`${c.label} corner ${REGION_VERB[c.class] ?? c.class}`);
+  const s = bad.join(' · ');
+  return `${s.charAt(0).toUpperCase()}${s.slice(1)}; the rest lies flat.`;
+}

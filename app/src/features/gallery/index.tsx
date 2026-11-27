@@ -15,6 +15,7 @@ const TOOL_TEXT: Record<string, string> = {
   designer: 'Build a doily layer by layer with suggestions for what fits next; chain lengths, stitch counts and increases are solved so every round lies flat.',
   snowflake: 'Six-pointed (or 5, 8, 12) thread snowflakes with picot, trefoil and fern arms — checked by how they block, with a pin-out template to print.',
   counter: 'For the sofa: one big button, the instruction you are on in large type, and your place remembered on this device.',
+  blanket: 'Blankets sized from your gauge: a body in rows with a border fitted to every side, or squares, circles and hexagons in the round — striped, coloured round by round, with yarn per colour.',
   amigurumi: 'Spheres, cones and custom profiles turned into round-by-round counts for your gauge.',
 };
 

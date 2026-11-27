@@ -3,8 +3,8 @@
  * All functions are pure and work on any schema-valid graph (not only compiler output).
  */
 import { nameOf } from '../notation/vocab';
-import { nodeCounts, targetsOfGraphRound, type Entry } from './targets';
-import type { Graph, Node, Space, Terms } from './types';
+import { anchorId, borderListsCached, nodeCounts, targetsOfGraphRound, type Entry } from './targets';
+import type { AnchorPart, Graph, Node, Space, Terms } from './types';
 
 export type { Entry } from './targets';
 
@@ -30,7 +30,8 @@ export function spaceNodesInto(graph: Graph, spaceId: number): Node[] {
   return graph.nodes.filter((n) => n.into.some((a) => 'space' in a && a.space === spaceId));
 }
 
-export type ResolvedAnchor = { kind: 'node'; node: Node } | { kind: 'space'; space: Space };
+/** `part` is set for a row end ('side') or the unused loops of a chain ('base'), notation.md 3.9. */
+export type ResolvedAnchor = { kind: 'node'; node: Node; part?: AnchorPart } | { kind: 'space'; space: Space };
 
 /** The anchors of node `id`, resolved to the node / space objects (one entry per leg). */
 export function anchorsOf(graph: Graph, id: number): ResolvedAnchor[] {
@@ -40,7 +41,7 @@ export function anchorsOf(graph: Graph, id: number): ResolvedAnchor[] {
   for (const a of n.into) {
     if ('node' in a) {
       const t = graph.nodes[a.node];
-      if (t) out.push({ kind: 'node', node: t });
+      if (t) out.push(a.part ? { kind: 'node', node: t, part: a.part } : { kind: 'node', node: t });
     } else {
       const s = graph.spaces[a.space];
       if (s) out.push({ kind: 'space', space: s });
@@ -135,6 +136,31 @@ export function roundSummary(graph: Graph, r: number, opts: QueryOptions = {}): 
   return out;
 }
 
+/** Is node n worked into a corner of a border round? Position within that corner group. */
+export function cornerOf(graph: Graph, n: Node): { pos: number; of: number } | undefined {
+  if (!n.into.length || n.type === 'slst') return undefined;
+  const list = borderListsCached(graph).get(n.round);
+  if (!list) return undefined;
+  const key = anchorId(n.into[0]);
+  if (!list.some((e) => e.corner && anchorId(entryAnchorOf(e)) === key)) return undefined;
+  const R = graph.rounds[n.round];
+  const group: number[] = [];
+  for (let id = R.first; id >= 0 && id <= R.last; id++) {
+    const m = graph.nodes[id];
+    if (m.type !== 'slst' && m.into.length && anchorId(m.into[0]) === key && (nodeCounts(m) || m.type === 'picot')) group.push(id);
+  }
+  return { pos: group.indexOf(n.id) + 1, of: group.length };
+}
+
+function entryAnchorOf(e: Entry) {
+  switch (e.kind) {
+    case 'stitch': return { node: e.node };
+    case 'space': return { space: e.space };
+    case 'rowEnd': return { node: e.node, part: 'side' as const };
+    case 'base': return { node: e.node, part: 'base' as const };
+  }
+}
+
 function describeSpace(s: Space): string {
   if (s.kind === 'ring') return 'ring';
   return `ch-${s.chains.length} sp`;
@@ -198,7 +224,17 @@ export function describeNode(graph: Graph, id: number, opts: QueryOptions = {}):
   const name = stitchKey(n, { terms }) ?? nameOf(n.type, terms);
   const loop = n.loop === 'flo' || n.loop === 'blo' ? ` ${n.loop}` : '';
   const anchors = anchorsOf(graph, id);
-  const describe = (a: ResolvedAnchor) => (a.kind === 'space' ? describeSpace(a.space) : describeTargetNode(graph, n, a.node, terms));
+  const describe = (a: ResolvedAnchor) => {
+    if (a.kind === 'node' && a.part === 'side') return `row end of ${graph.rounds[a.node.round]?.label ?? 'a row'}`;
+    if (a.kind === 'node' && a.part === 'base') return 'unused loop of foundation ch';
+    return a.kind === 'space' ? describeSpace(a.space) : describeTargetNode(graph, n, a.node, terms);
+  };
+  // a corner of a border round: "sc in corner (2 of 3)"
+  const corner = cornerOf(graph, n);
+  if (corner) {
+    const loop0 = n.loop === 'flo' || n.loop === 'blo' ? ` ${n.loop}` : '';
+    return `${stitchKey(n, { terms }) ?? nameOf(n.type, terms)}${loop0} in corner${corner.of > 1 ? ` (${corner.pos} of ${corner.of})` : ''}`;
+  }
   let where = '';
   if (anchors.length >= 2) {
     const all = anchors.map(describe);

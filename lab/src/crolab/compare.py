@@ -51,12 +51,20 @@ def network_diff(cur: dict, ref: dict) -> list[str]:
     5e-3 (the index-weighted sums). Pairs, kinds, slack flags, counts and `pairs_hash` are exact.
     The summary `checksum` hashes the rounded text of L and k, so it is informational only."""
     out: list[str] = []
-    skip = {"springs", "summary"}
+    skip = {"springs", "summary", "placement"}
     if set(cur) != set(ref):
         out.append(f"keys {sorted(set(cur) ^ set(ref))} differ")
     for k in (cur.keys() & ref.keys()) - skip:
         if cur[k] != ref[k]:
             out.append(f"{k}: {cur[k]!r} != {ref[k]!r}")
+    if "placement" in cur and "placement" in ref:
+        a, b = cur["placement"]["after"], ref["placement"]["after"]
+        if set(a) != set(b) or cur["placement"]["round"] != ref["placement"]["round"]:
+            out.append("placement: nodes differ")
+        else:
+            bad = [k for k in a if max(abs(x - y) for x, y in zip(a[k], b[k])) > 1e-5]
+            if bad:
+                out.append(f"placement: {len(bad)} nodes moved (first {bad[0]})")
     if "springs" in cur and "springs" in ref:
         a, b = cur["springs"], ref["springs"]
         if len(a) != len(b):
@@ -84,7 +92,9 @@ def network_diff(cur: dict, ref: dict) -> list[str]:
 #: a spring network is multistable, so last-bit differences between CPUs / BLAS builds grow into
 #: differences of a few 1e-3 in A and W (seen on GitHub's runners). These bounds are well inside
 #: the cross-sim agreement tolerance (sim_config agree_abs = 0.12) and far from any class change.
-METRIC_ABS = {"A": 0.03, "W": 0.03}
+METRIC_ABS = {"A": 0.03, "W": 0.03,
+              # per-region report of outline extras (crolab.regions): classes exact, measures loose
+              "curl": 0.03, "wave": 0.1, "pull": 0.03, "excess": 0.02, "lift": 0.1, "perCorner": 0.3}
 METRIC_REL = {"Rg": 0.02, "outer_radius": 0.02}
 
 

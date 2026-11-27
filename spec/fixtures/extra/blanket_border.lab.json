@@ -1,0 +1,160 @@
+{
+ "name": "blanket_border",
+ "source": "compiled",
+ "class": "flat",
+ "A": 0.0684,
+ "W": 0.044,
+ "Rg": 50.1404,
+ "outer_radius": 64.9301,
+ "n_nodes": 259,
+ "energy": 0.0126,
+ "per_round": [
+  {
+   "round": 0,
+   "class": "flat",
+   "A": 0.0,
+   "W": 0.003,
+   "Rg": 22.7329
+  },
+  {
+   "round": 1,
+   "class": "flat",
+   "A": 0.0005,
+   "W": 0.0018,
+   "Rg": 22.749
+  },
+  {
+   "round": 2,
+   "class": "flat",
+   "A": 0.0008,
+   "W": 0.0018,
+   "Rg": 24.4804
+  },
+  {
+   "round": 3,
+   "class": "flat",
+   "A": 0.0006,
+   "W": 0.0018,
+   "Rg": 26.1946
+  },
+  {
+   "round": 4,
+   "class": "flat",
+   "A": 0.0006,
+   "W": 0.0017,
+   "Rg": 28.3485
+  },
+  {
+   "round": 5,
+   "class": "flat",
+   "A": 0.0006,
+   "W": 0.0015,
+   "Rg": 30.6796
+  },
+  {
+   "round": 6,
+   "class": "flat",
+   "A": 0.0284,
+   "W": 0.0329,
+   "Rg": 37.3177
+  },
+  {
+   "round": 7,
+   "class": "flat",
+   "A": 0.0299,
+   "W": 0.0275,
+   "Rg": 42.7288
+  },
+  {
+   "round": 8,
+   "class": "flat",
+   "A": 0.0458,
+   "W": 0.0454,
+   "Rg": 50.168
+  }
+ ],
+ "regions": {
+  "kind": "rows",
+  "overall": "flat",
+  "body": {
+   "class": "flat",
+   "curl": 0.0608
+  },
+  "sides": [
+   {
+    "index": 0,
+    "label": "Top edge",
+    "class": "flat",
+    "wave": 0.1344,
+    "pull": 0.0099,
+    "excess": 0.0005,
+    "nodes": 13
+   },
+   {
+    "index": 1,
+    "label": "Left side",
+    "class": "flat",
+    "wave": 0.0521,
+    "pull": 0.0007,
+    "excess": 0.0001,
+    "nodes": 13
+   },
+   {
+    "index": 2,
+    "label": "Bottom edge",
+    "class": "flat",
+    "wave": 0.0999,
+    "pull": 0.0048,
+    "excess": 0.0,
+    "nodes": 13
+   },
+   {
+    "index": 3,
+    "label": "Right side",
+    "class": "flat",
+    "wave": 0.2483,
+    "pull": 0.0492,
+    "excess": 0.0006,
+    "nodes": 13
+   }
+  ],
+  "corners": [
+   {
+    "index": 0,
+    "label": "Top right",
+    "class": "flat",
+    "lift": 0.0172,
+    "wave": 0.0583,
+    "perCorner": 0.0078,
+    "nodes": 5
+   },
+   {
+    "index": 1,
+    "label": "Top left",
+    "class": "flat",
+    "lift": 0.0987,
+    "wave": 0.044,
+    "perCorner": 0.0002,
+    "nodes": 5
+   },
+   {
+    "index": 2,
+    "label": "Bottom left",
+    "class": "flat",
+    "lift": 0.0776,
+    "wave": 0.0763,
+    "perCorner": 0.0002,
+    "nodes": 5
+   },
+   {
+    "index": 3,
+    "label": "Bottom right",
+    "class": "flat",
+    "lift": 0.2948,
+    "wave": 0.1743,
+    "perCorner": 0.0004,
+    "nodes": 5
+   }
+  ]
+ }
+}

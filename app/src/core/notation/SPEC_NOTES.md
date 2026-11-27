@@ -125,3 +125,32 @@ throughout)` / `(… throughout)`; `puff st`, `slip st`, `N-dc bobble`, `magic l
   change.
 - `data/corpus/hexagon-motif-6.cro` Rnd 5 once declared `(102 sc)`, but the instructions make 90
   (15 per side × 6). Its author has since fixed it.
+
+## Border extension (notation.md 3.9, odd/even ranges, `colors:`)
+
+26. **A `Rnd` after `Row`s sees the perimeter**, not the last row's list (3.9). Before this change
+    such a round saw the last row's stitches in working order (not turned). No fixture, corpus
+    pattern or test used that combination, and the fixture graphs are byte-identical; the old reading
+    ("work across the top only") is still available by writing the rows as rows.
+27. **Corners are derived, not stored.** The compiler marks corners on the target lists (perimeter:
+    ends of the top and of the bottom; later rounds: the chain space inside each corner group, else
+    its middle stitch, the later middle one for an even group). `graph/targets.ts → borderLists`
+    recomputes them from a finished graph with the same code, for `describeNode` and other tools.
+28. **`across` in a round with corners stops at the next corner**; a corner the cursor stands on is
+    part of the side. This makes `*sc in each st across to corner, 3 sc in corner* x4, sc in each st
+    across` valid in every border round, and leaves `across` in rows (no corners) unchanged.
+29. **Passing rules in border rounds.** A corner is never passed over (`E_NO_TARGET`); a row end or
+    foundation chain passed over by another unit is `E_NO_TARGET`; stitches left before a *stitch*
+    corner are `W_UNWORKED`; a corner that is a chain space is reached like any space.
+30. **Row-end anchor = the row's edge stitch**: the first or last stitch-counting node of the row
+    (a counting turning chain counts), with `part: "side"`. The first side alternates start/end
+    edges from the last row down (rows alternate direction), so the bottom starts at whichever end
+    of the foundation chain that side reaches.
+31. **Foundation-chain targets** of a border are all chains between the first and the last chain the
+    first row worked into (skipped ones too), so a mesh bottom has one target per column.
+32. **`working along the other side of the chain`** runs back along the chains addressed one by one
+    in this round, excluding the last one (the end that was turned round), as `part: "base"`.
+33. **Odd/even ranges** (`Rows 2-120 (even):`) are interleaved with the neighbouring odd/even labels
+    of the same kind by row number; numbering is checked per block.
+34. **`colors:`** is a known header (`meta.colors`), so colour plans written by generators do not
+    raise `W_UNKNOWN_HEADER`. The graph still has no colour (notation.md 5).

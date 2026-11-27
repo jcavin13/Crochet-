@@ -192,8 +192,9 @@ export interface DoilyStats {
   chains: number;
   /** Outer diameter in mm (2 × outer radius from the flatness model). */
   diameterMm: number;
-  /** Rough yarn estimate in metres (summed stitch sizes; see generate.ts). */
+  /** Yarn, metres and grams: core/yarn's nominal estimate, net (see generate.ts `yarnOf`). */
   yarnM: number;
+  yarnG: number;
 }
 
 export interface GenerateResult {

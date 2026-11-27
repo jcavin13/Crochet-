@@ -22,6 +22,17 @@ Initial placement (physics.md §4 step 1, made precise; see lab/SPEC_NOTES.md §
   P5  spread: a maximal run of m >= 2 consecutive node ids of the round placed by P3 with the
       identical anchor-particle list is spread along the unit course tangent t of its first
       anchor particle: node k (1..m) moves by (k - (m+1)/2) * (wbar_run / 2) * t;
+  P7  spines (chains with stitches worked back along them, crolab.spine): after P5, every node of
+      a spine of this round is put at x_base + s*u + t*v from its reference layout (s, t), with
+      u = unit(x_base - centroid before the round), v = unit(z x u) (SPEC_NOTES P7);
+  P9  outline pieces (rows, border rounds, polygon rounds: crolab.outline, SPEC_NOTES N8-N10): a
+      node of the foundation, a row or an outline round that has a reference position Q is put in
+      the reference layout instead of P2-P4: x = c + e1 (Q_x - q_x) + e2 (Q_y - q_y), with (e1, e2)
+      the orthonormal frame of the least-squares affine fit reference -> placed positions over every
+      placed node with a reference position (c, q their centroids), when those references span a
+      plane; otherwise relative to its base b (first anchor particle with Q, else the nearest
+      earlier placed node with Q): x = x_b + e1 (Q - Q_b)_x + e2 (Q - Q_b)_y (collinear references:
+      e1 along the fitted line, e2 = unit(z x e1)). P5 and P4' skip these nodes;
   P6  the perturbation  delta_i = perturb_eps * wbar_r * sin(2.399963*(i+1))  along +z is added to
       every node of round r (wbar_r = mean course width of the nodes of round r).
 
@@ -170,6 +181,78 @@ class _Placer:
         hi = a + 1 if a + 1 < n and rr[a + 1] == rr[a] and not np.isnan(self.X[a + 1, 0]) else a
         return _unit(self.X[hi] - self.X[lo])[0]
 
+    def outline_base(self, i: int) -> int:
+        """P9 base of node i: its first anchor particle with a reference position that is placed,
+        else the nearest earlier placed node with one; -1 if none."""
+        o, X, nn = self.net.outline, self.X, self.net.n_nodes
+        for a in self.net.anchor_particles[i]:
+            if a < nn and o.has[a] and not np.isnan(X[a, 0]):
+                return a
+        for j in range(i - 1, -1, -1):
+            if o.has[j] and not np.isnan(X[j, 0]):
+                return j
+        return -1
+
+    def _perp(self, e):
+        v, nv = _unit(np.cross([0.0, 0.0, 1.0], e))
+        if nv < 1e-9:
+            v, _ = _unit(np.cross(e, [1.0, 0.0, 0.0]))
+        return v
+
+    def outline_frame(self):
+        """P9 frame (TypeScript `Placer.outlineFrame`): (e1, e2, c, q, planar) — the orthonormal
+        frame of the least-squares affine map reference -> placed positions over every placed node
+        with a reference position, the centroids c (positions) and q (references), and whether the
+        references span a plane."""
+        o, X = self.net.outline, self.X
+        ps = [p for p in range(self.net.n_nodes) if o.has[p] and not np.isnan(X[p, 0])]
+        ex, ey = np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])
+        if len(ps) < 2:
+            return ex, ey, np.zeros(3), (0.0, 0.0), False
+        qx = float(np.mean([o.qx[p] for p in ps]))
+        qy = float(np.mean([o.qy[p] for p in ps]))
+        xb = np.array([float(np.mean([X[p, d] for p in ps])) for d in range(3)])
+        sxx = sxy = syy = 0.0
+        cx, cy = np.zeros(3), np.zeros(3)
+        for p in ps:
+            ux, uy = o.qx[p] - qx, o.qy[p] - qy
+            sxx += ux * ux
+            sxy += ux * uy
+            syy += uy * uy
+            for d in range(3):
+                v = X[p, d] - xb[d]
+                cx[d] += v * ux
+                cy[d] += v * uy
+        tr = sxx + syy
+        if not tr > 0:
+            return ex, ey, xb, (qx, qy), False
+        det = sxx * syy - sxy * sxy
+        planar = det > 1e-9 * tr * tr
+        if planar:
+            m1 = (cx * syy + cy * (-sxy)) * (1 / det)
+            m2 = (cy * sxx + cx * (-sxy)) * (1 / det)
+            e1, nu = _unit(m1)
+            if nu < 1e-12:
+                e1 = ex
+            e2, nu = _unit(m2 - e1 * float(np.dot(m2, e1)))
+            if nu < 1e-12:
+                e2 = self._perp(e1)
+        else:
+            qh = (sxx, sxy) if sxx >= syy else (sxy, syy)
+            nq = math.sqrt(qh[0] * qh[0] + qh[1] * qh[1])
+            qh = (qh[0] / nq, qh[1] / nq) if nq > 0 else (1.0, 0.0)
+            eq, ne = _unit(cx * qh[0] + cy * qh[1])
+            if ne < 1e-12:
+                eq = ex
+            ep = self._perp(eq)
+            e1 = eq * qh[0] + ep * (-qh[1])
+            e2 = eq * qh[1] + ep * qh[0]
+        return e1, e2, xb, (qx, qy), planar
+
+    def p9_placed(self, i: int) -> bool:
+        o = self.net.outline
+        return bool(o is not None and o.has[i] and o.round_kind[self.g.nodes[i]["round"]] in ("foundation", "row", "border", "polygon"))
+
     def wale_len(self, i: int, p: int) -> float:
         return self.pairs.get((i, p), float(self.net.height[i]))
 
@@ -195,11 +278,23 @@ class _Placer:
                 th = 2 * math.pi * k / n
                 X[i] = c + R * np.array([math.cos(th), math.sin(th), 0.0])
         by_p3: dict[int, tuple] = {}
+        o = net.outline
+        p9 = o is not None and o.round_kind[r] in ("foundation", "row", "border", "polygon")
+        fr = self.outline_frame() if p9 else None
         for i in ids:
             if i in self.ring_chain:
                 continue
             A = net.anchor_particles[i]
-            if A and len(A) == 1 and A[0] >= nn:
+            b9 = self.outline_base(i) if (p9 and o.has[i]) else -1
+            if b9 >= 0:
+                # P9: in the reference layout, in the fitted plane of the piece when the fit is
+                # planar, else relative to a placed reference particle (SPEC_NOTES P9)
+                e1, e2, c, q, planar = fr
+                if planar:
+                    X[i] = c + e1 * (o.qx[i] - q[0]) + e2 * (o.qy[i] - q[1])
+                else:
+                    X[i] = X[b9] + e1 * (o.qx[i] - o.qx[b9]) + e2 * (o.qy[i] - o.qy[b9])
+            elif A and len(A) == 1 and A[0] >= nn:
                 # P2
                 p = A[0]
                 s = net.virtual_space[p]
@@ -260,6 +355,10 @@ class _Placer:
                 for q, nid in enumerate(run, start=1):
                     X[nid] = X[nid] + (q - (m + 1) / 2) * (wb / 2) * t
             k += len(run)
+        # P7 spines: radially outward from their base, in their reference layout
+        self.place_spines(r)
+        # P8 pointed loops: likewise, a narrow outward loop with the picot at its apex
+        self.place_pointed_loops(r)
         # P4' chain-space loops: on an outward arc between the nodes either side of the loop
         self.place_loops(r, ids)
         # P6 perturbation
@@ -289,9 +388,12 @@ def _arc_angle(ratio: float) -> float:
 def _place_loops(self, r: int, ids: list[int]) -> None:
     net, g, X = self.net, self.g, self.X
     idset = set(ids)
+    in_loop = {v for pl in net.pointed_loops for v in pl.nodes}
     for sp in g.spaces:
-        if sp["kind"] != "chsp" or sp["round"] != r or not sp["chains"]:
+        if sp["kind"] != "chsp" or sp["round"] != r or not sp["chains"] or sp["chains"][0] in in_loop:
             continue
+        if self.p9_placed(sp["chains"][0]):
+            continue  # P9 placed them in the reference layout
         ch = sp["chains"]
         a, b = ch[0] - 1, ch[-1] + 1
         if a not in idset or b not in idset or np.isnan(X[a, 0]) or np.isnan(X[b, 0]):
@@ -325,6 +427,52 @@ def _place_loops(self, r: int, ids: list[int]) -> None:
 
 
 _Placer.place_loops = _place_loops
+
+
+def _place_spines(self, r: int) -> None:
+    """P7: every spine of round r whose base is placed is laid out in its reference layout
+    (crolab.spine), s along u = unit(x_base - centroid of the piece before this round) (fallback +x),
+    t along unit(z x u) (fallback unit(u x x))."""
+    X = self.X
+    for sp in self.net.spines:
+        if self.g.nodes[sp.stem[0]]["round"] != r or np.isnan(X[sp.base, 0]):
+            continue
+        o = X[sp.base].copy()
+        u, nu = _unit(o - self.round_centroid)
+        if nu < 1e-9:
+            u = np.array([1.0, 0.0, 0.0])
+        t, nt = _unit(np.cross([0.0, 0.0, 1.0], u))
+        if nt < 1e-9:
+            t, _ = _unit(np.cross(u, [1.0, 0.0, 0.0]))
+        for v in sp.nodes:
+            s_, t_ = sp.pos[v]
+            X[v] = o + s_ * u + t_ * t
+
+
+_Placer.place_spines = _place_spines
+
+
+def _place_pointed_loops(self, r: int) -> None:
+    """P8: every pointed loop (N6) of round r whose base and close are placed is laid out like a
+    spine (P7), x = x_base + s u + sigma t v, with sigma = -1 when (x_close - x_base) . v < 0."""
+    X = self.X
+    for pl in self.net.pointed_loops:
+        if self.g.nodes[pl.base]["round"] != r or np.isnan(X[pl.base, 0]) or np.isnan(X[pl.close, 0]):
+            continue
+        o = X[pl.base].copy()
+        u, nu = _unit(o - self.round_centroid)
+        if nu < 1e-9:
+            u = np.array([1.0, 0.0, 0.0])
+        t, nt = _unit(np.cross([0.0, 0.0, 1.0], u))
+        if nt < 1e-9:
+            t, _ = _unit(np.cross(u, [1.0, 0.0, 0.0]))
+        sg = -1.0 if float(np.dot(X[pl.close] - o, t)) < 0 else 1.0
+        for v in pl.nodes:
+            s_, t_ = pl.pos[v]
+            X[v] = o + s_ * u + sg * t_ * t
+
+
+_Placer.place_pointed_loops = _place_pointed_loops
 
 
 def simulate(pattern: dict, params: StitchParams | None = None, upto_round: int | None = None,

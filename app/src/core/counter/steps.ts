@@ -104,7 +104,7 @@ interface Unit {
 
 const spanKey = (s: { line: number; col: number; endLine?: number; endCol?: number }) => `${s.line}:${s.col}-${s.endLine ?? s.line}:${s.endCol ?? s.col}`;
 
-const NO_NODES = new Set<Item['kind']>(['skip', 'turn', 'ring', 'fasten']);
+const NO_NODES = new Set<Item['kind']>(['skip', 'turn', 'ring', 'fasten', 'otherSide']);
 
 /** Nodes one occurrence of an item makes, when it is a fixed number. */
 function nodesPerOccurrence(it: Item): number | undefined {

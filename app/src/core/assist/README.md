@@ -51,8 +51,14 @@ Edits inside a range label (`Rnds 8-12`) split the label so only that round chan
 
 ## Limits
 
-* The flatness model is the analytic count rule (`spec/flatness.md`); its blind spots (cornered
-  motifs, scallops' mean height) are inherited. A lace round can be "fixed" toward a shorter
+* The flatness model is the analytic count rule (`spec/flatness.md`); its blind spots (scallops'
+  mean height) are inherited.
+* **Cornered rounds** (shape `polygon` — squares, hexagons… from the centre — or `border` — rounds
+  round rows): only stitches-per-place edits are tried, and a candidate is kept only if the round
+  still has as many corner groups and exactly the same side stitches (only the corner groups
+  changed). `cornerAdvice(round)` / `RoundFixes.advice` says what the corner rule implies ("Cornered
+  round: adjust the corner group — use (2 dc, ch 2, 2 dc) in each corner instead of (2 dc, ch 2,
+  dc)."); the circle calculator (`suggestCountsForRound`) returns null for these rounds. A lace round can be "fixed" toward a shorter
   chain than a designer would choose, because the rule treats chain slack generously.
 * Moves are local to one round (plus repeat re-balancing and `ch-N sp` renames downstream). No
   stitch-height changes, no inserted chains between groups, no restructured repeats.

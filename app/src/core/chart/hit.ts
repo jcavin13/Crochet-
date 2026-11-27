@@ -1,4 +1,6 @@
 /** Pointer hit testing on a chart layout (uniform grid over glyph centres). Pure. */
+import { frameHeight } from './frames';
+import { outlineRadius } from './layout';
 import type { ChartLayout } from './types';
 
 export interface HitIndex {
@@ -50,11 +52,18 @@ export function hitTest(ix: HitIndex, x: number, y: number, maxDist = 0.55, upto
 
 /** Round whose band contains the point (radial: by radius; rows: by height); −1 if outside. */
 export function roundAt(layout: ChartLayout, x: number, y: number, upto?: number): number {
-  const h = layout.mode === 'radial' ? Math.hypot(x, y) : -y;
+  const h0 = layout.mode === 'radial' ? Math.hypot(x, y) : -y;
+  // a body in rows with a border round it: rows only over the body, border rounds round it
+  const body = layout.shape?.kind === 'border' ? layout.shape.rect : null;
+  const inBody = !body || (x >= Math.min(...body.map((p) => p.x)) && x <= Math.max(...body.map((p) => p.x)));
   let found = -1;
   for (const r of layout.rounds) {
     if (r.first < 0 || (upto !== undefined && r.index > upto)) continue;
-    if (h >= r.r0 - 1e-9 && h <= r.r + 1e-9) { found = r.index; break; }
+    if (body && !r.frame && !inBody) continue;
+    const h = r.frame ? frameHeight(r.frame, x, y) : h0;
+    // a pointed round reaches out to its arms' outline
+    const top = r.pointed ? Math.max(r.r, outlineRadius(r, Math.atan2(-y, x))) : r.r;
+    if (h >= r.r0 - 1e-9 && h <= top + 1e-9) { found = r.index; break; }
   }
   return found;
 }

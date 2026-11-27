@@ -8,13 +8,20 @@
  *   hitTest(index, x, y)               → nearest node (pointer / tap)
  */
 export type * from './types';
-export { layoutChart, boundsUpto, DIM } from './layout';
+export { layoutChart, boundsUpto, outlineRadius, DIM } from './layout';
 export { solveOrdered } from './solve';
 export {
   glyph, symbolOf, hatchesOf, legendEntries, legendName, sampleGlyph, magicRingGlyph, SYM,
 } from './symbols';
 export type { SymbolOptions, SymbolSet, ScGlyph, Glyph, LegendEntry } from './symbols';
-export { chartToSvg, DEFAULT_COLORS, roundBandPath, bandPath, edgePath, roundEdge } from './svg';
+export { chartToSvg, DEFAULT_COLORS, BORDER_NOTE, POINTED_NOTE, POINTED_KEY, wedgeNote, roundBandPath, bandPath, edgePath, outlinePath, hullPath, roundEdge } from './svg';
+export { wedgeView, cornerView } from './wedge';
+export { offsetFrame, frameOf, framePath, frameHeight, regularCore } from './frames';
+export type { FrameSpec, OffsetFrame } from './frames';
+export { cornerGroups, detectPolygon, detectStadium, borderCornerGroups } from '../flatness/corners';
+export type { PolygonInfo } from '../flatness/corners';
+export type { WedgeView, WedgeLabel, WedgeOptions } from './wedge';
 export type { ChartColors, SvgOptions } from './svg';
 export { buildHitIndex, hitTest, roundAt } from './hit';
 export type { HitIndex } from './hit';
+export { symbolRoom } from './room';
