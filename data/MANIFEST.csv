@@ -1,0 +1,3 @@
+path,title,source_title,author,year,source_url,license,date_retrieved,purpose,notes
+data/README.md,Corpus README,,project,2026,,CC0-1.0,2026-11-27,Licensing rules and how-to for the corpus,Corpus empty: gutenberg.org and archive.org blocked by session network policy on 2026-11-27
+data/MANIFEST.csv,Corpus manifest,,project,2026,,CC0-1.0,2026-11-27,Inventory of every file in data/,
