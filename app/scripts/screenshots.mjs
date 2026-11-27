@@ -43,9 +43,36 @@ export const ROUTES = [
     },
   },
   { name: 'editor-dark', path: '/editor/fixture%3Achain_space_motif', wait: '.ed-box', scheme: 'dark', only: 'desktop' },
-  { name: 'chart', path: '/chart', wait: 'main h1' },
+  { name: 'chart', path: '/chart', wait: '.ch-svg' },
+  { name: 'chart-doily', path: '/chart/fixture%3Asimple_doily', wait: '.ch-svg' },
+  { name: 'chart-dc-circle', path: '/chart/fixture%3Aflat_dc_circle', wait: '.ch-svg' },
+  { name: 'chart-sphere', path: '/chart/fixture%3Asc_sphere', wait: '.ch-svg' },
+  { name: 'chart-hyperbolic', path: '/chart/fixture%3Ahyperbolic_plane', wait: '.ch-svg' },
+  { name: 'chart-chainspace', path: '/chart/fixture%3Achain_space_motif', wait: '.ch-svg' },
+  { name: 'chart-petal', path: '/chart/corpus%3Apetal-doily-12', wait: '.ch-svg' },
+  { name: 'chart-spiderweb', path: '/chart/corpus%3Aspiderweb-doily-10', wait: '.ch-svg' },
+  { name: 'chart-granny', path: '/chart/corpus%3Agranny-square-motif', wait: '.ch-svg', only: 'desktop' },
+  { name: 'chart-doily-dark', path: '/chart/fixture%3Asimple_doily', wait: '.ch-svg', scheme: 'dark', only: 'desktop' },
+  {
+    name: 'chart-doily-tooltip', path: '/chart/fixture%3Asimple_doily', wait: '.ch-svg', only: 'desktop',
+    prepare: async (page) => {
+      const box = await page.locator('.ch-svg').boundingBox();
+      if (box) await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.18);
+      await page.waitForTimeout(300);
+    },
+  },
   { name: 'sim', path: '/sim', wait: 'main h1' },
-  { name: 'designer', path: '/designer', wait: 'main h1' },
+  { name: 'designer', path: '/designer', wait: '.dz-controls' },
+  {
+    name: 'designer-random',
+    path: '/designer',
+    wait: '.dz-controls',
+    prepare: async (page) => {
+      await page.getByRole('radio', { name: 'Surprise me' }).click();
+      await page.waitForTimeout(600);
+    },
+  },
+  { name: 'designer-dark', path: '/designer', wait: '.dz-controls', scheme: 'dark', only: 'desktop' },
   // counter: fresh start, mid-round (Rnd 5), the end-of-round check, landing, tally, dark
   ...(() => {
     const doily = '/counter/fixture%3Asimple_doily';

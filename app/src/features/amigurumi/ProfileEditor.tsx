@@ -185,7 +185,7 @@ export function ProfileEditor({ points, smooth, onChange, result, snap, selected
             ? <rect x={p.r - unit * 1.6} y={-p.z - unit * 1.6} width={unit * 3.2} height={unit * 3.2} className="ami-handle__dot" strokeWidth={unit * 0.5} />
             : <circle cx={p.r} cy={-p.z} r={unit * 1.8} className="ami-handle__dot" strokeWidth={unit * 0.5} />}
           {(hover === i || selected === i) && (
-            <text x={p.r + unit * 3} y={-p.z - unit * 2.5} fontSize={fs} className="ami-handle__label">{`r ${(p.r / 10).toFixed(1)} · z ${(p.z / 10).toFixed(1)} cm`}</text>
+            <text x={p.r > (f.x1 * 0.45) ? p.r - unit * 3 : p.r + unit * 3} y={-p.z - unit * 2.5} fontSize={fs} textAnchor={p.r > f.x1 * 0.45 ? 'end' : 'start'} className="ami-handle__label">{`r ${(p.r / 10).toFixed(1)} · z ${(p.z / 10).toFixed(1)} cm`}</text>
           )}
         </g>
       ))}

@@ -23,7 +23,8 @@
   display: block; width: 100%; height: min(58vh, 540px); min-height: 300px;
   background: var(--surface); touch-action: pan-y; user-select: none; -webkit-user-select: none;
 }
-.ami-editor:focus-visible { outline: none; box-shadow: inset var(--focus); }
+.ami-editor:focus { outline: none; }
+.ami-editor:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -3px; }
 .ami-grid line { stroke: var(--border); }
 .ami-grid text { fill: var(--ink-3); font-family: var(--font-body); }
 .ami-axis { stroke: var(--ink-3); }

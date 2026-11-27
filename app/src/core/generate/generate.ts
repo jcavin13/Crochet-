@@ -42,6 +42,7 @@ interface Planned {
   prevLead: number;
   /** Index into spec.rounds of the user round this was made for (transitions: the round they serve). */
   source: number;
+  autoReason?: GeneratedRound['autoReason'];
 }
 
 const NUMBER_WORDS = ['', '', '', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve',
@@ -160,7 +161,7 @@ function planOnce(spec: DoilySpec, params: ParamSet, overrides: Map<number, numb
     return undefined;
   };
 
-  const place = (rs: RoundSpec, auto: boolean, userIndex: number): boolean => {
+  const place = (rs: RoundSpec, auto: boolean, userIndex: number, autoReason?: GeneratedRound['autoReason']): boolean => {
     const aim = aimFor(userIndex, auto);
     const prev = planned[planned.length - 1];
     const list = scoreAll(rs, aim, iface, state, planned.length, prev);
@@ -193,7 +194,7 @@ function planOnce(spec: DoilySpec, params: ParamSet, overrides: Map<number, numb
     const lead = iface.kind === 'lace' ? spaceSlots(iface.entries).leading : 0;
     iface = ifaceOf(best.entries);
     state = best.p.next;
-    planned.push({ motif: rs.motif, params: best.c.params, auto, cand: best.c, pred: best.p, entries: best.entries, iface, aim, prevLead: lead, source: userIndex });
+    planned.push({ motif: rs.motif, params: best.c.params, auto, cand: best.c, pred: best.p, entries: best.entries, iface, aim, prevLead: lead, source: userIndex, autoReason });
     return true;
   };
 
@@ -204,13 +205,13 @@ function planOnce(spec: DoilySpec, params: ParamSet, overrides: Map<number, numb
     if (i > 0 && rs.motif === 'centre') { warnings.push(`Round ${i + 1}: a centre can only start the doily — skipped.`); continue; }
     const tr = transitionFor(rs.motif, iface);
     if (tr) {
-      place({ motif: tr }, true, i);
+      place({ motif: tr }, true, i, tr === 'mesh' ? 'spaces' : tr === 'filler' ? 'stitches' : undefined);
       if (tr !== 'centre') warnings.push(`${MOTIFS[rs.motif].label} needs ${tr === 'mesh' ? 'chain spaces' : 'stitches'} to work into, so a ${tr === 'mesh' ? 'chain-loop mesh' : 'straightening'} round was added before it.`);
     }
     if (place(rs, false, i)) continue;
     // no candidate fits this interface (e.g. alternating motifs on an odd number of spaces):
     // open the fabric with a mesh round and try again
-    if (place({ motif: 'mesh' }, true, i) && place(rs, false, i)) {
+    if (place({ motif: 'mesh' }, true, i, 'fit') && place(rs, false, i)) {
       warnings.push(`${MOTIFS[rs.motif].label} did not fit the round below, so a chain-loop mesh round was added before it.`);
       continue;
     }
@@ -277,7 +278,7 @@ export function generateDoily(spec: DoilySpec, params: ParamSet): GenerateResult
     const f = flatness?.rounds[i];
     const gr = pattern?.graph.rounds[i];
     return {
-      number: i + 1, motif: p.motif, params: p.params, auto: p.auto || undefined, source: p.source,
+      number: i + 1, motif: p.motif, params: p.params, auto: p.auto || undefined, autoReason: p.autoReason, source: p.source,
       e: f?.e ?? p.pred.e, eMin: f?.eMin ?? p.pred.eMin, eMax: f?.eMax ?? p.pred.eMax,
       class: f?.class ?? p.pred.cls, aim: p.aim,
       stitches: gr?.stitchCount ?? p.entries.filter((e) => e.kind === 'st').length * n,

@@ -21,7 +21,7 @@ export const PRESETS: Preset[] = [
         { motif: 'shells', params: { gap: 1 } },
         { motif: 'mesh' },
         { motif: 'arches' },
-        { motif: 'shells', params: { alt: 1 } },
+        { motif: 'shells', params: { alt: 0 } },
         { motif: 'mesh' },
         { motif: 'arches' },
         { motif: 'picot' },

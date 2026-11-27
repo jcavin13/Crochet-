@@ -282,7 +282,7 @@ export function revolve(opts: RevolveOptions): RevolveResult {
   if (closedEnd) realised.push({ r: 0, z: rz.z + (Math.sign(pL.z - prevTargetZ) || 1) * Math.sqrt(Math.max(0, h * h - rz.r * rz.r)) });
   if (crisp) {
     const missed = corners.filter((co) => !usedCorners.has(co.index));
-    if (missed.length) warnings.push({ severity: 'info', code: 'corner', message: `${missed.length} sharp corner${missed.length > 1 ? 's' : ''} fall on rounds that change count, so no back-loop round was added there; the corner will be rounded.` });
+    if (missed.length) warnings.push({ severity: 'info', code: 'corner', message: `${missed.length === 1 ? 'A sharp corner falls' : `${missed.length} sharp corners fall`} on rounds that change count, so no back-loop round was added there; the corner will be rounded.` });
     const bl = rounds.filter((r) => r.blo).map((r) => r.n);
     if (bl.length) warnings.push({ severity: 'info', code: 'corner', rounds: bl, message: `${ranges(bl)}: worked in back loops only, which folds the fabric for a crisp corner.` });
   }

@@ -136,6 +136,8 @@ export interface GeneratedRound {
   params: RoundParams;
   /** Inserted by the generator to make the user's next motif possible. */
   auto?: boolean;
+  /** Why it was inserted: the next motif needs chain spaces / stitches, or did not fit otherwise. */
+  autoReason?: 'spaces' | 'stitches' | 'fit';
   /** Index into spec.rounds of the round this was made for (for a transition: the round it serves). */
   source: number;
   /** Nominal excess and class from the real flatness check of the compiled pattern. */

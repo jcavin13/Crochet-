@@ -228,7 +228,10 @@ function incPositions(a: number, inc: number, stagger: boolean): Set<number> {
 const fmtSt = (v: ParamValue) => String(v);
 const HEIGHTS: Height[] = ['sc', 'hdc', 'dc', 'tr'];
 const heightDef = (values: Height[] = HEIGHTS, label = 'Stitch'): ParamDef => ({ key: 'st', label, values, format: fmtSt });
-const chDef = (lo: number, hi: number, label = 'Chain length'): ParamDef => ({ key: 'ch', label, values: range(lo, hi), format: (v) => `ch ${v}` });
+const chDef = (lo: number, hi: number, label = 'Chain length'): ParamDef => ({
+  key: 'ch', label, values: range(lo, hi),
+  format: label === 'Chains between' ? (v) => (v ? `ch ${v} between` : 'no chains between') : (v) => `ch ${v}`,
+});
 const perDef = (label = 'Groups per repeat', hi = 12): ParamDef => ({ key: 'per', label, values: range(1, hi) });
 
 const allowedHeights = (ctx: MotifCtx, among: Height[]) => {
@@ -454,8 +457,8 @@ const clusters = anchorMotif({
   id: 'clusters', label: 'Clusters', texture: 'lacy', accepts: ['solid', 'lace'],
   blurb: '`3-dc cl, ch k` — a ring of gathered clusters (bobbles with 5 legs).',
   params: [
-    { key: 'base', label: 'Cluster of', values: ['dc', 'tr'], format: fmtSt },
-    { key: 'legs', label: 'Legs', values: [3, 4, 5] },
+    { key: 'base', label: 'Cluster of', values: ['dc', 'tr'], format: (v) => `${v} clusters` },
+    { key: 'legs', label: 'Legs', values: [3, 4, 5], format: (v) => `${v} legs` },
     chDef(1, 5), perDef('Clusters per repeat'),
   ],
   group: (g) => [st({ t: 'cl', base: g.base as 'dc' | 'tr', legs: num(g.legs) })],
@@ -469,7 +472,7 @@ const puffs = anchorMotif({
   id: 'puffs', label: 'Puffs', texture: 'lacy', accepts: ['solid', 'lace'],
   blurb: '`puff, ch k` — soft puffs, singly or in pairs `(puff, ch 1, puff)`.',
   params: [
-    { key: 'pair', label: 'Puffs per group', values: [1, 2] },
+    { key: 'pair', label: 'Puffs per group', values: [1, 2], format: (v) => (v === 2 ? 'puff pairs' : 'single puffs') },
     chDef(1, 4), perDef('Groups per repeat'),
   ],
   group: (g) => (num(g.pair) === 2 ? [st({ t: 'puff' }), { k: 'ch', n: 1 }, st({ t: 'puff' })] : [st({ t: 'puff' })]),
@@ -481,7 +484,7 @@ const vstitch = anchorMotif({
   id: 'vstitch', label: 'V-stitches', texture: 'lacy', accepts: ['solid', 'lace'],
   blurb: '`(dc, ch v, dc)` in each space with chains between — light and even.',
   params: [
-    { key: 'gap', label: 'Chains inside the V', values: [1, 2, 3], format: (v) => `ch ${v}` },
+    { key: 'gap', label: 'Chains inside the V', values: [1, 2, 3], format: (v) => `ch ${v} inside` },
     chDef(0, 4, 'Chains between'), perDef('V-sts per repeat'),
   ],
   group: (g) => [st(P('dc')), { k: 'ch', n: num(g.gap) }, st(P('dc'))],
@@ -501,8 +504,8 @@ const shells = anchorMotif({
   id: 'shells', label: 'Shells', texture: 'lacy', accepts: ['solid', 'lace'],
   blurb: '`(a dc, ch b, a dc)` or `5 dc` in a space, optionally with `sc` between shells.',
   params: [
-    { key: 'size', label: 'dc per shell', values: [2, 3, 4, 5, 6, 7] },
-    { key: 'gap', label: 'Chains in the shell', values: [0, 1, 2, 3], format: (v) => (v ? `ch ${v}` : 'closed') },
+    { key: 'size', label: 'dc per shell', values: [2, 3, 4, 5, 6, 7], format: (v) => `${v} dc` },
+    { key: 'gap', label: 'Chains in the shell', values: [0, 1, 2, 3], format: (v) => (v ? `ch ${v} inside` : 'closed') },
     chDef(0, 3, 'Chains between'),
     { key: 'alt', label: 'sc between shells', values: [0, 1], format: (v) => (v ? 'yes' : 'no') },
     perDef('Shells per repeat'),
@@ -520,7 +523,7 @@ const petals = anchorMotif({
   blurb: '`(3-tr cl, ch b, 3-tr cl)` in a space — pairs of clusters that read as petals.',
   params: [
     { key: 'base', label: 'Cluster of', values: ['dc', 'tr'], format: fmtSt },
-    { key: 'gap', label: 'Chains in the petal', values: [2, 3, 4, 5], format: (v) => `ch ${v}` },
+    { key: 'gap', label: 'Chains in the petal', values: [2, 3, 4, 5], format: (v) => `ch ${v} inside` },
     chDef(1, 5, 'Chains between'), perDef('Petals per repeat'),
   ],
   group: (g) => { const c = st({ t: 'cl', base: g.base as 'dc' | 'tr', legs: 3 }); return [c, { k: 'ch', n: num(g.gap) }, c]; },
@@ -540,7 +543,7 @@ const fans = anchorMotif({
   blurb: '`(sc, hdc, 3 dc, hdc, sc)` in each space, or `sc, 5 dc` shells — a scalloped edge.',
   params: [
     { key: 'form', label: 'Form', values: ['scallop', 'shell'], format: (v) => (v === 'shell' ? 'sc + dc shell' : 'graduated scallop') },
-    { key: 'size', label: 'Stitches per fan', values: [3, 4, 5, 6, 7, 8, 9, 10, 11] },
+    { key: 'size', label: 'Stitches per fan', values: [3, 4, 5, 6, 7, 8, 9, 10, 11], format: (v) => `${v} sts` },
     chDef(0, 2, 'Chains between'),
     perDef('Fans per repeat'),
   ],
@@ -557,7 +560,7 @@ const picot = anchorMotif({
   blurb: '`(sc, picot, sc)` in each space with chains between — the classic finishing round.',
   params: [
     { key: 'picot', label: 'Picot', values: [3, 4, 5], format: (v) => `ch-${v}` },
-    { key: 'fill', label: 'sc each side', values: [1, 2, 3] },
+    { key: 'fill', label: 'sc each side', values: [1, 2, 3], format: (v) => `${v} sc each side` },
     chDef(0, 5, 'Chains between'),
     perDef('Picots per repeat'),
   ],
