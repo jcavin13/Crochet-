@@ -437,7 +437,9 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       const rep = run[run.length - 1];
       const ca = graph.nodes[rep].countsAs;
       // a counting turning chain stands in for its stitch: it takes that stitch's room
-      const cHalf = ca ? DIM.stHalf * Math.max(1, stitchParam(params, ca).width / unit) : DIM.tchHalf;
+      // (rows: every column is one stitch wide, as charts draw them — a dc row is as wide as the
+      // chain it is worked on)
+      const cHalf = ca ? DIM.stHalf * (closed ? Math.max(1, stitchParam(params, ca).width / unit) : 1) : DIM.tchHalf;
       items.push({
         ids: run, rep, kind: counting ? 'tch' : 'tchLoose',
         half: counting ? cHalf : DIM.tchLooseHalf, w: counting ? 1 : 0.05, t: NaN,
@@ -485,7 +487,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       kind[id] = 'stitch';
       const legsN = n.into.length;
       const half = n.tag === 'cluster' || n.type === 'popcorn' || n.type === 'puff'
-        ? Math.max(DIM.clusterHalf, DIM.stHalf * wRel(n)) : DIM.stHalf * Math.max(1, wRel(n)) * (legsN > 2 ? 1.1 : 1);
+        ? Math.max(DIM.clusterHalf, DIM.stHalf * wRel(n)) : DIM.stHalf * (closed ? Math.max(1, wRel(n)) : 1) * (legsN > 2 ? 1.1 : 1);
       push({ kind: 'st', half, w: 1 });
     }
     flushRun(false);
@@ -598,6 +600,24 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         const fin = items.filter((it) => Number.isFinite(it.t));
         if (fin.length >= 2 && Math.abs(fin[fin.length - 1].t - fin[0].t) > 1e-6) dir = fin[fin.length - 1].t > fin[0].t ? 1 : -1;
         else dir = (-prevDir) as 1 | -1;
+        // Stitches worked into the first (last) stitch of a row ("ch 3, dc in same st", "2 dc in
+        // last st"): the edge stays straight — the outermost stands on its anchor, the others lean
+        // in, as charts draw an edge increase (a fan centred on the anchor would push the edge out
+        // half a stitch every row).
+        const keyOf = (id: number) => { const a = graph.nodes[id].into[0]; return a ? ('node' in a ? `n${a.node}` : `s${a.space}`) : ''; };
+        const stIdx = items.map((it, i) => ((it.kind === 'st' || it.kind === 'tch') && Number.isFinite(it.t) ? i : -1)).filter((i) => i >= 0);
+        const straighten = (list: number[], sign: number) => {
+          if (list.length < 3) return;
+          const k0 = keyOf(items[list[0]].rep);
+          if (!k0) return;
+          let m = 1;
+          while (m < list.length && keyOf(items[list[m]].rep) === k0) m++;
+          if (m < 2 || m === list.length) return;
+          let off = 0;
+          for (let j = 1; j < m; j++) { off += items[list[j - 1]].half + items[list[j]].half; items[list[j]].t = items[list[0]].t + sign * dir * off; }
+        };
+        straighten(stIdx, 1);
+        straighten([...stIdx].reverse(), -1);
       }
       if (OF && OF.corners >= 3) {
         // corner groups fan round their corner: centred on the corner's bisector
