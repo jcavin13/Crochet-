@@ -1,6 +1,6 @@
 /**
  * Spring energy with analytic gradient, and a dependency-free L-BFGS minimiser (two-loop recursion,
- * strong-Wolfe line search with cubic interpolation) whose stopping rules mirror scipy's L-BFGS-B
+ * More–Thuente line search as in L-BFGS-B) whose stopping rules mirror scipy's L-BFGS-B
  * as the lab calls it: max|g| <= gtol, or relative decrease (f_k - f_{k+1}) / max(|f_k|, |f_{k+1}|, 1)
  * <= ftol, or the iteration limit. Runs one iteration per `iterate()` so the interactive sim can
  * spread a solve over animation frames.
@@ -74,7 +74,6 @@ export class Lbfgs {
   private xt: Float64Array;
   private gt: Float64Array;
   private alphaBuf: number[];
-  private failures = 0;
 
   constructor(private readonly fg: Objective, x0: Float64Array, opts: LbfgsOptions = {}) {
     const n = x0.length;
@@ -103,12 +102,12 @@ export class Lbfgs {
     return this.status;
   }
 
-  /** One L-BFGS iteration. */
+  /** One L-BFGS iteration (as scipy's L-BFGS-B mainlb for an unbounded problem). */
   iterate(): LbfgsStatus {
     if (this.status !== 'running') return this.status;
     const { x, g, d } = this;
     const n = x.length;
-    // search direction d = -H g (two-loop recursion)
+    // search direction d = -H g (two-loop recursion; H0 = s'y / y'y of the newest pair)
     for (let i = 0; i < n; i++) d[i] = -g[i];
     const k = this.S.length;
     for (let j = k - 1; j >= 0; j--) {
@@ -126,43 +125,45 @@ export class Lbfgs {
       const s = this.S[j], a = this.alphaBuf[j];
       for (let i = 0; i < n; i++) d[i] += s[i] * (a - b);
     }
-    let dg = dot(d, g);
+    const dg = dot(d, g);
     if (!(dg < 0)) {
-      // not a descent direction: restart with steepest descent
-      this.resetMemory();
-      for (let i = 0; i < n; i++) d[i] = -g[i];
-      dg = dot(d, g);
-    }
-    const dn = Math.sqrt(dot(d, d));
-    const step0 = k === 0 ? Math.min(1 / dn, 1e10) : 1;
-    const f0 = this.f;
-    const ok = this.lineSearch(f0, dg, step0);
-    if (!ok) {
-      this.failures++;
-      if (this.S.length === 0 || this.failures >= 2) { this.status = 'stalled'; return this.status; }
+      // not a descent direction: refresh the memory (L-BFGS-B does the same)
+      if (k === 0) { this.status = 'stalled'; return this.status; }
       this.resetMemory();
       return this.status;
     }
-    this.failures = 0;
+    const dn = Math.sqrt(dot(d, d));
+    const step0 = this.iter === 0 && !this.refreshed ? Math.min(1 / dn, 1e10) : 1;
+    const f0 = this.f;
+    const stp = this.lineSearch(f0, dg, step0);
+    if (stp === null) {
+      // restore x, g (still in x / g) and refresh the memory; give up if there was none
+      if (k === 0) { this.status = 'stalled'; return this.status; }
+      this.resetMemory();
+      return this.status;
+    }
     // accept: s = xt - x, y = gt - g
     const s = new Float64Array(n), y = new Float64Array(n);
     for (let i = 0; i < n; i++) { s[i] = this.xt[i] - x[i]; y[i] = this.gt[i] - g[i]; }
+    const sg0 = stp * dg;   // s'g_old
     x.set(this.xt);
     g.set(this.gt);
     const f1 = this.f;
     this.iter++;
-    const sy = dot(s, y), yy = dot(y, y);
-    if (sy > 2.2e-16 * yy) {
+    if (maxAbs(g) <= this.gtol) this.status = 'converged';
+    else if (f0 - f1 <= this.ftol * Math.max(Math.abs(f0), Math.abs(f1), 1)) this.status = 'converged';
+    else if (this.iter >= this.maxIter) this.status = 'maxiter';
+    // L-BFGS-B skips the update when s'y <= eps * (-s'g_old)
+    const sy = dot(s, y);
+    if (sy > 2.220446049250313e-16 * -sg0) {
       if (this.S.length === this.mMax) { this.S.shift(); this.Y.shift(); this.rho.shift(); }
       this.S.push(s); this.Y.push(y); this.rho.push(1 / sy);
     }
-    if (maxAbs(g) <= this.gtol) this.status = 'converged';
-    else if ((f0 - f1) / Math.max(Math.abs(f0), Math.abs(f1), 1) <= this.ftol) this.status = 'converged';
-    else if (this.iter >= this.maxIter) this.status = 'maxiter';
     return this.status;
   }
 
-  private resetMemory() { this.S = []; this.Y = []; this.rho = []; }
+  private refreshed = false;
+  private resetMemory() { this.S = []; this.Y = []; this.rho = []; this.refreshed = true; }
 
   /** Evaluate at x + a d into xt/gt; returns f. */
   private phi(a: number): number {
@@ -172,54 +173,129 @@ export class Lbfgs {
     return this.fg(xt, this.gt);
   }
 
-  /** Strong-Wolfe line search (Nocedal & Wright alg. 3.5/3.6), c1 = 1e-3, c2 = 0.9 as L-BFGS-B. */
-  private lineSearch(f0: number, dg0: number, a1: number): boolean {
-    const c1 = 1e-3, c2 = 0.9;
-    let aPrev = 0, fPrev = f0, dgPrev = dg0;
-    let a = a1;
-    for (let it = 0; it < 30; it++) {
-      const fa = this.phi(a);
-      const dga = dot(this.gt, this.d);
-      if (!Number.isFinite(fa) || fa > f0 + c1 * a * dg0 || (it > 0 && fa >= fPrev)) {
-        return this.zoom(aPrev, fPrev, dgPrev, a, fa, dga, f0, dg0, c1, c2);
+  /**
+   * More–Thuente line search (MINPACK-2 dcsrch) with L-BFGS-B's settings: ftol 1e-3, gtol 0.9,
+   * xtol 0.1, stpmin 0, stpmax 1e10, at most 20 evaluations. Warnings count as success, as in
+   * L-BFGS-B. Returns the accepted step (xt, gt, f hold the new point) or null on failure.
+   */
+  private lineSearch(finit: number, ginit: number, stp0: number): number | null {
+    const ftol = 1e-3, gtol = 0.9, xtol = 0.1, stpmin = 0, stpmax = 1e10;
+    const xtrapl = 1.1, xtrapu = 4.0;
+    let stp = stp0;
+    let brackt = false, stage = 1;
+    const gtest = ftol * ginit;
+    let width = stpmax - stpmin, width1 = width / 0.5;
+    const st: StepState = { stx: 0, fx: finit, gx: ginit, sty: 0, fy: finit, gy: ginit, brackt: false };
+    let stmin = 0, stmax = stp + xtrapu * stp;
+    for (let nfev = 1; nfev <= 20; nfev++) {
+      const f = this.phi(stp);
+      const gp = dot(this.gt, this.d);
+      if (!Number.isFinite(f)) {
+        // outside the domain: shrink (not in MINPACK; protects against overflow)
+        stp = st.stx + 0.5 * (stp - st.stx);
+        brackt = true; st.brackt = true; stmax = stp * 2;
+        continue;
       }
-      if (Math.abs(dga) <= -c2 * dg0) { this.f = fa; return true; }
-      if (dga >= 0) return this.zoom(a, fa, dga, aPrev, fPrev, dgPrev, f0, dg0, c1, c2);
-      aPrev = a; fPrev = fa; dgPrev = dga;
-      a = Math.min(a * 4, 1e10);
-    }
-    return false;
-  }
-
-  private zoom(lo: number, flo: number, dlo: number, hi: number, fhi: number, dhi: number,
-    f0: number, dg0: number, c1: number, c2: number): boolean {
-    for (let it = 0; it < 40; it++) {
-      // cubic interpolation between lo and hi, safeguarded
-      let a = cubicMin(lo, flo, dlo, hi, fhi, dhi);
-      const lo2 = Math.min(lo, hi), hi2 = Math.max(lo, hi), w = hi2 - lo2;
-      if (!Number.isFinite(a) || a < lo2 + 0.1 * w || a > hi2 - 0.1 * w) a = 0.5 * (lo + hi);
-      const fa = this.phi(a);
-      const dga = dot(this.gt, this.d);
-      if (!Number.isFinite(fa) || fa > f0 + c1 * a * dg0 || fa >= flo) { hi = a; fhi = fa; dhi = dga; }
-      else {
-        if (Math.abs(dga) <= -c2 * dg0) { this.f = fa; return true; }
-        if (dga * (hi - lo) >= 0) { hi = lo; fhi = flo; dhi = dlo; }
-        lo = a; flo = fa; dlo = dga;
+      const ftest = finit + stp * gtest;
+      if (stage === 1 && f <= ftest && gp >= 0) stage = 2;
+      const accept = () => { this.f = f; return stp; };
+      if (brackt && (stp <= stmin || stp >= stmax)) return accept();   // rounding warning (accepted, as L-BFGS-B)
+      if (brackt && stmax - stmin <= xtol * stmax) return accept();     // xtol warning
+      if (stp === stpmax && f <= ftest && gp <= gtest) return accept();
+      if (stp === stpmin && (f > ftest || gp >= gtest)) return accept();
+      if (f <= ftest && Math.abs(gp) <= gtol * -ginit) return accept();                      // convergence
+      st.brackt = brackt;
+      if (stage === 1 && f <= st.fx && f > ftest) {
+        const fm = f - stp * gtest;
+        const m: StepState = {
+          stx: st.stx, fx: st.fx - st.stx * gtest, gx: st.gx - gtest,
+          sty: st.sty, fy: st.fy - st.sty * gtest, gy: st.gy - gtest, brackt,
+        };
+        stp = dcstep(m, stp, fm, gp - gtest, stmin, stmax);
+        st.stx = m.stx; st.sty = m.sty; st.brackt = m.brackt;
+        st.fx = m.fx + m.stx * gtest; st.fy = m.fy + m.sty * gtest;
+        st.gx = m.gx + gtest; st.gy = m.gy + gtest;
+      } else {
+        stp = dcstep(st, stp, f, gp, stmin, stmax);
       }
-      if (Math.abs(hi - lo) <= 1e-16 * Math.max(1, Math.abs(lo))) break;
+      brackt = st.brackt;
+      if (brackt) {
+        if (Math.abs(st.sty - st.stx) >= 0.66 * width1) stp = st.stx + 0.5 * (st.sty - st.stx);
+        width1 = width;
+        width = Math.abs(st.sty - st.stx);
+        stmin = Math.min(st.stx, st.sty); stmax = Math.max(st.stx, st.sty);
+      } else {
+        stmin = stp + xtrapl * (stp - st.stx);
+        stmax = stp + xtrapu * (stp - st.stx);
+      }
+      stp = Math.min(Math.max(stp, stpmin), stpmax);
+      if ((brackt && (stp <= stmin || stp >= stmax)) || (brackt && stmax - stmin <= xtol * stmax)) stp = st.stx;
     }
-    // accept the best sufficient-decrease point found, if any
-    if (lo > 0 && flo < f0) { this.phi(lo); this.f = flo; return true; }
-    return false;
+    return null;
   }
 }
 
-function cubicMin(a: number, fa: number, da: number, b: number, fb: number, db: number): number {
-  const d1 = da + db - (3 * (fa - fb)) / (a - b);
-  const disc = d1 * d1 - da * db;
-  if (disc < 0) return NaN;
-  const d2 = Math.sign(b - a) * Math.sqrt(disc);
-  return b - ((b - a) * (db + d2 - d1)) / (db - da + 2 * d2);
+interface StepState { stx: number; fx: number; gx: number; sty: number; fy: number; gy: number; brackt: boolean }
+
+/** MINPACK-2 dcstep: safeguarded cubic/quadratic step; updates the interval in `s`, returns the new step. */
+function dcstep(s: StepState, stp: number, fp: number, dp: number, stpmin: number, stpmax: number): number {
+  const { stx, fx, gx: dx, sty, fy, gy: dy } = s;
+  const sgnd = dp * (dx / Math.abs(dx));
+  let stpf: number;
+  if (fp > fx) {
+    const theta = (3 * (fx - fp)) / (stp - stx) + dx + dp;
+    const sc = Math.max(Math.abs(theta), Math.abs(dx), Math.abs(dp));
+    let gamma = sc * Math.sqrt((theta / sc) ** 2 - (dx / sc) * (dp / sc));
+    if (stp < stx) gamma = -gamma;
+    const p = gamma - dx + theta, q = gamma - dx + gamma + dp, r = p / q;
+    const stpc = stx + r * (stp - stx);
+    const stpq = stx + (dx / ((fx - fp) / (stp - stx) + dx) / 2) * (stp - stx);
+    stpf = Math.abs(stpc - stx) < Math.abs(stpq - stx) ? stpc : stpc + (stpq - stpc) / 2;
+    s.brackt = true;
+  } else if (sgnd < 0) {
+    const theta = (3 * (fx - fp)) / (stp - stx) + dx + dp;
+    const sc = Math.max(Math.abs(theta), Math.abs(dx), Math.abs(dp));
+    let gamma = sc * Math.sqrt((theta / sc) ** 2 - (dx / sc) * (dp / sc));
+    if (stp > stx) gamma = -gamma;
+    const p = gamma - dp + theta, q = gamma - dp + gamma + dx, r = p / q;
+    const stpc = stp + r * (stx - stp);
+    const stpq = stp + (dp / (dp - dx)) * (stx - stp);
+    stpf = Math.abs(stpc - stp) > Math.abs(stpq - stp) ? stpc : stpq;
+    s.brackt = true;
+  } else if (Math.abs(dp) < Math.abs(dx)) {
+    const theta = (3 * (fx - fp)) / (stp - stx) + dx + dp;
+    const sc = Math.max(Math.abs(theta), Math.abs(dx), Math.abs(dp));
+    let gamma = sc * Math.sqrt(Math.max(0, (theta / sc) ** 2 - (dx / sc) * (dp / sc)));
+    if (stp > stx) gamma = -gamma;
+    const p = gamma - dp + theta, q = gamma + (dx - dp) + gamma, r = p / q;
+    let stpc: number;
+    if (r < 0 && gamma !== 0) stpc = stp + r * (stx - stp);
+    else if (stp > stx) stpc = stpmax;
+    else stpc = stpmin;
+    const stpq = stp + (dp / (dp - dx)) * (stx - stp);
+    if (s.brackt) {
+      stpf = Math.abs(stpc - stp) < Math.abs(stpq - stp) ? stpc : stpq;
+      stpf = stp > stx ? Math.min(stp + 0.66 * (sty - stp), stpf) : Math.max(stp + 0.66 * (sty - stp), stpf);
+    } else {
+      stpf = Math.abs(stpc - stp) > Math.abs(stpq - stp) ? stpc : stpq;
+      stpf = Math.max(stpmin, Math.min(stpmax, stpf));
+    }
+  } else {
+    if (s.brackt) {
+      const theta = (3 * (fp - fy)) / (sty - stp) + dy + dp;
+      const sc = Math.max(Math.abs(theta), Math.abs(dy), Math.abs(dp));
+      let gamma = sc * Math.sqrt((theta / sc) ** 2 - (dy / sc) * (dp / sc));
+      if (stp > sty) gamma = -gamma;
+      const p = gamma - dp + theta, q = gamma - dp + gamma + dy, r = p / q;
+      stpf = stp + r * (sty - stp);
+    } else stpf = stp > stx ? stpmax : stpmin;
+  }
+  if (fp > fx) { s.sty = stp; s.fy = fp; s.gy = dp; }
+  else {
+    if (sgnd < 0) { s.sty = stx; s.fy = fx; s.gy = dx; }
+    s.stx = stp; s.fx = fp; s.gx = dp;
+  }
+  return stpf;
 }
 
 const defaultNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
