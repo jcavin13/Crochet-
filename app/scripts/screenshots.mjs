@@ -61,7 +61,41 @@ export const ROUTES = [
       await page.waitForTimeout(300);
     },
   },
-  { name: 'sim', path: '/sim', wait: 'main h1' },
+  // 3D sim: wait until the solve of the shown state has finished (worker), then let WebGL draw
+  ...(() => {
+    const ready = '.sim-stage[data-state="ready"]';
+    const settle = async (page) => { await page.waitForSelector(ready, { timeout: 30_000 }); await page.waitForTimeout(500); };
+    const blockIt = async (page) => {
+      await page.waitForSelector(ready, { timeout: 30_000 });
+      await page.getByRole('radio', { name: 'Blocked' }).click();
+      await page.waitForTimeout(100);
+      await settle(page);
+    };
+    const fx = (n) => `/sim/fixture%3A${n}`;
+    return [
+      { name: 'sim', path: '/sim', wait: 'main h1', prepare: settle },
+      ...['flat_sc_circle', 'flat_dc_circle', 'sc_sphere', 'sc_cone', 'hyperbolic_plane', 'simple_doily', 'chain_space_motif']
+        .map((n) => ({ name: `sim-${n}`, path: fx(n), wait: 'main h1', prepare: settle })),
+      { name: 'sim-simple_doily-blocked', path: fx('simple_doily'), wait: 'main h1', prepare: blockIt },
+      { name: 'sim-hyperbolic_plane-blocked', path: fx('hyperbolic_plane'), wait: 'main h1', prepare: blockIt },
+      { name: 'sim-chain_space_motif-blocked', path: fx('chain_space_motif'), wait: 'main h1', only: 'desktop', prepare: blockIt },
+      {
+        name: 'sim-sc_sphere-round6', path: fx('sc_sphere'), wait: 'main h1', only: 'desktop',
+        prepare: async (page) => {
+          await settle(page);
+          const s = page.getByRole('slider', { name: /Show up to/ });
+          await s.focus();
+          for (let i = 0; i < 7; i++) await page.keyboard.press('ArrowLeft');
+          await settle(page);
+        },
+      },
+      {
+        name: 'sim-hyperbolic_plane-strain', path: fx('hyperbolic_plane'), wait: 'main h1', only: 'desktop',
+        prepare: async (page) => { await settle(page); await page.getByRole('combobox', { name: 'Colour' }).selectOption('strain'); await page.waitForTimeout(500); },
+      },
+      { name: 'sim-doily-dark', path: fx('simple_doily'), wait: 'main h1', scheme: 'dark', only: 'desktop', prepare: settle },
+    ];
+  })(),
   { name: 'designer', path: '/designer', wait: '.dz-controls' },
   {
     name: 'designer-random',

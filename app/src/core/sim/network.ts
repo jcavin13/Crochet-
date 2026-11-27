@@ -11,6 +11,8 @@
 import type { Graph, Node, Pattern } from '../graph';
 import { analyzeFlatness } from '../flatness';
 import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../params';
+import { hyp, sq } from './lbfgs';
+import { dsin, npMean } from './detmath';
 
 export const COURSE = 0, WALE = 1, SHEAR = 2, BEND_COURSE = 3, BEND_WALE = 4;
 export type SpringKind = 0 | 1 | 2 | 3 | 4;
@@ -27,6 +29,8 @@ export interface Network {
   I: Int32Array; J: Int32Array; L: Float64Array; k: Float64Array; kind: Uint8Array;
   /** 1 = tension-only spring (N4). */
   slack: Uint8Array;
+  /** The same springs as plain objects, in generation order (i < j). */
+  springs: Spring[];
   /** Round per particle (virtual ring particles: the ring's round). */
   particleRound: Int32Array;
   /** virtual particle -> magic ring space id, and back. */
@@ -209,7 +213,7 @@ function geodesicRadii(g: Graph, C: Map<number, number>, h: Float64Array, closed
   const hb: number[] = [];
   for (let r = 0; r < nR; r++) {
     const st = roundNodeIds(g, r).filter((i) => countsAsStitch(g.nodes[i]));
-    hb.push(st.length ? mean(st.map((i) => h[i])) : 0);
+    hb.push(st.length ? npMean(st.map((i) => h[i])) : 0);
   }
   const rr: number[] = [];
   for (let r = 0; r < nR; r++) if (closed.get(r) && (C.get(r) ?? 0) > 0) rr.push(r);
@@ -263,7 +267,7 @@ class Reference {
       this.sigma.set(key, tot < 0 ? -1 : 1);
       this.shift.set(key, 0);
       const [gi, ga] = key.split(',').map(Number);
-      this.shift.set(key, mean(lst.map(([i, a]) => this.raw(i, a, gi, ga))));
+      this.shift.set(key, npMean(lst.map(([i, a]) => this.raw(i, a, gi, ga))));
     }
   }
   has(i: number, p: number): boolean {
@@ -286,18 +290,18 @@ class Reference {
   cell(i: number, p: number, h: number): number {
     const cg = this.cg;
     const x = this.offset(i, p);
-    if (!this.closedPair(i, p)) return Math.hypot(h, x);
+    if (!this.closedPair(i, p)) return hyp(h, x);
     const Ct = cg.Cnode[i], Cb = cg.Cnode[p];
     const dC = Math.abs(Ct - Cb);
-    if (dC < 1e-9 * Math.max(Ct, Cb)) return Math.hypot(h, x * Ct);
+    if (dC < 1e-9 * Math.max(Ct, Cb)) return hyp(h, x * Ct);
     const rb = (h * Cb) / dC, rt = (h * Ct) / dC, alpha = dC / h;
-    return Math.sqrt(h * h + 4 * rt * rb * Math.sin(0.5 * alpha * x) ** 2);
+    return Math.sqrt(h * h + 4 * rt * rb * sq(dsin(0.5 * alpha * x)));
   }
   waleBend(i: number, a: number, b: number, hi: number, ha: number): number {
     const cg = this.cg;
     const x = this.offset(i, a) + this.offset(a, b);
     const lat = this.closedPair(i, a) && this.closedPair(a, b) ? x * Math.sqrt(cg.Cnode[i] * cg.Cnode[b]) : x;
-    return Math.hypot(hi + ha, lat);
+    return hyp(hi + ha, lat);
   }
 }
 
@@ -305,7 +309,7 @@ class Reference {
 export function circleChord(arc: number, R: number | undefined): number {
   if (R === undefined || !(R > 0 && R < Infinity)) return arc;
   const x = Math.min(arc / (2 * R), Math.PI / 2);
-  return 2 * R * Math.sin(x);
+  return 2 * R * dsin(x);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -340,7 +344,7 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
   const ringLen = new Map<number, number>();
   for (const [s, p] of spaceParticle) {
     const members = nodesInSpace(g, s);
-    if (members.length) ringLen.set(p, (members.length * mean(members.map((i) => wEff[i]))) / TAU);
+    if (members.length) ringLen.set(p, (members.length * npMean(members.map((i) => wEff[i]))) / TAU);
   }
   const Lc = (a: number, b: number) => 0.5 * (w[a] + w[b]);
   const tchChain = g.nodes.map((nd) => nd.role === 'tch' && !nd.countsAs);
@@ -375,7 +379,7 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
       if (a >= n || chspChain[a]) continue;              // N4
       for (const nb of [a - 1, a + 1]) {
         if (nb >= 0 && nb < n && prounds[nb] === prounds[a] && nb !== i && !(tchChain[nb] || chspChain[nb])) {
-          const L = ref.has(i, a) && G[nb] === G[a] ? ref.cell(i, nb, h[i]) : Math.hypot(h[i], Lc(a, nb));
+          const L = ref.has(i, a) && G[nb] === G[a] ? ref.cell(i, nb, h[i]) : hyp(h[i], Lc(a, nb));
           push(i, nb, L, ks * sWale[i], SHEAR);
         }
       }
@@ -421,8 +425,10 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
       for (let q = a; q <= b && q < n; q++) if (chspChain[q]) { slack[s] = 1; break; }
     }
   });
+  const springs: Spring[] = [];
+  for (let q = 0; q < m; q++) springs.push({ i: I[q], j: J[q], L: L[q], k: K[q], kind: kind[q] as SpringKind, slack: slack[q] === 1 });
   return {
-    nNodes: n, nParticles, m, I, J, L, k: K, kind, slack,
+    nNodes: n, nParticles, m, I, J, L, k: K, kind, slack, springs,
     particleRound: Int32Array.from(prounds), virtualSpace, spaceParticle, anchors,
     width: w, height: h, graph: g, params,
   };

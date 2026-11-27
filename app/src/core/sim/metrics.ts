@@ -5,6 +5,7 @@
  */
 import { simConfig as defaultConfig, type SimConfig } from '../params';
 import type { ShapeClass } from '../flatness';
+import { hyp, sq } from './lbfgs';
 
 export interface ShapeMetric {
   class: ShapeClass;
@@ -22,8 +23,8 @@ export function eigSym3(Ain: number[][]): { values: number[]; vectors: number[][
   const A = Ain.map((r) => r.slice());
   const V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
   for (let sweep = 0; sweep < 50; sweep++) {
-    const off = A[0][1] ** 2 + A[0][2] ** 2 + A[1][2] ** 2;
-    if (off < 1e-30 * (A[0][0] ** 2 + A[1][1] ** 2 + A[2][2] ** 2 + 1e-300)) break;
+    const off = sq(A[0][1]) + sq(A[0][2]) + sq(A[1][2]);
+    if (off < 1e-30 * (sq(A[0][0]) + sq(A[1][1]) + sq(A[2][2]) + 1e-300)) break;
     for (const [p, q] of [[0, 1], [0, 2], [1, 2]] as const) {
       if (Math.abs(A[p][q]) < 1e-300) continue;
       const theta = (A[q][q] - A[p][p]) / (2 * A[p][q]);
@@ -74,7 +75,7 @@ export function shapeMetric(X: ArrayLike<number>, nodeRounds: ArrayLike<number>,
   if (rounds.length) {
     const f = centroidOf(rounds[0]), l = centroidOf(rounds[rounds.length - 1]);
     const a = [l[0] - f[0], l[1] - f[1], l[2] - f[2]];
-    const na = Math.hypot(a[0], a[1], a[2]);
+    const na = hyp(a[0], a[1], a[2]);
     if (Rg > 0 && na > config.axis_min * Rg) {
       axis = [a[0] / na, a[1] / na, a[2] / na];
       axisKind = 'rounds';
@@ -96,7 +97,7 @@ export function shapeMetric(X: ArrayLike<number>, nodeRounds: ArrayLike<number>,
     if (zs.length >= 3) {
       const m = zs.reduce((s, v) => s + v, 0) / zs.length;
       zbar.push(m);
-      sig.push(Math.sqrt(zs.reduce((s, v) => s + (v - m) ** 2, 0) / zs.length));
+      sig.push(Math.sqrt(zs.reduce((s, v) => s + sq(v - m), 0) / zs.length));
     }
   }
   let A = 0, W = 0;
@@ -113,7 +114,7 @@ export function shapeMetric(X: ArrayLike<number>, nodeRounds: ArrayLike<number>,
     D.forEach((v, q) => {
       if (rr[q] !== last) return;
       const t = z[q];
-      s += Math.hypot(v[0] - t * axis[0], v[1] - t * axis[1], v[2] - t * axis[2]);
+      s += hyp(v[0] - t * axis[0], v[1] - t * axis[1], v[2] - t * axis[2]);
       k++;
     });
     outer = k ? s / k : 0;

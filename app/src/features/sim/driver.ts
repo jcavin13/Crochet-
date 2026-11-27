@@ -40,7 +40,7 @@ export function createDriver(o: DriverOptions) {
     if (st.done || t - lastSent > 30) {
       lastSent = t;
       o.emit({
-        job, positions: Float32Array.from(sim.positions), step: st, ms,
+        job, positions: Float32Array.from(sim.positions), step: st, ms, accuracy: sim.accuracy,
         strain: st.done ? sim.strain() : undefined,
         metric: st.done ? metricOf(sim) : undefined,
         block: st.done ? sim.block() : undefined,

@@ -26,8 +26,10 @@ export interface SimFrame {
   step: StepResult;
   metric?: MetricSummary;
   block?: BlockSummary;
-  /** ms spent in step() for this frame, and iterations/s estimate. */
+  /** ms spent in step() for this frame. */
   ms: number;
+  /** Solver tolerances in use (see core/sim createSim). */
+  accuracy: 'reference' | 'fast';
 }
 
 export type FromWorker = ({ type: 'frame' } & SimFrame) | { type: 'error'; job: number; message: string };

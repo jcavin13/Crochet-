@@ -6,7 +6,7 @@
  */
 import type { Graph, Pattern } from '../graph';
 import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../params';
-import { now } from './lbfgs';
+import { hyp, now } from './lbfgs';
 import { setupBlock, type BlockResult, type BlockSetup } from './blocking';
 import { shapeMetric, type ShapeMetric } from './metrics';
 import { buildNetwork, type Network } from './network';
@@ -17,10 +17,20 @@ export interface CreateSimOptions {
   /** Initial round to show (0-based). Default: the last. */
   uptoRound?: number;
   blocked?: boolean;
+  /**
+   * 'reference': the lab's tolerances (gtol 1e-6 per round, 1e-8 final) — results equal
+   * `simulate()`; 'fast': 1e-4 / 1e-5 — same classes on every fixture, 10–40× fewer iterations,
+   * but multistable shapes may settle in another minimum; 'auto' (default): reference up to
+   * AUTO_REFERENCE_MAX_NODES nodes, fast above.
+   */
+  accuracy?: 'reference' | 'fast' | 'auto';
   gtolRound?: number;
   gtolFinal?: number;
   network?: Network;
 }
+
+export const AUTO_REFERENCE_MAX_NODES = 600;
+export const FAST_TOLERANCES = { gtolRound: 1e-4, gtolFinal: 1e-5 } as const;
 
 export type SimPhase = 'growing' | 'relaxing' | 'blocking' | 'ready';
 
@@ -30,6 +40,7 @@ export interface BlockSummary {
   meanAbsStrain: number;
   maxAbsStrain: number;
   buckleFraction: number;
+  compressedFraction: number;
   converged: boolean;
 }
 
@@ -46,6 +57,8 @@ export interface StepResult {
 export interface SimHandle {
   readonly network: Network;
   readonly nRounds: number;
+  /** Tolerances in use. */
+  readonly accuracy: 'reference' | 'fast';
   /** [3 nParticles] positions of the shown state (NaN: particle not made yet). Updated by step(). */
   readonly positions: Float32Array;
   step(budgetMs: number): StepResult;
@@ -64,7 +77,10 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
   const cfg = opts.config ?? defaultConfig;
   const net = opts.network ?? buildNetwork(input, params, cfg);
   const nRounds = net.graph.rounds.length;
-  const grower = new Grower(net, cfg, { gtolRound: opts.gtolRound, gtolFinal: opts.gtolFinal });
+  const want = opts.accuracy ?? 'auto';
+  const accuracy: 'reference' | 'fast' = want === 'auto' ? (net.nNodes <= AUTO_REFERENCE_MAX_NODES ? 'reference' : 'fast') : want;
+  const tol = accuracy === 'fast' ? FAST_TOLERANCES : { gtolRound: 1e-6, gtolFinal: 1e-8 };
+  const grower = new Grower(net, cfg, { gtolRound: opts.gtolRound ?? tol.gtolRound, gtolFinal: opts.gtolFinal ?? tol.gtolFinal });
   const positions = new Float32Array(3 * net.nParticles).fill(NaN);
   let target = clampRound(opts.uptoRound ?? nRounds - 1);
   let blocked = !!opts.blocked;
@@ -125,6 +141,7 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
   return {
     network: net,
     nRounds,
+    accuracy,
     positions,
     step,
     setUptoRound(r: number) { target = clampRound(r); },
@@ -144,7 +161,7 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
       const b = blockCache.get(target);
       return b && {
         verdict: b.verdict, message: b.message, meanAbsStrain: b.meanAbsStrain, maxAbsStrain: b.maxAbsStrain,
-        buckleFraction: b.buckleFraction, converged: b.converged,
+        buckleFraction: b.buckleFraction, compressedFraction: b.compressedFraction, converged: b.converged,
       };
     },
     strain() {
@@ -153,7 +170,7 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
       if (!X) return out;
       for (let s = 0; s < net.m; s++) {
         const a = 3 * net.I[s], b = 3 * net.J[s];
-        const d = Math.hypot(X[a] - X[b], X[a + 1] - X[b + 1], X[a + 2] - X[b + 2]);
+        const d = hyp(X[a] - X[b], X[a + 1] - X[b + 1], X[a + 2] - X[b + 2]);
         out[s] = d / net.L[s] - 1;
       }
       return out;

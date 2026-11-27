@@ -6,6 +6,14 @@
  * spread a solve over animation frames.
  */
 
+/**
+ * Arithmetic helpers that use only IEEE-754 exact operations (+ − × ÷ √), so results are
+ * bit-identical across JS engines (Math.hypot and ** are not specified to be; the relaxed shapes
+ * of ruffles and closed pieces are sensitive to last-bit differences).
+ */
+export const sq = (x: number) => x * x;
+export const hyp = (a: number, b: number, c = 0) => Math.sqrt(a * a + b * b + c * c);
+
 /** A set of springs over `n` particles (compact indices), with k/L precomputed. */
 export interface SpringSet {
   n: number;
@@ -19,8 +27,13 @@ export interface SpringSet {
  * Writes the gradient into g (overwritten) and returns E.
  */
 export function springEnergy(s: SpringSet, x: Float64Array, g: Float64Array): number {
+  // gradient accumulated as numpy's bincount(I, f) − bincount(J, f) (same association as the lab)
+  const n3 = 3 * s.n;
+  if (!scratch || scratch.length < n3) scratch = new Float64Array(n3);
+  const gJ = scratch;
   g.fill(0);
-  let E = 0;
+  gJ.fill(0, 0, n3);
+  let sum = 0;
   const { I, J, L, kL, slack, m } = s;
   for (let q = 0; q < m; q++) {
     const a = 3 * I[q], b = 3 * J[q];
@@ -28,16 +41,17 @@ export function springEnergy(s: SpringSet, x: Float64Array, g: Float64Array): nu
     const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
     let e = r - L[q];
     if (slack[q] && e < 0) e = 0;
-    if (e === 0) continue;
     const k = kL[q];
-    E += 0.5 * k * e * e;
+    sum += k * (e * e);
     const c = (k * e) / (r > 1e-12 ? r : 1e-12);
-    const fx = c * dx, fy = c * dy, fz = c * dz;
+    const fx = dx * c, fy = dy * c, fz = dz * c;
     g[a] += fx; g[a + 1] += fy; g[a + 2] += fz;
-    g[b] -= fx; g[b + 1] -= fy; g[b + 2] -= fz;
+    gJ[b] += fx; gJ[b + 1] += fy; gJ[b + 2] += fz;
   }
-  return E;
+  for (let i = 0; i < n3; i++) g[i] -= gJ[i];
+  return 0.5 * sum;
 }
+let scratch: Float64Array | null = null;
 
 export type Objective = (x: Float64Array, g: Float64Array) => number;
 
@@ -245,7 +259,7 @@ function dcstep(s: StepState, stp: number, fp: number, dp: number, stpmin: numbe
   if (fp > fx) {
     const theta = (3 * (fx - fp)) / (stp - stx) + dx + dp;
     const sc = Math.max(Math.abs(theta), Math.abs(dx), Math.abs(dp));
-    let gamma = sc * Math.sqrt((theta / sc) ** 2 - (dx / sc) * (dp / sc));
+    let gamma = sc * Math.sqrt(sq(theta / sc) - (dx / sc) * (dp / sc));
     if (stp < stx) gamma = -gamma;
     const p = gamma - dx + theta, q = gamma - dx + gamma + dp, r = p / q;
     const stpc = stx + r * (stp - stx);
@@ -255,7 +269,7 @@ function dcstep(s: StepState, stp: number, fp: number, dp: number, stpmin: numbe
   } else if (sgnd < 0) {
     const theta = (3 * (fx - fp)) / (stp - stx) + dx + dp;
     const sc = Math.max(Math.abs(theta), Math.abs(dx), Math.abs(dp));
-    let gamma = sc * Math.sqrt((theta / sc) ** 2 - (dx / sc) * (dp / sc));
+    let gamma = sc * Math.sqrt(sq(theta / sc) - (dx / sc) * (dp / sc));
     if (stp > stx) gamma = -gamma;
     const p = gamma - dp + theta, q = gamma - dp + gamma + dx, r = p / q;
     const stpc = stp + r * (stx - stp);
@@ -265,7 +279,7 @@ function dcstep(s: StepState, stp: number, fp: number, dp: number, stpmin: numbe
   } else if (Math.abs(dp) < Math.abs(dx)) {
     const theta = (3 * (fx - fp)) / (stp - stx) + dx + dp;
     const sc = Math.max(Math.abs(theta), Math.abs(dx), Math.abs(dp));
-    let gamma = sc * Math.sqrt(Math.max(0, (theta / sc) ** 2 - (dx / sc) * (dp / sc)));
+    let gamma = sc * Math.sqrt(Math.max(0, sq(theta / sc) - (dx / sc) * (dp / sc)));
     if (stp > stx) gamma = -gamma;
     const p = gamma - dp + theta, q = gamma + (dx - dp) + gamma, r = p / q;
     let stpc: number;
@@ -284,7 +298,7 @@ function dcstep(s: StepState, stp: number, fp: number, dp: number, stpmin: numbe
     if (s.brackt) {
       const theta = (3 * (fp - fy)) / (sty - stp) + dy + dp;
       const sc = Math.max(Math.abs(theta), Math.abs(dy), Math.abs(dp));
-      let gamma = sc * Math.sqrt((theta / sc) ** 2 - (dy / sc) * (dp / sc));
+      let gamma = sc * Math.sqrt(sq(theta / sc) - (dy / sc) * (dp / sc));
       if (stp > sty) gamma = -gamma;
       const p = gamma - dp + theta, q = gamma - dp + gamma + dy, r = p / q;
       stpf = stp + r * (sty - stp);

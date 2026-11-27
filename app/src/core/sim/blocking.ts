@@ -10,7 +10,7 @@
  * excluded), plus a plain-language verdict.
  */
 import { simConfig as defaultConfig, type SimConfig } from '../params';
-import { Lbfgs, springEnergy, type SpringSet } from './lbfgs';
+import { hyp, Lbfgs, springEnergy, type SpringSet } from './lbfgs';
 import { shapeMetric } from './metrics';
 import { COURSE, type Network } from './network';
 
@@ -27,13 +27,21 @@ export interface BlockResult {
   maxCompression: number;
   maxStretch: number;
   buckleFraction: number;
+  /** Fraction of all non-slack springs (courses, wales, shear, bends) compressed by more than `block_buckle_strain`. */
+  compressedFraction: number;
   pinned: Uint8Array;
   verdict: BlockVerdict;
   message: string;
 }
 
-/** Thresholds for the verdict (not part of the shared spec; UI wording only). */
-export const BLOCK_EASY_MEAN_STRAIN = 0.03;
+/**
+ * Thresholds for the verdict (UI wording only, not part of the shared spec). Measured on the
+ * fixtures (course buckle / all-spring compressed fractions): flat sc 0/0, chain-space motif 0/0,
+ * flat dc 1.6%/0.5%, simple doily 3.3%/1.4% (two slip stitches in one stitch), cone 1.5%/30%
+ * (its wales would have to fold), sphere 4%/19%, hyperbolic 36%/40%.
+ */
+export const BLOCK_EASY_MEAN_STRAIN = 0.06;
+export const BLOCK_IMPOSSIBLE_FRACTION = 0.1;
 
 export interface BlockSetup {
   opt: Lbfgs;
@@ -52,7 +60,7 @@ export function setupBlock(net: Network, X: Float64Array, config: SimConfig = de
   for (let d = 1; d < 3; d++) if (Math.abs(n[d]) < Math.abs(n[kmin])) kmin = d;
   const e = [0, 0, 0]; e[kmin] = 1;
   let u = [n[1] * e[2] - n[2] * e[1], n[2] * e[0] - n[0] * e[2], n[0] * e[1] - n[1] * e[0]];
-  const nu = Math.hypot(u[0], u[1], u[2]);
+  const nu = hyp(u[0], u[1], u[2]);
   u = u.map((x) => x / nu);
   const v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
   let last = -1;
@@ -69,9 +77,11 @@ export function setupBlock(net: Network, X: Float64Array, config: SimConfig = de
     P[2 * p] = pu; P[2 * p + 1] = pv;
     if (pinned[p]) {
       const z = D[0] * n[0] + D[1] * n[1] + D[2] * n[2];
-      const r = Math.hypot(D[0] - z * n[0], D[1] - z * n[1], D[2] - z * n[2]);
-      const a = Math.atan2(pv, pu);
-      P[2 * p] = s * r * Math.cos(a); P[2 * p + 1] = s * r * Math.sin(a);
+      const r = hyp(D[0] - z * n[0], D[1] - z * n[1], D[2] - z * n[2]);
+      // angle preserved: (cos, sin) of atan2(pv, pu), computed without engine-dependent trig
+      const h = hyp(pu, pv);
+      const ca = h > 0 ? pu / h : 1, sa = h > 0 ? pv / h : 0;
+      P[2 * p] = s * r * ca; P[2 * p + 1] = s * r * sa;
     }
   }
   // springs between placed particles (all particles, pinned ones fixed)
@@ -108,11 +118,11 @@ export function setupBlock(net: Network, X: Float64Array, config: SimConfig = de
       for (let d = 0; d < 3; d++) pos[3 * p + d] = c[d] + Y[3 * p] * u[d] + Y[3 * p + 1] * v[d];
     }
     const strain = new Float64Array(net.m).fill(NaN);
-    let sumAbs = 0, maxAbs = 0, maxComp = -Infinity, maxStr = -Infinity, cnt = 0, nCourse = 0, nBuckle = 0;
+    let sumAbs = 0, maxAbs = 0, maxComp = -Infinity, maxStr = -Infinity, cnt = 0, nCourse = 0, nBuckle = 0, nSolid = 0, nComp = 0;
     const thr = config.block_buckle_strain;
     for (const q of sel) {
       const a = 3 * net.I[q], b = 3 * net.J[q];
-      const d = Math.hypot(pos[a] - pos[b], pos[a + 1] - pos[b + 1], pos[a + 2] - pos[b + 2]);
+      const d = hyp(pos[a] - pos[b], pos[a + 1] - pos[b + 1], pos[a + 2] - pos[b + 2]);
       const st = d / net.L[q] - 1;
       strain[q] = st;
       const eff = net.slack[q] && st < 0 ? 0 : st;
@@ -121,26 +131,33 @@ export function setupBlock(net: Network, X: Float64Array, config: SimConfig = de
       maxComp = Math.max(maxComp, -eff);
       maxStr = Math.max(maxStr, eff);
       if (net.kind[q] === COURSE && !net.slack[q]) { nCourse++; if (st < -thr) nBuckle++; }
+      if (!net.slack[q]) { nSolid++; if (st < -thr) nComp++; }
     }
     const buckleFraction = nCourse ? nBuckle / nCourse : 0;
     const meanAbsStrain = cnt ? sumAbs / cnt : 0;
-    const { verdict, message } = blockVerdict(buckleFraction, meanAbsStrain);
+    const compressedFraction = nSolid ? nComp / nSolid : 0;
+    const { verdict, message } = blockVerdict(buckleFraction, meanAbsStrain, compressedFraction);
     return {
       positions: pos, energy: opt.f, converged: opt.status === 'converged', strain,
       meanAbsStrain, maxAbsStrain: maxAbs, maxCompression: cnt ? maxComp : 0, maxStretch: cnt ? maxStr : 0,
-      buckleFraction, pinned, verdict, message,
+      buckleFraction, compressedFraction, pinned, verdict, message,
     };
   };
   return { opt, finish };
 }
 
-export function blockVerdict(buckleFraction: number, meanAbsStrain: number): { verdict: BlockVerdict; message: string } {
-  if (buckleFraction > 0) {
-    const pct = Math.max(1, Math.round(buckleFraction * 100));
-    return { verdict: 'impossible', message: `Will not block flat: ${pct}% of the edge would have to be compressed.` };
+export function blockVerdict(buckleFraction: number, meanAbsStrain: number, compressedFraction = 0): { verdict: BlockVerdict; message: string } {
+  const pct = (x: number) => Math.max(1, Math.round(x * 100));
+  if (buckleFraction > BLOCK_IMPOSSIBLE_FRACTION || compressedFraction > BLOCK_IMPOSSIBLE_FRACTION) {
+    const message = buckleFraction > BLOCK_IMPOSSIBLE_FRACTION
+      ? `Will not block flat: ${pct(buckleFraction)}% of the edge would have to be compressed.`
+      : `Will not block flat: ${pct(compressedFraction)}% of the fabric would have to be compressed (it would fold).`;
+    return { verdict: 'impossible', message };
   }
-  if (meanAbsStrain <= BLOCK_EASY_MEAN_STRAIN) return { verdict: 'easy', message: 'Blocks flat easily.' };
-  return { verdict: 'firm', message: 'Blocks flat with firm pinning.' };
+  if (buckleFraction > 0 || compressedFraction > 0 || meanAbsStrain > BLOCK_EASY_MEAN_STRAIN) {
+    return { verdict: 'firm', message: 'Blocks flat with firm pinning.' };
+  }
+  return { verdict: 'easy', message: 'Blocks flat easily.' };
 }
 
 /** Blocked solve of relaxed positions X, synchronously. */

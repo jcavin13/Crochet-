@@ -12,6 +12,7 @@ import type { Graph, Pattern } from '../graph';
 import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../params';
 import { Lbfgs, springEnergy, now, type SpringSet } from './lbfgs';
 import { buildNetwork, nodesInSpace, roundNodeIds, WALE, type Network } from './network';
+import { dcos, dsin, npMean, npSum } from './detmath';
 
 export const GOLDEN = 2.399963;
 
@@ -54,7 +55,8 @@ const scale = (a: V3, s: number): V3 => [a[0] * s, a[1] * s, a[2] * s];
 const dot3 = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const norm = (a: V3) => Math.sqrt(dot3(a, a));
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const unit = (v: V3): [V3, number] => { const n = norm(v); return [n > 0 ? scale(v, 1 / n) : v, n]; };
+const div = (a: V3, s: number): V3 => [a[0] / s, a[1] / s, a[2] / s];
+const unit = (v: V3): [V3, number] => { const n = norm(v); return [n > 0 ? div(v, n) : v, n]; };
 const Z: V3 = [0, 0, 1];
 
 // ---------------------------------------------------------------------------------------------
@@ -94,7 +96,7 @@ export class Placer {
   centroid(): V3 {
     let c: V3 = [0, 0, 0], k = 0;
     for (let i = 0; i < this.net.nParticles; i++) if (isPlaced(this.X, i)) { c = add(c, get(this.X, i)); k++; }
-    return k ? scale(c, 1 / k) : [0, 0, 0];
+    return k ? div(c, k) : [0, 0, 0];
   }
 
   tangent(a: number): V3 {
@@ -132,7 +134,7 @@ export class Placer {
       const c = this.ringCenter.get(s)!;
       const R = (n * net.width[i]) / (2 * Math.PI);
       const th = (2 * Math.PI * k) / n;
-      set(X, i, add(c, [R * Math.cos(th), R * Math.sin(th), 0]));
+      set(X, i, add(c, [R * dcos(th), R * dsin(th), 0]));
     }
     const byP3 = new Map<number, string>();
     for (const i of ids) {
@@ -145,12 +147,12 @@ export class Placer {
         const mem = this.ringMembers.get(s)!;
         const j = mem.indexOf(i);
         const th = (2 * Math.PI * j) / mem.length;
-        set(X, i, add(get(X, p), scale([Math.cos(th), Math.sin(th), 0], this.waleLen(i, p))));
+        set(X, i, add(get(X, p), scale([dcos(th), dsin(th), 0], this.waleLen(i, p))));
       } else if (A.length) {
         // P3
         let base: V3 = [0, 0, 0];
         for (const a of A) base = add(base, get(X, a));
-        base = scale(base, 1 / A.length);
+        base = div(base, A.length);
         let v: V3 = [0, 0, 0];
         for (const a of A) if (a < nn && net.anchors[a].length) v = add(v, sub(get(X, a), get(X, net.anchors[a][0])));
         let [u, nv] = unit(v);
@@ -164,9 +166,7 @@ export class Placer {
             if (nv < 1e-9) u = [1, 0, 0];
           }
         }
-        let Lw = 0;
-        for (const a of A) Lw += this.waleLen(i, a);
-        Lw /= A.length;
+        const Lw = npMean(A.map((a) => this.waleLen(i, a)));
         set(X, i, add(base, scale(u, Lw)));
         byP3.set(i, A.join(','));
       } else {
@@ -193,9 +193,7 @@ export class Placer {
       while (k + run.length < ids.length && byP3.get(ids[k + run.length]) === key) run.push(ids[k + run.length]);
       if (run.length >= 2) {
         const t = this.tangent(net.anchors[i][0]);
-        let wb = 0;
-        for (const q of run) wb += net.width[q];
-        wb /= run.length;
+        const wb = npMean(run.map((q) => net.width[q]));
         const m = run.length;
         run.forEach((nid, q0) => set(X, nid, add(get(X, nid), scale(t, (q0 + 1 - (m + 1) / 2) * (wb / 2)))));
       }
@@ -205,11 +203,9 @@ export class Placer {
     this.placeLoops(r, ids);
     // P6 perturbation
     if (ids.length) {
-      let wbar = 0;
-      for (const i of ids) wbar += net.width[i];
-      wbar /= ids.length;
+      const wbar = npMean(ids.map((i) => net.width[i]));
       const eps = this.cfg.perturb_eps;
-      for (const i of ids) X[3 * i + 2] += eps * wbar * Math.sin(GOLDEN * (i + 1));
+      for (const i of ids) X[3 * i + 2] += eps * wbar * dsin(GOLDEN * (i + 1));
     }
     return added;
   }
@@ -225,7 +221,7 @@ export class Placer {
       const seq = [a, ...ch, b];
       const rest: number[] = [];
       for (let q = 0; q + 1 < seq.length; q++) rest.push(0.5 * (net.width[seq[q]] + net.width[seq[q + 1]]));
-      const S = rest.reduce((x, y) => x + y, 0);
+      const S = npSum(rest);
       const xa = get(X, a), xb = get(X, b);
       const d = sub(xb, xa);
       const D = norm(d);
@@ -234,7 +230,7 @@ export class Placer {
       for (let q = 0; q < ch.length; q++) { cum += rest[q]; t.push(cum / S); }
       let dHat: V3;
       if (D < 1e-9) { const ta = this.tangent(a); dHat = norm(ta) > 0 ? ta : [1, 0, 0]; }
-      else dHat = scale(d, 1 / D);
+      else dHat = div(d, D);
       const mid = scale(add(xa, xb), 0.5);
       let o = sub(mid, this.roundCentroid);
       o = sub(o, scale(dHat, dot3(o, dHat)));
@@ -247,10 +243,10 @@ export class Placer {
       }
       const th = D > 1e-9 ? arcAngle(S / Math.max(D, 1e-9 * S)) : 1.95 * Math.PI;
       const R = S / th;
-      const C0 = sub(mid, scale(o, R * Math.cos(th / 2)));
+      const C0 = sub(mid, scale(scale(o, R), dcos(th / 2)));
       ch.forEach((c, q) => {
         const ph = -th / 2 + t[q] * th;
-        set(X, c, add(C0, add(scale(dHat, R * Math.sin(ph)), scale(o, R * Math.cos(ph)))));
+        set(X, c, add(C0, scale(add(scale(dHat, dsin(ph)), scale(o, dcos(ph))), R)));
       });
     }
   }
@@ -259,7 +255,7 @@ export class Placer {
 /** theta in (0, 1.95 pi] with theta / (2 sin(theta/2)) = ratio (arc length / chord). */
 export function arcAngle(ratio: number): number {
   let lo = 1e-9, hi = 1.95 * Math.PI;
-  const f = (t: number) => t / (2 * Math.sin(t / 2)) - ratio;
+  const f = (t: number) => t / (2 * dsin(t / 2)) - ratio;
   if (f(hi) < 0) return hi;
   for (let k = 0; k < 80; k++) {
     const mid = 0.5 * (lo + hi);
@@ -335,25 +331,29 @@ export class Grower {
   private readonly gtolRound: number;
   private readonly gtolFinal: number;
   private readonly maxIter: number;
+  private readonly maxIterFinal: number;
 
-  constructor(readonly net: Network, cfg: SimConfig, opts: { uptoRound?: number; gtolRound?: number; gtolFinal?: number; maxIter?: number } = {}) {
+  constructor(readonly net: Network, cfg: SimConfig, opts: { uptoRound?: number; gtolRound?: number; gtolFinal?: number; maxIter?: number; maxIterFinal?: number } = {}) {
     this.placer = new Placer(net, cfg);
     const R = net.graph.rounds.length;
     this.lastRound = opts.uptoRound === undefined ? R - 1 : Math.min(opts.uptoRound, R - 1);
     this.gtolRound = opts.gtolRound ?? 1e-6;
     this.gtolFinal = opts.gtolFinal ?? 1e-8;
     this.maxIter = opts.maxIter ?? 20000;
+    // the lab allows 20000 for every L-BFGS run; the final gtol 1e-8 pass on the near-isometric
+    // flat circles can need ~40000 from a slightly different path
+    this.maxIterFinal = opts.maxIterFinal ?? 50000;
     if (this.lastRound < 0) this.phase = 'done';
   }
 
   /** Current positions (the optimiser's iterate written back). */
   get X(): Float64Array { return this.placer.X; }
 
-  private start(gtol: number) {
+  private start(gtol: number, maxIter: number) {
     const mask = this.placer.placedMask();
     this.sub = subProblem(this.net, mask);
     const sp = this.sub.springs;
-    this.opt = new Lbfgs((x, g) => springEnergy(sp, x, g), gather(this.placer.X, this.sub.idx), { gtol, maxIter: this.maxIter });
+    this.opt = new Lbfgs((x, g) => springEnergy(sp, x, g), gather(this.placer.X, this.sub.idx), { gtol, maxIter });
   }
 
   /** Write the optimiser's current iterate into X (for live display). */
@@ -363,8 +363,8 @@ export class Grower {
   advance(deadline = Infinity): boolean {
     while (this.phase !== 'done') {
       if (!this.opt) {
-        if (this.phase === 'round') { this.round++; this.placer.placeRound(this.round); this.start(this.gtolRound); }
-        else this.start(this.gtolFinal);
+        if (this.phase === 'round') { this.round++; this.placer.placeRound(this.round); this.start(this.gtolRound, this.maxIter); }
+        else this.start(this.gtolFinal, this.maxIterFinal);
       }
       const opt = this.opt!;
       const st = opt.run(deadline);
