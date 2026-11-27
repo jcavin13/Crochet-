@@ -69,7 +69,8 @@ for free, and avoids the crumpled local minima a flat start falls into:
 3. Relax to tolerance. Repeat for the next round.
 
 The lab sim finishes with a global L-BFGS minimisation and is the reference. The app sim uses a
-fixed budget of damped iterations per frame.
+port of the same L-BFGS (time-budgeted steps in a Web Worker); for pieces over 600 nodes the
+interactive view uses looser tolerances and says so.
 
 ## 5. Shape metric and classification
 

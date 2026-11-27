@@ -51,7 +51,7 @@ Knitty is an interactive sketch-based design system for creating knitted animals
 
 ### 1.5 Guo, Lin, Narayanan, McCann — *Representing Crochet with Stitch Meshes* (2020)
 - Venue: ACM Symposium on Computational Fabrication (SCF '20).
-- Links: [CMU Textiles Lab page](https://textiles-lab.github.io/publications/2020-crochet-meshes) · ACM DL record [10.1145/3424630.3425409](https://doi.org/10.1145/3424630.3425409)
+- Links: [CMU Textiles Lab page](https://textiles-lab.github.io/publications/2020-crochet-meshes) · ACM DL record reported as 10.1145/3424630.3425409 (**DOI not confirmed** — see the unverified list)
 - Author-name discrepancy: the Textiles Lab page lists the first author as "Michelle Guo", while Crossref metadata lists "Runbo Guo". See the unverified section.
 
 This paper extends stitch meshes (see §3) to crochet. It adds a special edge type for the **"current loop"**, the loop held on the hook while working. It also adds a library of face types for common crochet stitches. Crochet instructions are produced from the mesh, and the expected yarn geometry is simulated.
@@ -170,7 +170,7 @@ The paper speeds up yarn-level cloth by linearizing yarn–yarn contact forces. 
 **What it means for this project.** It confirms that yarn-level contact is the bottleneck, which reinforces keeping it out of the interactive loop.
 
 ### 3.3 Yuksel, Kaldor, James, Marschner — *Stitch Meshes for Modeling Knitted Clothing with Yarn-level Detail* (2012)
-- Venue: ACM Transactions on Graphics 31(3) (SIGGRAPH 2012).
+- Venue: ACM Transactions on Graphics 31(4) (SIGGRAPH 2012).
 - Links: [project page](https://www.cs.cornell.edu/projects/stitchmeshes/) · [paper PDF](https://research.cs.cornell.edu/stitchmeshes/stitchmeshes.pdf)
 
 The paper introduces the **stitch mesh**: a polygon mesh whose faces are typed stitches, and whose edges are labelled as row edges (yarn-wise) or column edges (wale-wise). Yarn curves are generated per face and then relaxed with yarn-level simulation.

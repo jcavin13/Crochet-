@@ -32,10 +32,10 @@ Everything is a view of the **stitch graph** (`spec/pattern.schema.json`):
 | Path | Language | Role |
 |---|---|---|
 | `spec/` | JSON / Markdown | The contracts: notation, vocabulary, graph schema, physics model, flatness rule, fixtures |
-| `app/src/core/` | TypeScript, no DOM | notation → AST → graph, validation, flatness, real-time sim, generators |
+| `app/src/core/` | TypeScript, no DOM | notation → AST → graph, validation, flatness, chart layout, real-time sim, doily generator, counter steps, amigurumi (surfaces of revolution, gauge) |
 | `app/src/features/`, `app/src/app/` | React | editor, chart, 3D view, designer, counter, gallery; PWA shell |
 | `lab/src/crolab/` | Python | reference sim, discrete curvature, parameter fitting, swatch photo analysis, reports |
-| `data/` | text | public-domain corpus transcribed into the notation, with `MANIFEST.csv` |
+| `data/` | text | pattern corpus in the notation (currently 16 original CC0 patterns; the public-domain vintage corpus is not yet gathered), with `MANIFEST.csv` |
 
 ## Contracts between lab/ and app/
 
