@@ -73,14 +73,6 @@ export const ROUTES = [
     return [
       { name: 'chart-symmetry', path: '/chart/corpus%3Apetal-doily-12', wait: '.ch-svg', prepare: symOn },
       { name: 'chart-symmetry-mirror', path: '/chart/fixture%3Asimple_doily', wait: '.ch-svg', only: 'desktop', prepare: symOn },
-      {
-        name: 'chart-symmetry-defect', path: '/chart/corpus%3Asunburst-dtr-doily-20', wait: '.ch-svg',
-        prepare: async (page) => {
-          await page.locator('.sy-defects button').first().click();
-          await page.waitForTimeout(300);
-          await page.evaluate(() => window.scrollTo(0, 0));
-        },
-      },
     ];
   })(),
   // symmetry defect as a hint in the Problems list + the compact symmetry panel
@@ -211,6 +203,38 @@ export const ROUTES = [
     name: 'snowflake-chart', path: '/designer?kind=snowflake&view=chart', wait: '.ch-svg',
     prepare: async (page) => { await page.locator('.sf-tabs').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - (window.innerWidth < 900 ? 72 : 8))); await page.waitForTimeout(300); },
   },
+  // snowflake 3D tab: pinned out on the template (default) and "Before blocking" (resting on a table)
+  ...(() => {
+    const ready = async (page) => { await page.waitForSelector('.sf-sim .sim-stage[data-state="ready"]', { timeout: 90_000 }); await page.waitForTimeout(600); };
+    const toSim = async (page) => { await page.locator('.sf-sim').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - (window.innerWidth < 900 ? 60 : 8))); await page.waitForTimeout(300); };
+    const preset = (name, points) => async (page) => {
+      await page.getByRole('button', { name, exact: true }).first().click();
+      if (points) await page.locator('button.dz-toggle', { hasText: new RegExp(`^${points}$`) }).first().click();
+      await page.waitForTimeout(500);
+    };
+    const relaxed = async (page) => { await page.getByRole('radio', { name: 'Before blocking' }).click(); };
+    const go = (...steps) => async (page) => { for (const s of steps) await s(page); await ready(page); await toSim(page); };
+    const path = '/designer?kind=snowflake&view=3d';
+    // the presets are in the design pane; on a phone it is a separate pane (switch back to the result)
+    const design = async (page) => { const t = page.getByRole('tab', { name: 'Design' }); if (await t.isVisible().catch(() => false)) await t.click(); };
+    const result = async (page) => { const t = page.getByRole('tab', { name: 'Snowflake' }); if (await t.isVisible().catch(() => false)) await t.click(); };
+    return [
+      { name: 'snowflake-3d-blocked', path, wait: '.sf-sim', prepare: go() },
+      { name: 'snowflake-3d-relaxed', path, wait: '.sf-sim', prepare: go(relaxed) },
+      { name: 'snowflake-3d-blocked-dark', path, wait: '.sf-sim', scheme: 'dark', prepare: go() },
+      { name: 'snowflake-3d-relaxed-dark', path, wait: '.sf-sim', scheme: 'dark', only: 'phone', prepare: go(relaxed) },
+      { name: 'snowflake-3d-trefoil', path, wait: '.sf-sim', only: 'desktop', prepare: go(design, preset('Trefoil points'), result) },
+      { name: 'snowflake-3d-trefoil-relaxed', path, wait: '.sf-sim', only: 'desktop', prepare: go(design, preset('Trefoil points'), result, relaxed) },
+      { name: 'snowflake-3d-simple', path, wait: '.sf-sim', only: 'desktop', prepare: go(design, preset('Simple star'), result) },
+      { name: 'snowflake-3d-12', path, wait: '.sf-sim', only: 'desktop', prepare: go(design, preset('Double-pointed', 12), result) },
+      { name: 'snowflake-3d-12-relaxed', path, wait: '.sf-sim', only: 'desktop', prepare: go(design, preset('Double-pointed', 12), result, relaxed) },
+      // phone, scrolled: the sticky top bar must not show the tab row through it
+      {
+        name: 'snowflake-scrolled', path: '/designer?kind=snowflake&view=3d', wait: '.sf-tabs', only: 'phone', scheme: 'dark',
+        prepare: async (page) => { await page.locator('.sf-tabs').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 20)); await page.waitForTimeout(300); },
+      },
+    ];
+  })(),
   // the standalone Chart page of a saved snowflake: arms laid out as radial spines (core/chart pointed rounds)
   ...(() => {
     const openChart = (preset, points) => async (page) => {

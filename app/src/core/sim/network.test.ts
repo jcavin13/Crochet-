@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Pattern } from '../graph';
-import { paramsFor } from '../params';
+import { paramsFor, simConfig } from '../params';
+import { Placer } from './solve';
 import { buildNetwork, KIND_NAMES, springsOf, type Network } from './network';
 
 const spec = fileURLToPath(new URL('../../../../spec/', import.meta.url));
@@ -15,6 +16,7 @@ interface RefFile {
   name: string; params: string; n_nodes: number; n_particles: number; n_springs: number;
   counts: Record<string, number>; n_slack: number; springs?: Row[];
   summary?: { sum_L: number; sum_k: number; sum_iL: number; sum_jk: number; pairs_hash: number; checksum: number };
+  placement?: { round: number; before: ([number, number, number] | null)[]; after: Record<string, [number, number, number]> };
 }
 
 const r6 = (x: number) => { const v = Math.round(x * 1e6) / 1e6; return v === 0 ? 0 : v; };
@@ -30,10 +32,13 @@ function rows(net: Network): Row[] {
     .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 }
 
-const names = readdirSync(fixtures).filter((f) => f.endsWith('.network.json')).map((f) => f.slice(0, -'.network.json'.length));
+const extra = fixtures + 'extra/';
+const extraNames = existsSync(extra) ? readdirSync(extra).filter((f) => f.endsWith('.network.json')).map((f) => f.slice(0, -'.network.json'.length)) : [];
+const names = [...readdirSync(fixtures).filter((f) => f.endsWith('.network.json')).map((f) => f.slice(0, -'.network.json'.length)), ...extraNames];
+const dirOf = (name: string) => (extraNames.includes(name) ? extra : fixtures);
 
 function loadGraph(name: string): Pattern {
-  const p = name === 'tiny' ? spec + 'examples/tiny.graph.json' : fixtures + name + '.graph.json';
+  const p = name === 'tiny' ? spec + 'examples/tiny.graph.json' : dirOf(name) + name + '.graph.json';
   return JSON.parse(readFileSync(p, 'utf8')) as Pattern;
 }
 
@@ -46,7 +51,7 @@ describe('network parity with crolab.network (metric)', () => {
   });
   for (const name of names) {
     it(name, () => {
-      const ref = JSON.parse(readFileSync(fixtures + name + '.network.json', 'utf8')) as RefFile;
+      const ref = JSON.parse(readFileSync(dirOf(name) + name + '.network.json', 'utf8')) as RefFile;
       const pat = loadGraph(name);
       const params = paramsFor(pat);
       expect(params.id).toBe(ref.params);
@@ -81,6 +86,35 @@ describe('network parity with crolab.network (metric)', () => {
         expect(sum((r) => r[0] * r[2])).toBeCloseTo(s.sum_iL, 2);
         expect(sum((r) => r[1] * r[3])).toBeCloseTo(s.sum_jk, 2);
       }
+    });
+  }
+});
+
+describe('spines (SPEC_NOTES N5/P7)', () => {
+  it('the snowflake reference is covered, and no canonical fixture has a spine', () => {
+    expect(extraNames).toContain('snowflake_fern');
+    for (const n of names.filter((x) => !extraNames.includes(x))) {
+      const pat = loadGraph(n);
+      expect(buildNetwork(pat, paramsFor(pat)).spines, n).toEqual([]);
+    }
+  });
+  for (const name of extraNames) {
+    it(`${name}: growth placement of the last round (P0–P7) matches the lab`, () => {
+      const ref = JSON.parse(readFileSync(extra + name + '.network.json', 'utf8')) as RefFile;
+      const pl = ref.placement!;
+      const pat = loadGraph(name);
+      const net = buildNetwork(pat, paramsFor(pat));
+      expect(net.spines.length).toBeGreaterThan(0);
+      const placer = new Placer(net, simConfig);
+      pl.before.forEach((row, p) => { if (row) placer.X.set(row, 3 * p); });
+      placer.placeRound(pl.round);
+      let worst = 0;
+      for (const [id, v] of Object.entries(pl.after)) {
+        const i = Number(id);
+        for (let d = 0; d < 3; d++) worst = Math.max(worst, Math.abs(placer.X[3 * i + d] - v[d]));
+      }
+      expect(Object.keys(pl.after).length).toBe(pat.graph.rounds[pl.round].last - pat.graph.rounds[pl.round].first + 1);
+      expect(worst).toBeLessThan(1e-6);
     });
   }
 });

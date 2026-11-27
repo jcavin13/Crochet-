@@ -36,6 +36,14 @@ variants: `variant="spec"` is physics.md v0.1 to the letter (kept for comparison
     with its component along the chord removed. If the chord is degenerate, `z x chord` is used.
   * P5. Runs of m ≥ 2 consecutive P3 nodes with identical anchors are spread along the anchor's
     course tangent by `(k-(m+1)/2)*wbar/2`.
+  * **P7 (new).** Spines (N5) are placed after P5, before P4′: every node of a spine of this round
+    goes to `x_base + s*u + t*v` from its reference layout (s, t), with
+    `u = unit(x_base − centroid of the piece before this round)` (fallback +x) and
+    `v = unit(z × u)` (fallback `unit(u × x)`). So a snowflake arm starts straight and radial, its
+    return stitches on its chains and its picots as side stubs, instead of continuing the yarn's
+    last direction (P4) or wherever P3 put the return stitches. Implemented in `crolab.sim` and
+    `app/src/core/sim/solve.ts`; `spec/fixtures/extra/snowflake_fern.network.json` stores one
+    placement (`placement`) that the app test reproduces within 1e-6.
   * P6. Perturbation `delta_i = perturb_eps * wbar_r * sin(2.399963*(i+1))` along +z, where
     `wbar_r` is the mean course width of round r.
   * Each round is relaxed with L-BFGS (gtol 1e-6) over all particles placed so far. A final
@@ -122,6 +130,56 @@ lengths for these columns were frustrated by up to ±30 %.
 * No shear springs go to a chain-space chain. A node anchored into a chain space has no shear
   springs on that anchor.
 * Without N4, compressed loops buckled the whole motif.
+
+**N5 — spines: chains with stitches worked back along them are doubled cords.** (Only constructs
+that no canonical fixture contains are affected: every fixture network is unchanged, checked by
+`export_network --check` and the app's parity test, which also asserts that no fixture has a spine.)
+A snowflake arm, `ch 16, sl st in 4th ch from hook, sl st in next 3 ch, picot, picot, …`, was
+modelled as a run of chains (course springs 1.68 mm, k 0.35) with a row of slip stitches lying on
+it whose own course springs had the slip-stitch rest length (1.2 mm, k 1.0): the stiffer return row
+was 29 % shorter than the chains it is worked into, tied to them by 0.48 mm wales, so the only way
+to satisfy both was to curl — a radius of about 1.2 mm. Simple-star spines came out folded to 4 %
+of their length; that, plus P4 sending the chains off along the course, was the "tangled blob" of
+the user report (2026-11-27).
+
+* *Definitions* (`crolab/spine.py`, `app/src/core/sim/spine.ts`, identical): a *free chain* is a
+  `ch` that is not a turning chain, not a counts-as top and not a chain of any space. A *return
+  stitch* of chain c is a later node of the same round with a `{node: c}` leg. A *spine* is a
+  maximal run of consecutive free chains of one round with at least one return stitch; its *stem*
+  runs to the last chain with a return stitch, the chains after it (skipped at the hook end) are
+  the *tip loop*, its *picots* are the picots among / straight after the return stitches, its
+  *base* is the node before the first chain.
+* *Reference layout* (s outward along the stem from the base, t sideways): stem chains on the s
+  axis at the cumulative course rest lengths; the tip loop and its closing return stitch on a circle
+  of the loop's circumference through the last stem chain, on the outer side; return stitches at
+  (s of their chain, h_i) — on their chain, at the wale height, which is 0.48 mm for a slip stitch
+  (the return row lies on the chains; an sc row is a real 2.3 mm strip); the k-th picot of a run at
+  ±50° (alternating, + first) from +s, ±60° straight after the tip (trefoil), reach n_p·w_ch/2 —
+  the angles `blockedShape()` assumes.
+* *Springs*: every spring between two nodes of one spine takes its rest length from the layout
+  (course, wale, shear, bends: so the cord is unstrained when straight), and course-bend springs
+  whose three nodes are all stem chains or all return stitches get stiffness `k_course·min(s)`
+  instead of `k_bend` (a doubled cord resists bending). No spring is added or removed; slack flags
+  are unchanged (spine chains are not chain-space chains).
+* Result (fast tolerances, free relaxation): stem end-to-end distance / rest length, worst spine
+  per preset, before → after: simple star 0.04 → 1.00, fern 0.92 → 1.00, trefoil 0.93 → 0.92,
+  double-pointed 0.46 → 0.99, tiny 0.87 → 1.00, bold star 0.76 → 0.92.
+
+## Viewer-only options (app; not part of the shared model)
+
+* **Resting on a table** (`createSim({table: true})`, `app/src/core/sim/table.ts`): grow the piece
+  strictly in the xy-plane (z = 0, P3's radial fallback from the centroid before the round), then
+  let it go on a table under a weak weight (0.002 per particle) with a one-sided penalty. The free
+  3D solve of a snowflake still crumples its *body* (fern Rnd 1–3: "ruffle" A 0.31 / W 0.47, while
+  the count rule and the same body grown flat say flat — review R1); on the table every preset lies
+  flat with its arms radial. Cups and ruffles still lift off the table but less than in the free
+  solve (hyperbolic fixture: z range 13 mm vs 53 mm), so this is a view for pieces meant to lie flat
+  and is never used by `simulate()` defaults, the shape metric or the lab agreement.
+* **Blocking with explicit pins** (`createSim({pins})`, `block(..., pins)`, `crolab.blocking.block(res,
+  pins=...)`): pins `{node, x, y}` in any rigid frame are aligned to the piece (handedness from the
+  winding of the pins in node order, then best rotation + translation — never scaled); the plane is
+  the PCA plane; pinned nodes fixed, everything else relaxes in-plane; reported in addition: the
+  largest stretch of course and wale springs per part (spines / slack chain loops / body).
 
 ## Shape metric and config
 

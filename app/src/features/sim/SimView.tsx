@@ -148,7 +148,7 @@ export function SimView(props: SimViewProps) {
   useEffect(() => {
     if (fm && frame && frame.step.shownRound === nRounds - 1) setElevation(fm.class === 'flat' ? 58 : 28);
   }, [fm, frame, nRounds]);
-  const elev = blocked ? 62 : props.table ? 58 : elevation;
+  const elev = blocked ? 86 : props.table ? 80 : elevation;
 
   const [strain, setStrain] = useState<Float32Array | undefined>(undefined);
   useEffect(() => { if (frame?.strain) setStrain(frame.strain); }, [frame]);

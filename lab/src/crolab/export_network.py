@@ -37,6 +37,14 @@ from .network import KIND_NAMES, build_network
 #: fixtures (besides tiny) whose full spring lists are stored; the rest get a summary
 FULL_LIMIT_BYTES = 1_500_000
 TINY = SPEC_DIR / "examples" / "tiny.graph.json"
+#: extra references that are not canonical fixtures (spec/fixtures/extra/<name>.graph.json, compiled
+#: by the app's `npm run fixtures`): a snowflake pins the spine rules N5/P7 (SPEC_NOTES.md), with
+#: its full spring list and one growth placement (`placement`, see placement_record)
+EXTRA_DIR = FIXTURES_DIR / "extra"
+
+
+def extra_sources() -> list[tuple[str, Path]]:
+    return [(p.name[: -len(".graph.json")], p) for p in sorted(EXTRA_DIR.glob("*.graph.json"))]
 
 
 def sources() -> list[tuple[str, Path]]:
@@ -128,11 +136,43 @@ def all_records() -> dict[str, dict]:
             rec = record(name, pats[name], full=False)
             total += len(dumps(rec))
         out[name] = rec
+    for name, p in extra_sources():
+        pat = G.load(p)
+        rec = record(name, pat, full=True)
+        rec["placement"] = placement_record(pat)
+        out[name] = rec
     return out
 
 
 def path_for(name: str) -> Path:
+    if any(n == name for n, _ in extra_sources()):
+        return EXTRA_DIR / f"{name}.network.json"
     return FIXTURES_DIR / f"{name}.network.json"
+
+
+def placement_record(pattern: dict) -> dict:
+    """Growth placement check for the TypeScript sim: the lab relaxes rounds 0..R-2 (gtol 1e-6),
+    then places the last round (P0-P7, including the spines' P7). Stored: the positions before
+    placing ("before", relaxed earlier rounds; NaN rows as null) and right after placing ("after",
+    new nodes only, {id: [x, y, z]}). The app test loads "before", runs its own placeRound(R-1) and
+    compares with "after" — so both sims place spines identically."""
+    from .params import load_sim_config
+    from .sim import _Placer, _relax_placed
+    cfg = load_sim_config()
+    net = build_network(pattern, None, cfg)
+    pl = _Placer(net, cfg)
+    R = len(net.graph.rounds)
+    for r in range(R - 1):
+        pl.place_round(r)
+        mask = pl.placed_mask()
+        X, _, _, _ = _relax_placed(net, pl.X, mask, 1e-6)
+        pl.X[mask] = X[mask]
+    before = pl.X.copy()
+    new = pl.place_round(R - 1)
+    rd = lambda v: round(float(v), 9)  # noqa: E731
+    return {"round": R - 1,
+            "before": [None if np.isnan(row[0]) else [rd(v) for v in row] for row in before],
+            "after": {str(i): [rd(v) for v in pl.X[i]] for i in new}}
 
 
 def debug_dump(name: str) -> dict:

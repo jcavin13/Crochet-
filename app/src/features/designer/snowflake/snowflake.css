@@ -34,4 +34,5 @@
 .sf-check__items li[data-ok="true"] svg { color: var(--ok); flex: none; margin-top: 2px; }
 .sf-check__items li[data-ok="false"] svg { color: var(--warning); flex: none; margin-top: 2px; }
 .sf-sim { overflow: hidden; }
+.sf-sim__cap { margin: 0; padding: var(--s-2) var(--s-3); border-top: 1px solid var(--border); }
 .sf-sim__bar { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--border); }

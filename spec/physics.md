@@ -5,7 +5,9 @@
 > pieces, so the reference implementation (`lab/src/crolab/network.py`, `variant="metric"`)
 > derives rest lengths from the fabric's intrinsic geometry (N1), treats counts-as tops as full
 > stitches (N2), excludes turning chains and slip stitches from shear/bend (N3) and makes
-> chain-space chains tension-only (N4). Growth placement rules P0–P6 are also made exact there.
+> chain-space chains tension-only (N4), and lays out spines — chains with stitches worked back along
+> them, e.g. snowflake arms — as straight doubled cords (N5, growth placement P7). Placement rules
+> P0–P7 are made exact there.
 > Both sims implement the amended model; `tau_flat` is 0.25.
 
 Two simulators exist: the research one in `lab/` (Python, reference) and the real-time one in
@@ -97,3 +99,7 @@ round are pinned at `block_stretch` × their relaxed distance from the axis (ang
 and the rest relax in-plane. Reported: mean and maximum spring strain, and the fraction of course
 springs compressed by more than `block_buckle_strain` — fabric that would have to be compressed
 that much cannot be blocked flat.
+
+Extension (both sims, SPEC_NOTES "Viewer-only options"): blocking may instead take explicit pins
+`{node, x, y}` (e.g. a snowflake's blocking template), aligned to the piece by a rigid motion; the
+pinned nodes are fixed and the rest relaxes in-plane. Without pins the rule above applies unchanged.

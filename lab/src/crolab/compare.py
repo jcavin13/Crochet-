@@ -51,12 +51,20 @@ def network_diff(cur: dict, ref: dict) -> list[str]:
     5e-3 (the index-weighted sums). Pairs, kinds, slack flags, counts and `pairs_hash` are exact.
     The summary `checksum` hashes the rounded text of L and k, so it is informational only."""
     out: list[str] = []
-    skip = {"springs", "summary"}
+    skip = {"springs", "summary", "placement"}
     if set(cur) != set(ref):
         out.append(f"keys {sorted(set(cur) ^ set(ref))} differ")
     for k in (cur.keys() & ref.keys()) - skip:
         if cur[k] != ref[k]:
             out.append(f"{k}: {cur[k]!r} != {ref[k]!r}")
+    if "placement" in cur and "placement" in ref:
+        a, b = cur["placement"]["after"], ref["placement"]["after"]
+        if set(a) != set(b) or cur["placement"]["round"] != ref["placement"]["round"]:
+            out.append("placement: nodes differ")
+        else:
+            bad = [k for k in a if max(abs(x - y) for x, y in zip(a[k], b[k])) > 1e-5]
+            if bad:
+                out.append(f"placement: {len(bad)} nodes moved (first {bad[0]})")
     if "springs" in cur and "springs" in ref:
         a, b = cur["springs"], ref["springs"]
         if len(a) != len(b):
