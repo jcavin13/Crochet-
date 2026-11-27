@@ -269,15 +269,25 @@ export function setupBlock(net: Network, X: Float64Array, config: SimConfig = de
     if (usePins) {
       const owner = new Map<number, number>();
       net.spines.forEach((sp, si) => { for (const v of sp.nodes) owner.set(v, si); });
-      // N6 pointed loops count as arms; turning chains (N3: not fabric) are left out — at a round's
-      // seam the spring model ties `sl st, ch 1` to fixed chains where the real stitches slide along
-      // the loop, so their stretch is an artefact of the attachment, not thread the template asks for
+      // N6 pointed loops count as arms; a round's travel stitches (its leading slip stitches and its
+      // turning chain, N3: not fabric) are left out — at the seam the spring model ties `sl st, ch 1`
+      // to fixed chains where the real stitches slide along the loop, so their stretch is an artefact
+      // of the attachment, not thread the template asks for
       net.pointedLoops.forEach((pl, li) => { for (const v of pl.nodes) owner.set(v, net.spines.length + li); });
       const g = net.graph;
-      const tch = (i: number) => i < net.nNodes && g.nodes[i].role === 'tch' && !g.nodes[i].countsAs;
+      // the seam's travel stitches: turning chains, and the slip stitches a round starts with
+      const travel = new Uint8Array(net.nNodes);
+      for (const rd of g.rounds) {
+        for (let i = rd.first; i >= 0 && i <= rd.last && (g.nodes[i].type === 'slst' || (g.nodes[i].role === 'tch' && !g.nodes[i].countsAs)); i++) travel[i] = 1;
+      }
+      for (let i = 0; i < net.nNodes; i++) if (g.nodes[i].role === 'tch' && !g.nodes[i].countsAs) travel[i] = 1;
+      const tch = (i: number) => i < net.nNodes && travel[i] === 1;
       pinStretch = { spines: 0, chains: 0, body: 0 };
+      const wch = net.params.stitches.ch?.width ?? 1;
       for (const q of sel) {
-        const st = strain[q];
+        // stretch of a piece of thread at least one chain long: a slip stitch's 0.48 mm wale pulled by
+        // 0.08 mm is not "17 %" of anything a crocheter could see
+        const st = net.L[q] >= wch ? strain[q] : (strain[q] * net.L[q]) / wch;
         // thread lengths only (course and wale springs): bend and shear springs measure a change of
         // shape or a skewed stitch, not stretched thread
         if (!(st > 0) || (net.kind[q] !== COURSE && net.kind[q] !== WALE) || tch(net.I[q]) || tch(net.J[q])) continue;

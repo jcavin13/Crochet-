@@ -307,6 +307,27 @@ export const ROUTES = [
   { name: 'amigurumi-pattern', path: '/amigurumi', wait: '.ami-editor', only: 'phone', prepare: async (page) => { await page.getByRole('tab', { name: /^Pattern/ }).click(); await page.waitForTimeout(300); } },
   { name: 'gauge', path: '/amigurumi?tab=gauge', wait: '.ami-gauge' },
   { name: 'about', path: '/about', wait: 'main h1' },
+  // blanket studio: examples loaded with #/blanket?demo=<id>; the results pane is the hero on desktop
+  ...(() => {
+    const ready = async (page) => { await page.waitForSelector('.bk-hero__svg', { timeout: 30_000, state: 'attached' }); await page.waitForTimeout(900); };
+    const toResult = async (page) => { const t = page.getByRole('tab', { name: 'Blanket' }); if (await t.isVisible().catch(() => false)) { await t.click(); await page.waitForTimeout(400); } };
+    const toBorder = async (page) => {
+      await ready(page);
+      await page.locator('.bk-checks').evaluate(scrollToInPane);
+      await page.waitForTimeout(400);
+    };
+    return [
+      { name: 'blanket-rect', path: '/blanket?demo=moss-throw', wait: '.bk-controls', prepare: async (page) => { await ready(page); await toResult(page); } },
+      { name: 'blanket-granny-stripe', path: '/blanket?demo=granny-stripe-baby', wait: '.bk-controls', only: 'desktop', prepare: ready },
+      { name: 'blanket-round', path: '/blanket?demo=giant-granny', wait: '.bk-controls', prepare: async (page) => { await ready(page); await toResult(page); } },
+      { name: 'blanket-hexagon', path: '/blanket?demo=hexagon', wait: '.bk-controls', only: 'desktop', prepare: ready },
+      { name: 'blanket-c2s', path: '/blanket?demo=circle-to-square', wait: '.bk-controls', only: 'desktop', prepare: ready },
+      { name: 'blanket-mandala', path: '/blanket?demo=mandala', wait: '.bk-controls', only: 'desktop', prepare: ready },
+      { name: 'blanket-motifs', path: '/blanket?demo=motifs', wait: '.bk-controls', prepare: async (page) => { await ready(page); await toResult(page); } },
+      { name: 'blanket-border', path: '/blanket?demo=edge-fit', wait: '.bk-controls', prepare: toBorder },
+      { name: 'blanket-design', path: '/blanket?demo=moss-throw', wait: '.bk-controls', only: 'phone', prepare: ready },
+    ];
+  })(),
   // yarn estimates: editor card (expanded), calibration dialog, counter "yarn left" + ball heads-up, my yarns, amigurumi
   ...(() => {
     const checkTab = async (page) => { const t = page.getByRole('tab', { name: /Check/ }); if (await t.isVisible().catch(() => false)) await t.click(); };

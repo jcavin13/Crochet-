@@ -24,6 +24,7 @@
         "author": {"type": "string"},
         "year": {"type": "string"},
         "notes": {"type": "string"},
+        "colors": {"type": "string", "description": "Optional colour plan as written in the notation (colors: header), e.g. \"A Oatmeal #e8dcc8; B Sage #9caf88\". Colour changes are annotations; the graph does not model them yet."},
         "extra": {"type": "object", "additionalProperties": {"type": "string"}}
       }
     },

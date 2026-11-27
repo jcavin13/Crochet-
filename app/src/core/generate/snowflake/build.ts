@@ -22,7 +22,8 @@ import { anchorOps, bandOps, spaceSlots, spread } from '../motifs';
 import { predictRound, startState, type FlatState } from '../predict';
 import type { Entry, Iface, Item, Op, ParamValue, RoundParams, Stitch } from '../types';
 import { blockedShape, judge } from './geometry';
-import { tautPositions, tautRoundRadii, type V2 } from './taut';
+import { tautRoundRadii, type V2 } from './taut';
+import { pulledBody } from './bodypull';
 import type { Graph } from '../../graph';
 import type {
   ArmSpec, MinorSpec, SlotRole, SnowBodyMotif, SnowCentreStyle, SnowPlannedRound, SnowRound, SnowflakeResult, SnowflakeSpec,
@@ -272,7 +273,7 @@ const TARGET_RATIO = { deep: 1.08, medium: 1.3, shallow: 1.6 } as const;
  */
 export function bridgeChains(gapMm: number, depth: keyof typeof TARGET_RATIO, params: ParamSet): number {
   const wch = stitchParam(params, 'ch').width, wsc = stitchParam(params, 'sc').width;
-  return Math.max(1, Math.round((TARGET_RATIO[depth] * gapMm / simConfig.block_stretch - wsc) / wch));
+  return Math.max(1, Math.ceil((TARGET_RATIO[depth] * gapMm / simConfig.block_stretch - wsc) / wch - 0.25));
 }
 
 /** Thread length (rest) of a bridge of k chains between two sc: sc → ch … ch → sc. */
@@ -347,7 +348,7 @@ function armOps(st: ArmStructure, chainsFor: (j: number) => number, point: Item[
 }
 const st_ = (t: 'sc') => st(t);
 
-/** Body + arm-round anchors pulled taut (taut.ts), one repeat; cached per body and arm structure. */
+/** Body + arm-round anchors pulled out by the arms (bodypull.ts), one repeat; cached per body and arm structure. */
 export interface TautArmRound {
   /** Per anchor of one repeat, in working order: its first and last stitch (`sc` of `(sc, <arm>, sc)`; a valley sc is both). Mathematical frame (y up), centre at the origin. */
   anchors: { kind: ArmAnchor['kind']; first: V2; last: V2 }[];
@@ -361,7 +362,13 @@ function tautArmRound(spec: SnowflakeSpec, planned: SnowPlannedRound[], st: ArmS
   const key = JSON.stringify([n, params.id, planned.map((p) => [p.ops, p.ringChains, p.prevLead]), st.kinds]);
   if (tautCache.has(key)) return tautCache.get(key)!;
   // the arm round with a picot standing in for each arm: same stitches into the same places
-  const probe = armOps(st, () => 1, [{ k: 'picot', n: 3 }], [{ k: 'picot', n: 3 }]);
+  // bridges of about the right length (the arm round's wale rest lengths depend on its course, N1),
+  // sized on the flatness circle; they carry no force in the pull
+  const body = planned[planned.length - 1];
+  const fr = st.pos.filter((_, i) => st.kinds[i]).map((p) => p.frac);
+  const R0c = body.r + stitchParam(params, 'sc').height;
+  const probeCh = (j: number) => spec.valley.chains ?? bridgeChains(2 * R0c * Math.sin((Math.PI * ((j + 1 < fr.length ? fr[j + 1] : 1) - fr[j])) / n), spec.valley.depth, params);
+  const probe = armOps(st, probeCh, [{ k: 'picot', n: 3 }], [{ k: 'picot', n: 3 }]);
   const lead = planned[planned.length - 1].entries.some((e) => e.kind === 'sp') ? spaceSlots(planned[planned.length - 1].entries).leading : 0;
   const rounds = [...planned.map((p, i) => ({ ops: p.ops, prevLead: p.prevLead, ring: i === 0 ? { chains: p.ringChains ?? 0 } : undefined })), { ops: probe.ops, prevLead: lead, ring: undefined }];
   const text = [`params: ${params.id}`, ...rounds.map((r, i) => `Rnd ${i + 1}: ${writeRound({ sector: r.ops, repeats: n, terms: 'US', prevLead: r.prevLead, ring: r.ring, fastenOff: i === rounds.length - 1 })}.`)].join('\n') + '\n';
@@ -371,9 +378,12 @@ function tautArmRound(spec: SnowflakeSpec, planned: SnowPlannedRound[], st: ArmS
     const last = g.rounds.length - 1;
     const groups = armGroups(g, last);
     const A = probe.anchors.length;
-    const together = groups.map((x, q) => ({ x, kind: probe.anchors[q % A]?.kind })).filter((y) => y.x.last !== y.x.first)
-      .map((y) => ({ nodes: [y.x.first, y.x.last], gap: tautMode(footGap(y.kind === 'minor' ? spec.minor : null, spec.arm, params), params) }));
-    const pos = tautPositions(g, params, last, simConfig.block_stretch, together);
+    const T = blockingTension(params);
+    const wch = stitchParam(params, 'ch').width;
+    const reach = (q: number) => { const k = probe.anchors[q % A]?.kind; return k === 'point' ? spec.arm.length * wch : k === 'minor' ? Math.max(3, spec.minor.length) * wch : 1e3; };
+    const pos = groups.length === n * A ? pulledBody(g, params, groups.flatMap((x, q) => (x.first === x.last
+      ? [{ node: x.first, force: T, group: q, reach: reach(q) }]
+      : [{ node: x.first, force: T / 2, group: q, reach: reach(q) }, { node: x.last, force: T / 2, group: q, reach: reach(q) }]))) : [];
     if (groups.length === n * A) {
       const rep = n > 1 ? 1 : 0;
       const anchors = probe.anchors.map((a, q) => {
@@ -390,22 +400,21 @@ function tautArmRound(spec: SnowflakeSpec, planned: SnowPlannedRound[], st: ArmS
 }
 
 /**
- * Largest distance between the two sc either side of an arm (its foot), at rest: sc → first spine
- * chain, the return row standing on it (its height), last return stitch → sc; a pointed loop's feet
- * stand side by side; a minor picot spans sc → picot → sc.
+ * The tension a blocked snowflake is pinned to: the force that stretches a chain by block_stretch
+ * (k_course · s_ch · (block_stretch − 1)). Pinning pulls every thread path with about this force, so
+ * each part stretches by T / its stiffness: chain loops and bridges by block_stretch, an arm's
+ * doubled cord (chains + return row) much less.
  */
-function footGap(minor: MinorSpec | null, arm: ArmSpec, params: ParamSet): number {
-  const w = (t: string) => stitchParam(params, t as 'sc').width;
-  const back = arm.back === 'sc' ? 'sc' : 'slst';
-  const spine = 0.5 * (w('sc') + w('ch')) + stitchParam(params, back).height + 0.5 * (w(back) + w('sc'));
-  if (minor) return minor.style === 'picot' ? w('sc') + w('picot') : spine;
-  return arm.tip === 'loop' ? w('sc') : spine;
+export function blockingTension(params: ParamSet): number {
+  return simConfig.k_course * stitchParam(params, 'ch').stiffness * (simConfig.block_stretch - 1);
 }
 
-const tautMode = (foot: number, params: ParamSet) => {
-  const m = (globalThis as { __TAUT?: string }).__TAUT ?? 'foot';
-  return m === 'fun' ? 1e9 : m === 'wsc' ? stitchParam(params, 'sc').width : m === 'v' ? 0 : foot;
-};
+/** Stretch factor of an arm under the blocking tension: a spine is chains and its return row side by side; a pointed loop two chain strands. */
+export function armStretch(arm: Pick<ArmSpec, 'tip' | 'back'>, params: ParamSet): number {
+  const sCh = stitchParam(params, 'ch').stiffness;
+  const ea = simConfig.k_course * (arm.tip === 'loop' ? 2 * sCh : sCh + stitchParam(params, arm.back === 'sc' ? 'sc' : 'slst').stiffness);
+  return 1 + blockingTension(params) / ea;
+}
 
 /** Groups of the arm round (round r): an arm's `sc … sc` worked into one place, or a lone sc; first/last stitch ids. */
 export function armGroups(g: Graph, r: number): { first: number; last: number }[] {

@@ -16,6 +16,7 @@ const Designer = page(() => import('@/features/designer/index.tsx'));
 const Counter = page(() => import('@/features/counter/index.tsx'));
 const Amigurumi = page(() => import('@/features/amigurumi/index.tsx'));
 const About = page(() => import('@/features/about/index.tsx'));
+const Blanket = page(() => import('@/features/blanket/index.tsx'));
 
 class RouteErrorBoundary extends Component<{ children: ReactNode; resetKey: string }, { error?: Error }> {
   state: { error?: Error } = {};
@@ -85,6 +86,7 @@ function RoutedApp() {
             <Route path="/designer" element={<Designer />} />
             <Route path="/counter/:id?" element={<Counter />} />
             <Route path="/amigurumi" element={<Amigurumi />} />
+            <Route path="/blanket" element={<Blanket />} />
             <Route path="/about" element={<About />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

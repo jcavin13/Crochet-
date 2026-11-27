@@ -6,8 +6,10 @@
 > derives rest lengths from the fabric's intrinsic geometry (N1), treats counts-as tops as full
 > stitches (N2), excludes turning chains and slip stitches from shear/bend (N3) and makes
 > chain-space chains tension-only (N4), and lays out spines — chains with stitches worked back along
-> them, e.g. snowflake arms — as straight doubled cords (N5, growth placement P7). Placement rules
-> P0–P7 are made exact there.
+> them, e.g. snowflake arms — as straight doubled cords (N5, growth placement P7), lays out pointed
+> chain loops (`ch ≥ 4, picot, ch ≥ 4`, nothing worked into them) as starched open loops (N6, P8)
+> and lets the seam slip stitch of an arm's space take no share of its chains (N7). Placement rules
+> P0–P8 are made exact there.
 > Both sims implement the amended model; `tau_flat` is 0.25.
 
 Two simulators exist: the research one in `lab/` (Python, reference) and the real-time one in

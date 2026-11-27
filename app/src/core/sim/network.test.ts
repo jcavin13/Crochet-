@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import type { Pattern } from '../graph';
 import { paramsFor, simConfig } from '../params';
 import { Placer } from './solve';
-import { buildNetwork, KIND_NAMES, springsOf, type Network } from './network';
+import { buildNetwork, KIND_NAMES, seamSlipStitches, springsOf, type Network } from './network';
+import { armBases } from './spine';
 
 const spec = fileURLToPath(new URL('../../../../spec/', import.meta.url));
 const fixtures = spec + 'fixtures/';
@@ -90,13 +91,19 @@ describe('network parity with crolab.network (metric)', () => {
   }
 });
 
-describe('spines (SPEC_NOTES N5/P7)', () => {
-  it('the snowflake reference is covered, and no canonical fixture has a spine', () => {
+describe('spines, pointed loops and arm seams (SPEC_NOTES N5–N7, P7–P8)', () => {
+  it('the snowflake references are covered, and no canonical fixture has a spine, a pointed loop or an arm seam', () => {
     expect(extraNames).toContain('snowflake_fern');
+    expect(extraNames).toContain('snowflake_lacy');
     for (const n of names.filter((x) => !extraNames.includes(x))) {
       const pat = loadGraph(n);
-      expect(buildNetwork(pat, paramsFor(pat)).spines, n).toEqual([]);
+      const net = buildNetwork(pat, paramsFor(pat));
+      expect(net.spines, n).toEqual([]);
+      expect(net.pointedLoops, n).toEqual([]);
+      expect(seamSlipStitches(pat.graph, armBases(pat.graph, net.pointedLoops)).size, n).toBe(0);
     }
+    const lacy = loadGraph('snowflake_lacy');
+    expect(buildNetwork(lacy, paramsFor(lacy)).pointedLoops.length).toBe(6);
   });
   for (const name of extraNames) {
     it(`${name}: growth placement of the last round (P0–P7) matches the lab`, () => {
@@ -104,7 +111,7 @@ describe('spines (SPEC_NOTES N5/P7)', () => {
       const pl = ref.placement!;
       const pat = loadGraph(name);
       const net = buildNetwork(pat, paramsFor(pat));
-      expect(net.spines.length).toBeGreaterThan(0);
+      expect(net.spines.length + net.pointedLoops.length).toBeGreaterThan(0);
       const placer = new Placer(net, simConfig);
       pl.before.forEach((row, p) => { if (row) placer.X.set(row, 3 * p); });
       placer.placeRound(pl.round);

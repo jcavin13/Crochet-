@@ -52,7 +52,10 @@ interface NodeRec {
 }
 
 export interface RoundResult {
+  /** the instruction, without label and count */
   text: string;
+  /** count annotation, e.g. "(52)" or "(56 sts, 4 ch-2 sps)" */
+  count: string;
   /** stitch-counting nodes */
   stitches: number;
   /** chain spaces made, by length */
@@ -65,6 +68,12 @@ export interface RoundResult {
   perimeter: number;
   /** mean height of its stitches, mm */
   height: number;
+  /** course width the corner groups add over the corner entries they are worked into, mm (summed) */
+  cornerGrowth: number;
+  /** corners worked into */
+  corners: number;
+  /** deliberate change of the side counts (a set-up round's increases − decreases), mm */
+  adjust?: number;
 }
 
 export const ord = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')}`;
@@ -123,10 +132,8 @@ export class RoundSim {
   private nodes: NodeRec[] = [];
   private made = false;
   private lastUsed = -1;
-  /** width skipped ("sk") since the last stitch: bridged by a chain run */
-  private skipAcc = 0;
-  private bridge = new Map<number, number>();
-  private openRunStart = -1;
+  /** entries skipped ("sk") or passed over: a chain run across them is pulled to their width */
+  private skipped = new Set<number>();
 
   constructor(public list: Tok[], public P: ParamSet, public cornerSyntax = false) {}
 
@@ -137,6 +144,12 @@ export class RoundSim {
   h(type: string): number {
     if (type === 'cl') return stitchParam(this.P, 'dc').height;
     return stitchParam(this.P, type as StType).height;
+  }
+
+  /** Move the cursor to just after entry k; entries passed over on the way are noted. */
+  private advance(k: number) {
+    for (let x = this.cur; x < k; x++) this.skipped.add(x);
+    this.cur = k + 1;
   }
 
   /** index of the next entry matching u (from the cursor), or throw — a generator bug. */
@@ -161,14 +174,6 @@ export class RoundSim {
   }
 
   private push(rec: NodeRec) {
-    if (rec.chain) {
-      if (this.openRunStart < 0) this.openRunStart = this.nodes.length;
-    } else if (rec.key !== 'sl st' && rec.key !== 'turning ch' || rec.counts) {
-      // a stitch closes an open chain run: it bridges what was skipped since the last stitch
-      if (this.openRunStart >= 0) this.bridge.set(this.openRunStart, (this.bridge.get(this.openRunStart) ?? 0) + this.skipAcc);
-      this.openRunStart = -1;
-      if (rec.key !== 'picot') this.skipAcc = 0;
-    }
     this.nodes.push(rec);
   }
 
@@ -208,7 +213,7 @@ export class RoundSim {
     let base = this.lastUsed;
     if (base < 0) {
       base = this.find('st');
-      this.cur = base + 1;
+      this.advance(base);
       this.lastUsed = base;
     }
     for (let i = 0; i < n - 1; i++) this.push({ key: 'turning ch', counts: false, into: -1 });
@@ -221,7 +226,7 @@ export class RoundSim {
   /** Make `ms` into the next target matching `u` (one target). */
   into(u: Unit, ms: Make[], opts: { phrase?: (n: number) => string; key?: string } = {}) {
     const k = this.find(u);
-    this.cur = k + 1;
+    this.advance(k);
     this.lastUsed = k;
     this.makeInto(ms, k);
     const [one, many] = unitWords(u);
@@ -254,7 +259,7 @@ export class RoundSim {
     let last = -1;
     for (let i = 0; i < n; i++) {
       last = this.find(u);
-      this.cur = last + 1;
+      this.advance(last);
     }
     this.lastUsed = last;
     this.made = true;
@@ -281,7 +286,9 @@ export class RoundSim {
   corner(ms: Make[]) {
     const k = this.nextCorner();
     if (k >= this.list.length) throw new Error('engine: no corner left');
-    if (k !== this.cur) throw new Error(`engine: corner ${k} is not next (cursor ${this.cur})`);
+    if (k !== this.cur && (this.list[k].k !== 'sp' || this.list.slice(this.cur, k).some((t) => t.k !== 'st'))) {
+      throw new Error(`engine: corner ${k} is not next (cursor ${this.cur})`);
+    }
     if (this.cornerSyntax) return this.into('corner', ms);
     const t = this.list[k];
     const u: Unit = t.k === 'sp' ? { sp: t.n! } : 'st';
@@ -292,8 +299,8 @@ export class RoundSim {
   /** Skip the next target matching u ("sk next st"). */
   skip(u: Unit = 'st') {
     const k = this.find(u);
-    this.cur = k + 1;
-    this.skipAcc += this.list[k].w;
+    this.advance(k);
+    this.skipped.add(k);
     const [one, many] = unitWords(u);
     this.seg(`sk:${JSON.stringify(u)}`, (n) => (n === 1 ? `sk next ${one}` : `sk next ${n} ${many}`));
   }
@@ -301,7 +308,7 @@ export class RoundSim {
   /** Slip stitch into the next target matching u (travel). */
   slst(u: Unit = 'st') {
     const k = this.find(u);
-    this.cur = k + 1;
+    this.advance(k);
     this.lastUsed = k;
     this.push({ key: 'sl st', counts: false, into: k });
     const [one, many] = unitWords(u);
@@ -325,6 +332,29 @@ export class RoundSim {
     this.text('join');
   }
 
+  /**
+   * Width a chain run (nodes i..j) is pulled to: what was skipped or passed over between the
+   * stitches on either side of it, less how far those stitch groups fan out beyond their own base
+   * (a 3-dc group in one stitch covers about three).
+   */
+  private bridged(i: number, j: number): number {
+    let p = i - 1;
+    while (p >= 0 && !this.nodes[p].counts) p--;
+    let q = j + 1;
+    while (q < this.nodes.length && !this.nodes[q].counts) q++;
+    if (p < 0 || q >= this.nodes.length) return 0;
+    const a = this.nodes[p].into, b = this.nodes[q].into;
+    if (a < 0 || b < 0 || b <= a) return 0;
+    let between = 0;
+    for (let x = a + 1; x < b; x++) if (this.skipped.has(x)) between += this.list[x].w;
+    const overhang = (t: number) => {
+      let gw = 0;
+      for (const n of this.nodes) if (n.counts && n.into === t) gw += this.w(n.countsAs ?? n.type!);
+      return Math.max(0, (gw - this.list[t].w) / 2);
+    };
+    return Math.max(0, between - overhang(a) - overhang(b));
+  }
+
   /** Make the remaining text; compute the next list. */
   finish(count = true): RoundResult {
     const keys: Record<string, number> = {};
@@ -339,7 +369,7 @@ export class RoundSim {
         let j = i;
         while (j + 1 < this.nodes.length && this.nodes[j + 1].chain) j++;
         const len = j - i + 1;
-        const bridged = this.bridge.get(i) ?? 0;
+        const bridged = this.bridged(i, j);
         next.push({ tok: { k: 'sp', n: len, w: Math.max(len * wch, bridged) }, node: i });
         spaces[len] = (spaces[len] ?? 0) + 1;
         i = j;
@@ -348,12 +378,15 @@ export class RoundSim {
       if (n.counts) next.push({ tok: { k: 'st', type: n.countsAs ?? n.type, w: this.w(n.countsAs ?? n.type!) }, node: i });
     }
     // corners of the next list: per corner entry worked into, its chain space inside the group or its middle stitch
+    let cornerGrowth = 0, corners = 0;
     for (let c = 0; c < this.list.length; c++) {
       if (!this.list[c].corner) continue;
       const group = this.nodes.map((n, i) => (n.counts && n.into === c ? i : -1)).filter((i) => i >= 0);
       if (!group.length) continue;
       const lo = group[0], hi = group[group.length - 1];
       const inside = next.filter((x) => x.tok.k === 'sp' && x.node > lo && x.node < hi);
+      corners++;
+      cornerGrowth += next.filter((x) => x.node >= lo && x.node <= hi).reduce((a, x) => a + x.tok.w, 0) - this.list[c].w;
       const pick = inside.length ? inside[Math.floor((inside.length - 1) / 2)] : next.find((x) => x.node === group[Math.floor(group.length / 2)]);
       if (pick) pick.tok.corner = true;
     }
@@ -361,12 +394,10 @@ export class RoundSim {
     const stitches = st.length;
     const height = st.length ? st.reduce((a, n) => a + this.h(n.countsAs ?? n.type!), 0) / st.length : 0;
     const perimeter = next.reduce((a, x) => a + x.tok.w, 0);
-    let text = this.override ?? writeSegs(this.segs);
-    if (count) {
-      const sp = Object.entries(spaces).map(([len, k]) => `${k} ch-${len} sps`);
-      text += `. (${sp.length ? `${stitches} sts, ${sp.join(', ')}` : stitches})`;
-    }
-    return { text, stitches, spaces, keys, next: next.map((x) => x.tok), perimeter, height };
+    const text = this.override ?? writeSegs(this.segs);
+    const sp = Object.entries(spaces).map(([len, k]) => `${k} ch-${len} sps`);
+    const countText = count ? `(${sp.length ? `${stitches} sts, ${sp.join(', ')}` : stitches})` : '';
+    return { text, count: countText, stitches, spaces, keys, next: next.map((x) => x.tok), perimeter, height, cornerGrowth, corners };
   }
 }
 

@@ -121,6 +121,11 @@ export interface Meta {
   author?: string;
   year?: string;
   notes?: string;
+  /**
+   * Colour plan as written by the pattern (`colors:` header), e.g. "A Oatmeal #e8dcc8; B Sage
+   * #9caf88". Colour changes are not part of the stitch graph yet (notation.md 5).
+   */
+  colors?: string;
   extra?: Record<string, string>;
 }
 

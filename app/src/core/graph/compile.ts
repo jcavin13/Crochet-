@@ -192,7 +192,7 @@ class Compiler {
       else extra[h.key] = h.value;
     }
     const out: Meta = { title: m.title, terms: m.terms };
-    for (const k of ['yarn', 'hook', 'params', 'source', 'license', 'author', 'year', 'notes'] as const) {
+    for (const k of ['yarn', 'hook', 'params', 'source', 'license', 'author', 'year', 'notes', 'colors'] as const) {
       if (m[k] !== undefined) out[k] = m[k];
     }
     if (Object.keys(extra).length) out.extra = extra;
@@ -448,7 +448,7 @@ class Compiler {
     const c = this.cur;
     if (!e || !c.perimeter) return 'this side';
     switch (e.side) {
-      case 0: return `the top edge (${c.prevLabel})`;
+      case 0: return 'the top edge';
       case 1: return 'the first side (row ends)';
       case 2: return 'the bottom (foundation chain)';
       case 3: return 'the second side (row ends)';
@@ -691,7 +691,8 @@ class Compiler {
           // A corner is never passed over (see below). Going to a corner leaves the stitches before
           // it unworked (warning); a row end or foundation chain passed over is a wrong unit.
           const passed = c.targets.slice(c.cursor, k).filter((x) => x.kind !== 'space');
-          if (u.kind === 'corner') c.passedOver.push(...passed);
+          // (a corner that is a chain space is reached like any space: stitches before it are passed over)
+          if (u.kind === 'corner') { if (e.kind !== 'space') c.passedOver.push(...passed); }
           else {
             const wrong = passed.find((x) => x.kind === 'rowEnd' || x.kind === 'base');
             if (wrong) {

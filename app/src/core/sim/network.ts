@@ -96,8 +96,9 @@ function param(set: ParamSet, t: string, key: 'width' | 'height' | 'stiffness'):
  * the base of a spine or of a pointed loop) and whose first member is a slip stitch that starts its
  * round (only slip stitches before it in the round: `sl st in next ch-2 sp, ch 1, (sc, <arm>, sc) in
  * same sp`). Returns that slip stitch per space. In such a space the slip stitch takes no share of
- * the chains: it attaches to the first chain (where the hook enters the space) and the other members
- * are distributed as if it were not there.
+ * the chains: the other members are distributed as if it were not there, and it attaches to the
+ * chain of the first of them (it only carries the hook to where the round's first stitch is made;
+ * stitches worked into a space slide along the loop, so the arm sits where it sits in every repeat).
  */
 export function seamSlipStitches(g: Graph, bases: Set<number>): Map<number, number> {
   const out = new Map<number, number>();
@@ -119,7 +120,7 @@ export function resolveAnchorParticles(g: Graph, spaceParticle: Map<number, numb
   const orderInSpace = new Map<number, Map<number, number>>();
   for (const s of g.spaces) {
     const m = new Map<number, number>();
-    // N7: a seam slip stitch of an arm space takes no share (it attaches to the first chain)
+    // N7: a seam slip stitch of an arm space takes no share; it attaches where the first other member does
     const sl = seam.get(s.id);
     nodesInSpace(g, s.id).filter((v) => v !== sl).forEach((nid, idx) => m.set(nid, idx + 1));
     orderInSpace.set(s.id, m);
@@ -136,9 +137,8 @@ export function resolveAnchorParticles(g: Graph, spaceParticle: Map<number, numb
         const chains = sp.chains;
         const ord = orderInSpace.get(s)!;
         const m = ord.size;
-        const jj = ord.get(nd.id) ?? 1;
-        if (seam.get(s) === nd.id) p = chains[0];
-        else if (sp.kind === 'ring' && chains.length === 0) p = spaceParticle.get(s)!;
+        const jj = ord.get(nd.id) ?? 1;   // N7: the seam slip stitch goes where the first other member goes
+        if (sp.kind === 'ring' && chains.length === 0) p = spaceParticle.get(s)!;
         else if (sp.kind === 'ring') {
           const n = chains.length;
           const q = Math.floor(((jj - 1) * n) / m) + 1;
@@ -372,7 +372,7 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
   }
   const nParticles = n + spaceParticle.size;
   const pointedLoops = findPointedLoops(g, w);
-  const anchors = resolveAnchorParticles(g, spaceParticle, (globalThis as { __NO_N7?: boolean }).__NO_N7 ? new Map() : seamSlipStitches(g, armBases(g, pointedLoops)));
+  const anchors = resolveAnchorParticles(g, spaceParticle, seamSlipStitches(g, armBases(g, pointedLoops)));
 
   const ringLen = new Map<number, number>();
   for (const [s, p] of spaceParticle) {

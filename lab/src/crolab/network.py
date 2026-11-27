@@ -89,7 +89,8 @@ def seam_slip_stitches(g: Graph, bases: set[int]) -> dict[int, int]:
 
 def resolve_anchor_particles(g: Graph, space_particle: dict[int, int], seam: dict[int, int] | None = None) -> list[list[int]]:
     """Per node: distinct anchor particles (physics.md 'Anchor -> particle'), in leg order. N7: the
-    seam slip stitch of an arm space (`seam`) attaches to the first chain and takes no share."""
+    seam slip stitch of an arm space (`seam`) takes no share and attaches where the first other
+    member of the space does."""
     seam = seam or {}
     # position j (1-based) of each node among the distinct nodes anchored in each space
     order_in_space: dict[int, dict[int, int]] = {}
@@ -108,10 +109,8 @@ def resolve_anchor_particles(g: Graph, space_particle: dict[int, int], seam: dic
                 sp = g.spaces[s]
                 chains = sp["chains"]
                 m = len(order_in_space[s])
-                jj = order_in_space[s].get(nd["id"], 1)
-                if seam.get(s) == nd["id"]:
-                    p = chains[0]
-                elif sp["kind"] == "ring" and not chains:
+                jj = order_in_space[s].get(nd["id"], 1)  # N7: the seam slip stitch goes with the first other member
+                if sp["kind"] == "ring" and not chains:
                     p = space_particle[s]
                 elif sp["kind"] == "ring":
                     n = len(chains)

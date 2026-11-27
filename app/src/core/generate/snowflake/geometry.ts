@@ -6,11 +6,12 @@
  * view pins (docs/flatness_radius_note.md):
  *
  *  1. Body: the centre and body rounds must lie flat by the normal rule (solved like doily rounds).
- *     Where they block to is the body pulled taut (taut.ts): every chain loop at block_stretch along
- *     its funicular polygon through the stitches worked into it, stitches standing on them. The arm
- *     round's stitches land there: an arm starts at its first sc, the arm-base radius R0.
+ *     Where they block to is the body pulled out by its arms at the blocking tension (bodypull.ts —
+ *     the spring network's own equilibrium, every arm pulling with the force that stretches a chain
+ *     by block_stretch). An arm starts at its first sc there: the arm-base radius R0.
  *  2. Arms: each arm's reference layout (spine.ts, SPEC_NOTES N5/N6 — the layout the spring network
- *     takes its rest lengths from), stretched by block_stretch, laid radially from its base. Pins: the
+ *     takes its rest lengths from), stretched by what the blocking tension does to its doubled cord
+ *     (build.ts `armStretch`, ~1 %), laid radially from its base. Pins: the
  *     tip-loop chain that reaches furthest (pins.ts `armPinNodes`), trefoil side picots and branch
  *     picots where the layout puts them (±60° / ±50°, reach n·w_ch/2).
  *  3. Web (valley bridges): a bridge of k chains runs from the last sc of one anchor to the first sc
@@ -22,8 +23,10 @@
  *     tangle when pinned.
  *  5. Shape: tips at R_tip, valleys at R_valley; a crisp star needs R_tip ≥ 1.35·R_valley.
  *
- * Every pin is where the thread reaches at block_stretch, so the template asks for 5 % stretch and
- * no more — except a bridge that is too short, which the check reports (`pinStretch`).
+ * Every pin is where the thread reaches under that tension (bridges with BRIDGE_PIN_SLACK to spare),
+ * so the template asks for block_stretch at most — except a bridge that is too short, which the
+ * check reports (`pinStretch`). The 3D view pins the piece to these marks as a second opinion; the
+ * designer folds its verdict into the check.
  */
 import { compilePattern } from '../../notation';
 import { heightOf, simConfig, stitchParam, type ParamSet } from '../../params';
@@ -31,7 +34,7 @@ import { findPointedLoops, findSpines, pointedLoop, type PointedLoop, type Spine
 import { writeRound } from '../emit';
 import type { Item } from '../types';
 import type { SnowPlan } from './build';
-import { branchPairs, bridgeChains, bridgeLength, minorOps, spineOps } from './build';
+import { armStretch, branchPairs, bridgeChains, bridgeLength, minorOps, spineOps } from './build';
 import { armPinNodes } from './pins';
 import { courseWidths, type V2 } from './taut';
 import type { BlockedShape, Bridge, Pt, Seg, SnowCheck, SnowCheckItem, SnowRound, SnowflakeSpec, ArmSpec, MinorSpec } from './types';
@@ -39,6 +42,13 @@ import type { BlockedShape, Bridge, Pt, Seg, SnowCheck, SnowCheckItem, SnowRound
 /** Bridges whose thread at block stretch is shorter than this × the gap are too short (they need over 3 % more). */
 export const BRIDGE_TIGHT = 0.97;
 export const BRIDGE_SAGS = 2.2;
+/**
+ * Valley pins hold a bridge where it reaches with this fraction of its thread to spare. Measured on
+ * the presets and 80 random designs: pinned exactly taut (at block stretch) the bridges pulled the
+ * two sc of each arm apart whenever the arm feet sat a millimetre off the predicted body, and the
+ * loops under the arms stretched 15–25 %; with 15 % to spare the valleys still pin to a crisp V.
+ */
+export const BRIDGE_PIN_SLACK = 0.15;
 
 /* ------------------------------------------------------------------ arm reference layouts */
 
@@ -210,7 +220,8 @@ export function blockedShape(spec: SnowflakeSpec, plan: SnowPlan, params: ParamS
           const u: V2 = [el.first[0] / (len(el.first) || 1), el.first[1] / (len(el.first) || 1)];
           const v: V2 = [-u[1], u[0]];
           const sg = fr.kind === 'loop' && (el.last[0] - el.first[0]) * v[0] + (el.last[1] - el.first[1]) * v[1] < 0 ? -1 : 1;
-          const M = (p: V2): Pt => T([el.first[0] + s * (p[0] * u[0] + sg * p[1] * v[0]), el.first[1] + s * (p[0] * u[1] + sg * p[1] * v[1])]);
+          const sa = armStretch(el.kind === 'point' ? spec.arm : { tip: spec.minor.style === 'trefoil' ? 'trefoil' : 'spike', back: spec.arm.back }, params);
+          const M = (p: V2): Pt => T([el.first[0] + sa * (p[0] * u[0] + sg * p[1] * v[0]), el.first[1] + sa * (p[0] * u[1] + sg * p[1] * v[1])]);
           tip = M(fr.tip);
           sides = fr.sides.map(M);
           branchPts = fr.branches.map(M);
@@ -238,7 +249,10 @@ export function blockedShape(spec: SnowflakeSpec, plan: SnowPlan, params: ParamS
       const P0 = el.last, P1 = nxt.first;
       const gap = Math.hypot(P1[0] - P0[0], P1[1] - P0[1]);
       const kk = b.chains, m = Math.floor(kk / 2);
-      const l1 = s * (0.5 * (wsc + wch) + m * wch), l2 = s * (0.5 * (wsc + wch) + (kk - 1 - m) * wch);
+      // the pin: where the bridge hangs with BRIDGE_PIN_SLACK of its length to spare (it holds the
+      // valley without pulling the arms' feet apart if they sit a millimetre off the prediction)
+      const sb = 1 - BRIDGE_PIN_SLACK;
+      const l1 = sb * (0.5 * (wsc + wch) + m * wch), l2 = sb * (0.5 * (wsc + wch) + (kk - 1 - m) * wch);
       const apex = vApex(P0, P1, l1, l2);
       const ratio = (s * bridgeLength(kk, params)) / Math.max(1e-9, gap);
       if (!apex.reach) pinStretch = Math.max(pinStretch, gap / bridgeLength(kk, params) - 1);

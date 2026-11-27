@@ -115,17 +115,31 @@ def block(res: SimResult, config: dict | None = None, gtol: float = 1e-8, pins=N
                 owner[v] = len(net.spines) + li
         g = net.graph
 
+        # a round's travel stitches: its leading slip stitches and turning chains (not fabric, N3)
+        travel = set()
+        for rd in g.rounds:
+            i = rd["first"]
+            while 0 <= i <= rd["last"] and (g.nodes[i]["type"] == "slst" or (g.nodes[i].get("role") == "tch" and not g.nodes[i].get("countsAs"))):
+                travel.add(i)
+                i += 1
+        for i in range(net.n_nodes):
+            if g.nodes[i].get("role") == "tch" and not g.nodes[i].get("countsAs"):
+                travel.add(i)
+
         def tch(i: int) -> bool:
-            return i < net.n_nodes and g.nodes[i].get("role") == "tch" and not g.nodes[i].get("countsAs")
+            return i in travel
         pin_stretch = {"spines": 0.0, "chains": 0.0, "body": 0.0}
+        w_ch = float(net.params.width("ch"))
         for q in range(net.m):
             if strain[q] <= 0 or net.kind[q] not in (0, 1):
                 continue
+            # stretch of a piece of thread at least one chain long (short slip-stitch springs scaled)
+            st_q = float(strain[q]) if net.L[q] >= w_ch else float(strain[q]) * float(net.L[q]) / w_ch
             a, b = int(net.i[q]), int(net.j[q])
             if tch(a) or tch(b):
                 continue
             part = "spines" if a in owner and owner[a] == owner.get(b) else ("chains" if net.slack[q] else "body")
-            pin_stretch[part] = max(pin_stretch[part], float(strain[q]))
+            pin_stretch[part] = max(pin_stretch[part], st_q)
     return {
         "pin_stretch": pin_stretch,
         "positions": Y, "plane_coords": P, "energy": float(r.fun), "converged": bool(r.success),

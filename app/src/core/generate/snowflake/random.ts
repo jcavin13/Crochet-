@@ -189,7 +189,7 @@ export const SNOWFLAKE_PRESETS: SnowPreset[] = [
   },
   {
     id: 'double-pointed', label: 'Double-pointed', blurb: 'Major/minor corners: six big spikes and six small picot points between.',
-    spec: { points: 6, title: 'Double-pointed snowflake', centre: { style: 'spoked' }, body: [{ motif: 'hexagon' }, { motif: 'major-minor' }], arm: { length: 10, branches: 1, picot: 3, tip: 'spike', back: 'slst' }, minor: { style: 'spike', length: 3, picot: 3 }, valley: valley('deep') },
+    spec: { points: 6, title: 'Double-pointed snowflake', centre: { style: 'ring' }, body: [{ motif: 'major-minor' }], arm: { length: 10, branches: 1, picot: 3, tip: 'spike', back: 'slst' }, minor: { style: 'spike', length: 3, picot: 3 }, valley: valley('deep') },
   },
   {
     id: 'tiny', label: 'Tiny ornament', blurb: 'Two rounds, about 4 cm: a tree ornament or gift tag.',

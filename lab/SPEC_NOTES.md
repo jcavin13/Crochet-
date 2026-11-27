@@ -165,6 +165,43 @@ the user report (2026-11-27).
   per preset, before → after: simple star 0.04 → 1.00, fern 0.92 → 1.00, trefoil 0.93 → 0.92,
   double-pointed 0.46 → 0.99, tiny 0.87 → 1.00, bold star 0.76 → 0.92.
 
+**N6 — pointed loops are starched open loops.** (Like N5, only constructs no canonical fixture or
+corpus pattern contains: the app's parity test asserts no fixture has one, the corpus test that no
+corpus pattern has one; `spec/fixtures/extra/snowflake_lacy` pins the rule, lab vs app.)
+The "Lacy hexagon" arm, `(sc, ch 10, ch-4 picot, ch 10, sc) in next sp`, is not a spine (nothing is
+worked back along it): its chains are two chain spaces, tension-only (N4), so before blocking the
+loop lay anywhere and folded sideways.
+* *Definition* (`find_pointed_loops` / `findPointedLoops`, identical; the chart's "pointed loop"):
+  a chain space of ≥ 4 chains (`POINTED_LOOP_MIN`), straight away one or more picots, straight away
+  a second chain space of ≥ 4 chains of the same round; nothing is worked into either space or any
+  of their chains (no member, no `{node}` leg, no turning chain); `base` = the node before the first
+  run, `close` = the node after the second, both in the round and not chains.
+* *Layout* (s outward from `base`, t towards `close`): feet `base` (0, 0) and `close` (0, d),
+  d = (w_base + w_close)/2; the path base → chains → picots → chains → close (course rest lengths,
+  total S) folded into the isosceles triangle with legs S/2: a node at path length l ≤ S/2 lies at
+  (l/(S/2))·(H, d/2), beyond it at ((S−l)/(S/2))·(H, −d/2) + (0, d), H = √((S/2)² − (d/2)²).
+* *Springs*: every spring between two nodes of one loop's set {base, chains, picots, close} takes
+  its rest length from the layout and is two-sided (not tension-only); course bends among them get
+  k_course·min(s). No spring is added or removed.
+
+**N7 — the seam slip stitch of an arm's space.** A chain space that carries an arm (a member is the
+base of a spine, N5, or of a pointed loop, N6 — `arm_bases`) and whose first member is a slip stitch
+with only slip stitches before it in its round (`sl st in next ch-2 sp, ch 1, (sc, <arm>, sc) in same
+sp`): the slip stitch takes no share of the chains — the other members are distributed by the usual
+rule as if it were not there — and it attaches to the chain of the first of them. Before, the first
+arm of every snowflake sat off-centre in its loop (its sc on chains 5 and 7 of a ch-8 loop, the
+others' on 3 and 6) and blocked differently from the other arms. In real crochet the stitches worked
+into a space slide along it, so the arm sits where it sits in every repeat; the yarn from the slip
+stitch to the first sc (the `ch 1`) is then stretched in the model — the blocking report leaves a
+round's travel stitches (leading slip stitches, turning chains: not fabric, N3) out of its stretch
+figures. Restricted to arm spaces so that no fixture network changes (simple_doily and
+chain_space_motif start rounds the same way); the owner may extend it to all seams.
+
+* **P8 (new, after P7, before P4′).** Every pointed loop of the round whose `base` and `close` are
+  placed is laid out like a spine: x = x_base + s·u + σ·t·v with u, v as in P7 and σ = −1 when
+  (x_close − x_base)·v < 0, else +1. P4′ skips the loop's two chain spaces.
+  `spec/fixtures/extra/snowflake_lacy.network.json` stores one placement the app test reproduces.
+
 ## Viewer-only options (app; not part of the shared model)
 
 * **Resting on a table** (`createSim({table: true})`, `app/src/core/sim/table.ts`): grow the piece
@@ -179,7 +216,13 @@ the user report (2026-11-27).
   pins=...)`): pins `{node, x, y}` in any rigid frame are aligned to the piece (handedness from the
   winding of the pins in node order, then best rotation + translation — never scaled); the plane is
   the PCA plane; pinned nodes fixed, everything else relaxes in-plane; reported in addition: the
-  largest stretch of course and wale springs per part (spines / slack chain loops / body).
+  largest stretch of course and wale springs per part (spines and pointed loops / slack chain loops
+  / body). Springs touching a round's travel stitches (its leading slip stitches and turning chains)
+  are left out, and a spring shorter than a chain counts its stretch relative to a chain width
+  (a slip stitch's 0.48 mm wale pulled 0.08 mm is not "17 %" of visible thread). The app solves it
+  with pin continuation (the pins move from where their nodes lie to the template in 4 stages,
+  warm-started; snapping them in one go let branch picots flip through the spine); the solve method
+  is free (physics.md §4), the lab uses one L-BFGS run.
 
 ## Shape metric and config
 

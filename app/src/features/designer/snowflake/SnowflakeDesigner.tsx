@@ -95,6 +95,17 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
   };
 
   const pins = useMemo(() => snowflakePins(res), [res]);
+  const [showTemplate, setShowTemplate] = useState(true);
+  // the template drawn under the blocked piece: bridges, arms, branches and a small cross per pin
+  const templateSegs = useMemo(() => {
+    const sh = res.shape;
+    const out: number[][] = [];
+    for (const w of sh.web) out.push([w.a.x, w.a.y, w.pin.x, w.pin.y], [w.pin.x, w.pin.y, w.b.x, w.b.y]);
+    for (const a of sh.arms) for (const sg of [...a.spine, ...a.branches]) out.push([sg.a.x, sg.a.y, sg.b.x, sg.b.y]);
+    const c = Math.max(0.6, sh.tipR * 0.02);
+    for (const p of sh.pins) out.push([p.p.x - c, p.p.y, p.p.x + c, p.p.y], [p.p.x, p.p.y - c, p.p.x, p.p.y + c]);
+    return out;
+  }, [res]);
   useEffect(() => { setSimStatus(null); }, [res]);
   const sh = res.shape;
   const check = res.check;
@@ -107,9 +118,12 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
     const parts = `arms ${pc(st.spines)}, chain loops ${pc(st.chains)}, body ${pc(st.body)}`;
     const over = Math.max(st.spines, st.chains, st.body) > PIN_OVERSTRETCH;
     return over
-      ? { ok: false, text: `3D check disagrees: ${simBlock.message.replace(/\.$/, '')} (largest stretch: ${parts}) — the template's radii are probably too large for this thread; pin a little inside the marks.` }
+      ? { ok: false, text: `3D check: ${simBlock.message.replace(/\.$/, '')} (largest stretch: ${parts}) — this design does not block cleanly to the template; pin a little inside the marks, or lengthen the valley bridges.` }
       : { ok: true, text: `3D check agrees: pinned to the template, nothing stretches more than ${pc(Math.max(st.spines, st.chains, st.body))} (${parts}).` };
   })() : null;
+  // the check and the 3D view agree by construction: once the 3D view has pinned the piece out, its
+  // verdict is part of the check (a green check above a red "3D" badge was a bug)
+  const checkOk = check.ok && (!simItem || simItem.ok);
   const bodyCount = spec.body.length;
 
   const layers = (
@@ -255,21 +269,21 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
       </Card>
 
       <div className="dz-jump">
-        <span className="dz-summary">{check.ok ? <Badge tone="ok">crisp star</Badge> : <Badge tone="warning">check</Badge>}<span>{cm(sh.acrossMm)} across</span></span>
+        <span className="dz-summary">{checkOk ? <Badge tone="ok">crisp star</Badge> : <Badge tone="warning">check</Badge>}<span>{cm(sh.acrossMm)} across</span></span>
         <Button variant="primary" onClick={() => { setPane('result'); window.scrollTo({ top: 0 }); }}>Snowflake <Icon name="chevron-right" size={18} /></Button>
       </div>
     </div>
   );
 
   const checkCard = (
-    <Card className="dz-card sf-check" data-ok={check.ok}>
+    <Card className="dz-card sf-check" data-ok={checkOk}>
       <div className="dz-card__head">
         <span className="dz-label">Snowflake check</span>
-        {check.ok ? <Badge tone="ok" dot>blocks to a crisp star</Badge> : <Badge tone="warning" dot>needs a look</Badge>}
+        {checkOk ? <Badge tone="ok" dot>blocks to a crisp star</Badge> : <Badge tone="warning" dot>needs a look</Badge>}
         {simItem && !simItem.ok && <Badge tone="warning" dot>3D view disagrees</Badge>}
         {stale && <Badge>updating…</Badge>}
       </div>
-      <p className="sf-check__sum">{check.summary}</p>
+      <p className="sf-check__sum">{check.ok && simItem && !simItem.ok ? `Check: ${simItem.text}` : check.summary}</p>
       <ul className="sf-check__items">
         {check.items.map((it) => (
           <li key={it.id} data-ok={it.ok}><Icon name={it.ok ? 'check' : 'alert'} size={16} /><span>{it.text}</span></li>
@@ -340,15 +354,17 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
           <div className="sf-sim__bar">
             <SegmentedControl<'relaxed' | 'blocked'> label="Physics state" value={blocked ? 'blocked' : 'relaxed'} onChange={(v) => setBlocked(v === 'blocked')}
               options={[{ value: 'blocked', label: 'Blocked (pinned)' }, { value: 'relaxed', label: 'Before blocking' }]} />
-            {!blocked && <Toggle label="Resting on a table" checked={onTable} onChange={setOnTable} />}
+            {blocked
+              ? <Toggle label="Show template" checked={showTemplate} onChange={setShowTemplate} />
+              : <Toggle label="Resting on a table" checked={onTable} onChange={setOnTable} />}
           </div>
-          <SimView pattern={res.pattern} params={params} blocked={blocked} table={onTable} pins={pins} style={{ height: 420 }} onStatus={setSimStatus} />
+          <SimView pattern={res.pattern} params={params} blocked={blocked} table={onTable} pins={pins} overlay={showTemplate ? templateSegs : undefined} style={{ height: 420 }} onStatus={setSimStatus} />
           <p className="sf-sim__cap small muted" data-testid="sf-sim-caption">
             {blocked
-              ? <>Pinned out on the blocking template: tips, branch tips and valleys held at the template’s {pins.length} pin marks, the rest of the thread settles flat between them.{simBlock ? ` ${simBlock.message}` : ''}</>
+              ? <>Pinned out on the blocking template: tips, branch tips and valleys held at the template’s {pins.length} pin marks, the rest of the thread settles flat between them.{showTemplate ? ' The template is drawn faintly underneath.' : ''}{simBlock ? ` ${simBlock.message}` : ''}</>
               : onTable
                 ? <>Before blocking: the finished piece unpinned, resting on a table — arms lie roughly where they want to, valley chains hang loose.</>
-                : <>Before blocking, free in space (no table): the spring model has almost no stiffness against bending, so thin lace can look crumpled here — a tendency, not a verdict.</>}
+                : <>Before blocking, free in space (no table): the spring model has almost no stiffness against bending, so the body of thin lace crumples here even though it lies flat in reality — use “Resting on a table” for the real look.</>}
             {' '}Approximate spring physics.
           </p>
         </Card>

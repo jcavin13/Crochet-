@@ -403,6 +403,8 @@ export class Grower {
   private readonly cfg: SimConfig;
   /** Table mode: the planar grown state (before the release onto the table). */
   planar: Float64Array | null = null;
+  /** Table mode: stop after the planar growth (no release onto the table). */
+  planarOnly = false;
 
   constructor(readonly net: Network, cfg: SimConfig, opts: { uptoRound?: number; gtolRound?: number; gtolFinal?: number; maxIter?: number; maxIterFinal?: number; table?: boolean | TableOptions } = {}) {
     this.placer = new Placer(net, cfg);
@@ -472,7 +474,7 @@ export class Grower {
         if (this.round >= this.lastRound) this.phase = 'final';
       } else if (this.phase === 'final') {
         this.converged = st === 'converged' || opt.gnorm <= 10 * this.gtolFinal;
-        if (this.table) { this.planar = Float64Array.from(this.placer.X); this.phase = 'release'; }
+        if (this.table) { this.planar = Float64Array.from(this.placer.X); this.phase = this.planarOnly ? 'done' : 'release'; }
         else this.phase = 'done';
       } else {
         this.converged = this.converged && (st === 'converged' || opt.gnorm <= 10 * this.gtolRound);

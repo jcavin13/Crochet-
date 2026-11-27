@@ -1,4 +1,4 @@
-# Crochet notation (`.cro`) — grammar and semantics, v0.1
+# Crochet notation (`.cro`) — grammar and semantics, v0.1 (+ border extension, 3.9)
 
 This is the text notation the editor, corpus and fixtures use. It is deliberately close to how
 patterns are written in English (US terms by default) but is strict enough to compile
@@ -26,12 +26,19 @@ Rnd 3: *sc, inc* x6. (18)
 
 * **Header lines** `key: value` come before the first round line. Keys are free-form identifiers;
   known keys: `title`, `terms`, `yarn`, `hook`, `source`, `license`, `author`, `year`, `notes`,
-  `params` (id of a parameter set in `stitch_params.json`). Unknown keys are kept in `meta.extra`.
+  `params` (id of a parameter set in `stitch_params.json`), `colors` (a colour plan as text, e.g.
+  `colors: A Oatmeal #e9dfcc; B Sage #a3b18a` — kept in `meta.colors`; colour changes themselves
+  are not part of the graph, section 5). Unknown keys are kept in `meta.extra`.
 * **Round lines** start with a label and a colon:
   `Rnd N:` | `Round N:` | `R N:` | `Row N:` | `Foundation:` (alias `Start:`, `Setup:`; this is
   round 0 and may appear only first).
   * A range label `Rnds 6-10:` (also `Rnd 6-10:`, `Rows 2-5:`) repeats the instruction once per
     round in the range.
+  * An **odd/even range** `Rows 2-120 (even):` / `Rows 3-121 (odd):` repeats the instruction on the
+    rows of that parity only. Consecutive odd/even labels of the same kind form one block whose rows
+    are worked in number order (2, 3, 4, …), each from its own label — the usual way to write a
+    two-row repeat (moss stitch, granny stripe, shells). Both ends of such a range must have its
+    parity, and together the block's ranges must cover every number once (`E_ROUND_NUMBER`).
   * Round numbers must increase by one. A gap or duplicate is error `E_ROUND_NUMBER`.
   * A round's text continues until the next label, header or end of file, so long rounds may wrap
     across lines.
@@ -47,20 +54,24 @@ Rnd 3: *sc, inc* x6. (18)
 pattern     = { header } , round , { round } ;
 header      = KEY , ":" , TEXT , NEWLINE ;
 round       = label , ":" , sequence , [ count ] , [ SEP ] , [ fasten , [ SEP ] ] ;
-label       = ( "Rnd" | "Round" | "R" | "Row" | "Rnds" | "Rounds" | "Rows" ) , INT , [ "-" , INT ]
+label       = ( "Rnd" | "Round" | "R" | "Row" | "Rnds" | "Rounds" | "Rows" ) , INT , [ "-" , INT , [ "(" , ( "odd" | "even" ) , ")" ] ]
             | "Foundation" | "Start" | "Setup" ;
 
 sequence    = item , { SEP , item } , [ SEP ] ;
 SEP         = "," | ";" | "." ;
-item        = repeat | group | stitch | chain | skip | join | ring | turn | fasten ;
+item        = repeat | group | stitch | chain | skip | join | ring | turn | fasten | otherside ;
+otherside   = "working" , ( "along" | "across" | "in" | "on" | "into" ) ,
+              ( [ "opposite" | "other" | "back" | "bottom" ] , "side" | "unused" , "loops" ) ,
+              "of" , [ "foundation" ] , ( "ch" | "chain" ) ;                    (* 3.9 *)
 
 repeat      = "*" , sequence , "*" , times                       (* *sc, inc* x6 *)
             | "*" , sequence , SEP , "rep" , "from" , "*" , reptail ;  (* *sc, inc; rep from * around *)
 group       = ( "(" , sequence , ")" | "[" , sequence , "]" ) , [ target ] , [ times ] ;
-times       = ( "x" | "×" ) , INT | INT , "times" | "around" | "across" | "to" , "end" ;
+times       = ( "x" | "×" ) , INT | INT , "times" | extent ;
+extent      = "around" | "across" | "to" , "end" | [ "across" ] , "to" , [ "next" ] , "corner" ;   (* corner: 3.9 *)
 reptail     = INT , "more" , "times"        (* total = INT + 1 *)
             | INT , "times"                 (* total = INT (not INT more): see 3.7 *)
-            | "around" | "across" | "to" , "end" ;
+            | extent ;
 
 stitch      = [ INT ] , stname , [ loopmod ] , [ target ]        (* 2 dc in next st *)
             | stname , INT                                        (* sc 5  ==  5 sc *)
@@ -82,13 +93,15 @@ place       = "ring"
             | "first" , unit
             | "top of" , ( "tch" | "turning ch" | "beg ch" [ "-" INT ] | "ch" "-" INT )
             | [ "next" ] , [ INT ] , unit
-            | "each" , [ "of" ] , [ "next" , INT ] , unit , [ "around" | "across" | "to end" ]
+            | "each" , [ "of" ] , [ "next" , INT ] , unit , [ extent ]
             | ORDINAL , "ch from hook" ;
 unit        = "st" | "sts" | "stitch" | "stitches"
             | stname                                  (* next dc, each sc around *)
             | [ "ch" , [ "-" , INT ] ] , ( "sp" | "sps" | "space" | "spaces" | "lp" | "loop" | "loops" )
             | "ch-sp" | "ch-sps"
-            | "ch" | "chs" | "chain" | "chains" ;
+            | "ch" | "chs" | "chain" | "chains"
+            | "row" , [ "-" ] , ( "end" | "ends" ) | ( "end" | "ends" ) , "of" , ( "row" | "rows" )   (* 3.9 *)
+            | "corner" | "corners" ;                                                              (* 3.9 *)
 loopmod     = "flo" | "blo" ;
 count       = "(" , INT , [ countunit ] , { "," , INT , countunit } , ")" ;   (* last item of the round; only fasten may follow *)
 ```
@@ -249,6 +262,86 @@ stitch targets in 3.3). Other units:
 A mismatch is error `E_COUNT_MISMATCH` with the expected and actual numbers. A unit the compiler
 cannot check yields info `I_COUNT_UNVERIFIED`.
 
+### 3.9 Borders: rounds worked around rows (extension to v0.1)
+
+A border is worked in rounds around a piece made in rows: across the top, down a side into the
+**row ends**, along the bottom into the unused loops of the **foundation chain**, up the other
+side, with extra stitches at the four **corners**.
+
+**The perimeter.** A `Rnd` that follows a `Row` does not see the last row's target list: it sees
+the perimeter of the piece, in working order from where the yarn is at the end of the last row
+(the round is `turned`, as a next row would be; an explicit `turn` before its first stitch is
+`I_REDUNDANT_TURN`):
+
+1. **top** — the last row's targets (stitches and chain spaces), turned;
+2. **first side** — one row end per row, from the last row down to the first row of the row block;
+3. **bottom** — the foundation chain's unused loops, one per chain under the first row (from the
+   first to the last chain the first row worked into, skipped chains included, hook-end turning
+   chains excluded), from the first side's end towards the other;
+4. **second side** — one row end per row, from the first row up to the last.
+
+The first and last stitch of the top and of the bottom are the four **corners**.
+
+**Units and places.**
+
+* `row end` (`row ends`, `row-end`, `end of row`, `ends of rows`) addresses the next row-end target:
+  `sc in next row end`, `2 sc in each row end across`, `sc in next 5 row ends`, `sk next row end`.
+* `ch` and `st` both address the foundation-chain targets along the bottom
+  (`sc in each ch across to corner`).
+* `corner` addresses the next corner: `3 sc in corner` (= `in next corner`), `(sc, ch 2, sc) in corner`.
+* `across` in a round with corners runs **to the end of the current side**, i.e. up to (not
+  including) the next corner; `across to corner`, `to corner` and `to next corner` say the same
+  explicitly. A corner the cursor already stands on belongs to the side (it is worked as an
+  ordinary stitch). `*…* across to corner` repeats until the side is used up.
+* `around` and `to end` still mean the rest of the whole list.
+
+**Later border rounds** are ordinary rounds on the round before, but keep their corners: each
+corner group of the previous round — the stitches worked into one corner — marks a corner again:
+the chain space inside the group if it has one (`(sc, ch 2, sc)` → the ch-2 sp), else its middle
+stitch (`3 sc` → the 2nd; for an even group the later of the two middle ones). So
+`*sc in each st across to corner, 3 sc in corner* x4, sc in each st across` works round after round.
+
+**Rules and diagnostics** (crocheter's language, with positions):
+
+* A corner is never passed over: a unit that would have to cross a corner to find its target is
+  `E_NO_TARGET` ("needs a row end to work into but the top edge has none left before the corner —
+  work the corner first").
+* Passing over a row end or a foundation chain with another unit is `E_NO_TARGET` ("the next target
+  on the first side (row ends) is a row end — write "sc in next row end"").
+* Going to a stitch corner leaves the stitches before it unworked: `W_UNWORKED` ("2 stitches of
+  Row 20 are passed over without being worked (on the top edge)"). A corner that is a chain space
+  is reached like any space, passing over stitches silently.
+* `corner` when none is left: `E_NO_TARGET` ("needs a corner but no corner is left in Rnd 2 — all 4
+  corners have been worked (or passed) already"); `to corner` in a round without corners:
+  `E_NO_TARGET`.
+* `W_UNWORKED` at the end of a border round counts stitches, row ends and foundation chains, by side.
+* `E_REPEAT_UNEVEN`, `E_COUNT_MISMATCH` as usual (per round; the border's per-side counts follow
+  from the instructions).
+
+**Graph.** Anchors stay `{node}` | `{space}`; a node anchor may carry an optional `part`
+(`pattern.schema.json`): `{node: e, part: "side"}` is the row end of the row whose edge stitch is
+`e` (the first or last stitch-counting node of that row, a counting turning chain included);
+`{node: c, part: "base"}` is the unused bottom loops of chain `c`. The validator allows such
+anchors any number of rounds back (`G_ANCHOR_ROUND` is not raised) and checks that a `side` anchor
+is a stitch and a `base` anchor a chain (`G_ANCHOR_PART`). Corners are not stored: they are derived
+from the structure (the same rule as above), so tools can recompute them (`borderLists` in
+`app/src/core/graph/targets.ts`; `describeNode` says "sc in corner (2 of 3)", "sc in row end of
+Row 12", "sc in unused loop of foundation ch").
+
+**Working round both sides of a chain.** `working along the other side of the chain` (also
+`working along opposite side of foundation ch`, `working in unused loops of foundation ch`) turns
+the chain cursor round the end of the chain worked from the hook in this round: it then runs back
+along the unused loops of the chains already worked, not into the last one again. Example (an
+oval / rectangle in the round):
+`Foundation: ch 11.` `Rnd 1: sc in 2nd ch from hook, sc in next 8 chs, 5 sc in next ch, working
+along the other side of the chain, sc in next 8 chs, 4 sc in next ch, join. (26)`. Those stitches
+anchor `{node: c, part: "base"}`. In a border round (which already includes the bottom) the phrase
+is accepted and changes nothing.
+
+Not covered by the extension: starting a border by going down a side first ("do not turn"),
+"sc evenly along the side" without a count, `to last st`, and corners inside pieces worked in the
+round from the centre (a granny square's corners are addressed as `next ch-2 sp`).
+
 ## 4. Diagnostics
 
 Every diagnostic has `severity` (`error` | `warning` | `info`), `code`, `message`, and a source
@@ -297,6 +390,7 @@ These refine the sections above (full list: `app/src/core/notation/SPEC_NOTES.md
 
 ## 5. Out of scope for v0.1
 
-Colour changes and multiple yarns, working into rounds other than the previous one (spike
+Colour changes and multiple yarns (a `colors:` header and `#` comments can describe a colour plan,
+but the graph does not record it), working into rounds other than the previous one (spike
 stitches, overlay crochet), joining motifs, short rows, Tunisian crochet, beads. The graph format
 has room for these (`into` may point at any node) but the notation does not express them yet.

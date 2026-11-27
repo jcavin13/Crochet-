@@ -9,7 +9,8 @@
  *    when it has none; the picot of a pointed loop or a minor picot); trefoil side picots are the two
  *    picots straight after the tip; branch picots follow, in working order. The template computes
  *    every one of these points from the same reference layout (geometry.ts), node for node;
- *  * a valley anchor is a lone sc;
+ *  * a valley anchor is a lone sc: marked on the template, not pinned (its two bridges, pinned,
+ *    hold it; pinning it too over-constrained the body);
  *  * each valley bridge (`ch k` space of the arm round) is pinned at its middle chain.
  * An element whose stitches do not match the template's (count mismatch) is left unpinned.
  */
@@ -76,7 +77,8 @@ export function snowflakePins(res: Pick<SnowflakeResult, 'pattern' | 'shape'>): 
   els.forEach((el, q) => {
     const gr = groups[q];
     const push = (node: number, p: { x: number; y: number }, kind: SnowPin['kind']) => out.push({ node, x: p.x, y: p.y, kind });
-    if (el.kind === 'valley') { if (!gr.interior.length) push(gr.open, el.tip, 'valley'); return; }
+    // a valley sc is marked on the template but not pinned: the bridges either side hold it
+    if (el.kind === 'valley') return;
     const tipKind = el.kind === 'minor' ? 'minor' : 'tip';
     const sp = spineAt.get(gr.open);
     if (!sp) {

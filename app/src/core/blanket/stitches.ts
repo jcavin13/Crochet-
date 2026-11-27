@@ -96,7 +96,7 @@ export const STITCH_PATTERNS: StitchPattern[] = [
     id: 'moss', name: 'Moss (linen) stitch', blurb: 'Sc and ch-1 alternating; a woven, tweedy fabric that shows off stripes.', multiple: 2, plus: 1, minRepeats: 2, rowRepeat: 2,
     unit: 'sc', wRatio: 1.02, hRatio: 0.95, yarnFactor: 0.85, drape: 'medium', texture: 'woven, tweedy', difficulty: 1,
     edge: 'Lies flat and square; no bias. The edge columns are sc every row, so the sides are firm.', thumb: 'moss',
-    rows: (W, colW) => {
+    rows: (W, colW): BodyRows => {
       const k = (W - 1) / 2;
       const B = (): Tok[] => [col(colW), ...repeat(k, () => [col(colW, 'sp'), col(colW)])];
       const A = (): Tok[] => [col(colW), col(colW), ...repeat(k - 1, () => [col(colW, 'sp'), col(colW)]), col(colW)];
@@ -114,7 +114,7 @@ export const STITCH_PATTERNS: StitchPattern[] = [
     id: 'granny', name: 'Granny stripe', blurb: 'Rows of 3-dc groups in the spaces of the row below: the granny square look in rows.', multiple: 4, plus: 3, minRepeats: 2, rowRepeat: 2,
     unit: 'dc', wRatio: 1, hRatio: 1, yarnFactor: 0.8, drape: 'drapey', texture: 'open clusters', difficulty: 2,
     edge: 'Tends to spread a little wider than its foundation chain — work the chain with a hook one size up. Edges alternate half-groups, so they stay straight.', thumb: 'granny',
-    rows: (W, colW) => {
+    rows: (W, colW): BodyRows => {
       const G = (W - 3) / 4;
       const grp = () => sts(3, 'dc', colW);
       const B = (): Tok[] => [...grp(), ...repeat(G, () => [col(colW, 'sp'), ...grp()])];
@@ -134,7 +134,7 @@ export const STITCH_PATTERNS: StitchPattern[] = [
     id: 'v', name: 'V-stitch rows', blurb: '(dc, ch 1, dc) stacked in the V below: airy, quick, very drapey.', multiple: 3, plus: 2, minRepeats: 2, rowRepeat: 1,
     unit: 'dc', wRatio: 1.05, hRatio: 1, yarnFactor: 0.7, drape: 'very drapey', texture: 'open lattice', difficulty: 1,
     edge: 'Straight edges (a dc each end). Open fabric — stretches lengthwise when hung; block to size.', thumb: 'v',
-    rows: (W, colW) => {
+    rows: (W, colW): BodyRows => {
       const V = (W - 2) / 3;
       const toks = (): Tok[] => [col(colW, 'st', 'dc'), ...repeat(V, () => [col(colW, 'st', 'dc'), col(colW, 'sp'), col(colW, 'st', 'dc')]), col(colW, 'st', 'dc')];
       return {
@@ -148,7 +148,7 @@ export const STITCH_PATTERNS: StitchPattern[] = [
     id: 'shell', name: 'Shell rows', blurb: '5-dc shells offset row by row: a classic scalloped texture.', multiple: 6, plus: 1, minRepeats: 2, rowRepeat: 2,
     unit: 'dc', wRatio: 1.05, hRatio: 0.9, yarnFactor: 0.95, drape: 'medium', texture: 'scalloped fans', difficulty: 2,
     edge: 'Sides straight (half shells at the ends); the top and bottom edges are gently scalloped — a border evens them.', thumb: 'shell',
-    rows: (W, colW) => {
+    rows: (W, colW): BodyRows => {
       const S = (W - 1) / 6;
       const A = (): Tok[] => [col(colW), ...repeat(S, () => [...sts(5, 'dc', colW), col(colW)])];
       const B = (): Tok[] => [...sts(3, 'dc', colW), ...repeat(S - 1, () => [col(colW), ...sts(5, 'dc', colW)]), col(colW), ...sts(3, 'dc', colW)];
@@ -167,7 +167,7 @@ export const STITCH_PATTERNS: StitchPattern[] = [
     id: 'griddle', name: 'Griddle (sc/dc)', blurb: 'Alternating sc and dc, the dc of each row in the sc below: a bumpy, dense texture (lemon-peel family).', multiple: 2, plus: 0, minRepeats: 2, rowRepeat: 1,
     unit: 'hdc', wRatio: 1, hRatio: 1, yarnFactor: 1.0, drape: 'medium', texture: 'bumpy, dense', difficulty: 1,
     edge: 'Square and flat; rows are about hdc height. Mixed stitch heights can make the side edges look slightly uneven.', thumb: 'griddle',
-    rows: (W, colW) => {
+    rows: (W, colW): BodyRows => {
       const m = W / 2;
       const toks = (): Tok[] => repeat(m, () => [col(colW, 'st', 'sc'), col(colW, 'st', 'dc')]);
       return {
@@ -181,7 +181,7 @@ export const STITCH_PATTERNS: StitchPattern[] = [
     id: 'mesh', name: 'Filet mesh', blurb: '(dc, ch 1) mesh: light and lacy, quick to work, uses little yarn.', multiple: 2, plus: 1, minRepeats: 2, rowRepeat: 1,
     unit: 'dc', wRatio: 1, hRatio: 1, yarnFactor: 0.6, drape: 'very drapey', texture: 'open grid', difficulty: 1,
     edge: 'Square grid; stretches on the bias. Block to size; a solid border helps it keep its shape.', thumb: 'mesh',
-    rows: (W, colW) => {
+    rows: (W, colW): BodyRows => {
       const M = (W - 1) / 2;
       const toks = (): Tok[] => [col(colW, 'st', 'dc'), ...repeat(M, () => [col(colW, 'sp'), col(colW, 'st', 'dc')])];
       return {
@@ -195,7 +195,7 @@ export const STITCH_PATTERNS: StitchPattern[] = [
     id: 'ripple', name: 'Ripple (chevron)', blurb: 'Increase and decrease waves on a 12-stitch repeat: the classic chevron blanket.', multiple: 12, plus: 1, minRepeats: 2, rowRepeat: 1,
     unit: 'dc', wRatio: 0.92, hRatio: 1, yarnFactor: 0.95, drape: 'drapey', texture: 'waves', difficulty: 2,
     edge: 'The sides are straight, but the top and bottom follow the waves: the outline is wavy at the ends (a border follows the waves, it does not straighten them). Width is measured across, so the fabric is narrower than its stitch count suggests.', thumb: 'ripple',
-    rows: (W, colW) => {
+    rows: (W, colW): BodyRows => {
       const n = (W - 1) / 12;
       const toks = (): Tok[] => sts(W, 'dc', colW);
       const wave = (u: string, inc: string) => `dc in next 4 ${u}, dc3tog over next 3 ${u}, dc in next 4 ${u}, ${inc}`;
@@ -211,7 +211,7 @@ export const STITCH_PATTERNS: StitchPattern[] = [
     id: 'bobble', name: 'Bobble rows', blurb: 'Sc rows with a bobble every 4th stitch on alternate rows: a raised, polka-dot texture.', multiple: 4, plus: 3, minRepeats: 2, rowRepeat: 2,
     unit: 'sc', wRatio: 1.05, hRatio: 1, yarnFactor: 1.5, drape: 'thick', texture: 'raised bobbles', difficulty: 2,
     edge: 'Bobbles pull the fabric in slightly; check the width after a few repeats. Bobble rows are wrong-side rows so the bobbles pop to the right side.', thumb: 'bobble',
-    rows: (W, colW) => {
+    rows: (W, colW): BodyRows => {
       const b = (W - 3) / 4;
       const plain = (): Tok[] => sts(W, 'sc', colW);
       const bob = (): Tok[] => [...sts(3, 'sc', colW), ...repeat(b, () => [col(colW, 'st', 'cl'), ...sts(3, 'sc', colW)])];

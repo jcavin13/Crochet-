@@ -20,7 +20,7 @@ export interface ParseResult {
 }
 
 export const KNOWN_HEADERS = new Set([
-  'title', 'terms', 'yarn', 'hook', 'source', 'license', 'author', 'year', 'notes', 'params',
+  'title', 'terms', 'yarn', 'hook', 'source', 'license', 'author', 'year', 'notes', 'params', 'colors',
 ]);
 
 interface Chunk {
