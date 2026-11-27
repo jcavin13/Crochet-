@@ -47,7 +47,10 @@ Actions*; after that every push to `main` publishes the app, which you can open 
 | **Chart**: radial symbol chart (CYC-style symbols generated from stitch structure), pan/zoom, SVG/PNG export | `#/chart` | works; weak on cornered motifs and closing rounds of spheres |
 | **Flatness checker**: per-round flat / cup / ruffle with "about N stitches over flat", as a colour band on the chart | in Chart, Designer | works; analytic approximation (see below) |
 | **3D view**: spring simulation of the graph, round slider, relaxed vs blocked | `#/sim` | works; approximate physics, nominal parameters |
-| **Doily designer**: symmetry order + motif stack or seeded "surprise me"; every round solved for flatness; output is ordinary notation | `#/designer` | works |
+| **Doily designer**: layer-by-layer builder with thumbnails, undo/redo and locking; ranked "add a round" suggestions; every round auto-solved for flatness with the alternatives shown; seeded "surprise me"; output is ordinary notation | `#/designer` | works |
+| **Snowflake designer**: point count, centre / body / arm layers, arm editor (tips, branches, minor points), seeded variations gallery, printable pin-out blocking template; judged by how it blocks, not by the circle rule | `#/designer?kind=snowflake` | works; the Chart page still draws arm rounds on a circle (use the Preview tab) |
+| **Symmetry analysis**: rotation order and mirror symmetry per round and for the whole piece (e.g. "D12"), near-miss detection, sector overlay on the chart | in Chart, Editor, Designer | works |
+| **Flatness assistant**: ranked one-tap fixes for a non-flat round (chain length, stitches per group, increase spacing), "fix all", per-round stitch-budget calculator | in Editor | works; inherits the lenient lace rule |
 | **Row counter**: phone-first, steps through the graph by stitch / item / round, wake lock, persists locally | `#/counter` | works |
 | **Amigurumi**: profile curve → surface-of-revolution pattern with evenly spread, staggered increases | `#/amigurumi` | works (stretch goal) |
 | **Gauge calculator**: rectangle, circle, tube, hat, gauge conversion | `#/amigurumi?tab=gauge` | works (stretch goal) |
@@ -150,7 +153,8 @@ Full grammar: [`spec/notation.md`](spec/notation.md).
 * *Designer*: 14 motifs; at very high symmetry orders a scalloped edge may not fit a repeat.
 
 **Notation gaps** (planned for v0.2 — `data/corpus/NOTATION_FEEDBACK.md`): working into earlier
-rounds, a picot or a ring's individual chains as targets, stitches above dtr, colour changes,
+rounds, returning to a chain spine after a chain branch (so snowflake arm branches are picots only
+and arms are always the last round), a picot or a ring's individual chains as targets, stitches above dtr, colour changes,
 joining motifs. After a join, `next st` starts at the stitch the join went into, which is not how
 every crocheter reads "sl st in next st" (decision 15).
 

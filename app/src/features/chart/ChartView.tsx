@@ -15,6 +15,7 @@ import {
   bandPath, boundsUpto, buildHitIndex, edgePath, glyph, hitTest, layoutChart, magicRingGlyph, roundAt,
   type ChartLayout, type ScGlyph, type SymbolSet,
 } from '@/core/chart';
+import type { SymmetryReport } from '@/core/symmetry';
 import { useSettings } from '@/store/settings';
 import './chart.css';
 
@@ -48,6 +49,13 @@ export interface ChartViewProps {
   onRoundClick?: (round: number) => void;
   /** Accessible name. Default: "Symbol chart of <title>". */
   ariaLabel?: string;
+  /**
+   * Symmetry overlay (radial charts): the n sector lines, ONE repeat wedge shaded (the unit that is
+   * repeated), and mirror axes as dashed lines when the piece is dihedral. From `analyzeSymmetry`.
+   */
+  symmetryOverlay?: SymmetryReport | null;
+  /** Nodes to emphasise with a ring (e.g. the stitches that break a repeat). */
+  emphasisNodes?: number[];
 }
 
 const CHUNK = 120;
@@ -73,7 +81,7 @@ type View = { k: number; x: number; y: number };
 export function ChartView(props: ChartViewProps) {
   const {
     pattern, showFlatness = true, uptoRound, highlightNode, dimAfter, onNodeClick, className, style,
-    showLabels = true, symbolSet = 'cyc', scGlyph = 'x', onRoundClick,
+    showLabels = true, symbolSet = 'cyc', scGlyph = 'x', onRoundClick, symmetryOverlay, emphasisNodes,
   } = props;
   const settingsTerms = useSettings((s) => s.terms);
   const terms = props.terms ?? settingsTerms;
@@ -113,6 +121,9 @@ export function ChartView(props: ChartViewProps) {
       cls: r.flat?.class ?? 'n/a', message: r.flat?.message ?? '', loose: !!r.flat?.slackOnly,
     }));
   }, [layout]);
+
+  const symGeo = useMemo(() => symmetryGeometry(layout, symmetryOverlay, upto), [layout, symmetryOverlay, upto]);
+  const emph = useMemo(() => (emphasisNodes ?? []).filter((id) => id >= 0 && id <= lastNode).map((id) => layout.nodes[id]).filter(Boolean), [emphasisNodes, lastNode, layout]);
 
   const hitIndex = useMemo(() => buildHitIndex(layout), [layout]);
   const vb = useMemo(() => boundsUpto(layout, upto, 0.7), [layout, upto]);
@@ -325,6 +336,13 @@ export function ChartView(props: ChartViewProps) {
       >
         <g ref={gRef}>
           <Bands bands={bands} upto={upto} flatness={showFlatness} hatchId={hatchId} />
+          {symGeo && (
+            <g className="ch-symov" aria-hidden="true">
+              {symGeo.wedge && <path className="ch-symov__wedge" d={symGeo.wedge} />}
+              {symGeo.sectors.map((l, i) => <line key={`s${i}`} className={`ch-symov__sector${i < 2 && symGeo.wedge ? ' is-edge' : ''}`} x1={0} y1={0} x2={l.x} y2={l.y} />)}
+              {symGeo.axes.map((l, i) => <line key={`a${i}`} className="ch-symov__axis" x1={0} y1={0} x2={l.x} y2={l.y} />)}
+            </g>
+          )}
           {ring && <path className="ch-ring" d={ring.stroke} />}
           {chunks.map((c) => {
             if (c.round > upto) return null;
@@ -343,6 +361,11 @@ export function ChartView(props: ChartViewProps) {
             );
           })}
           {showLabels && <Labels layout={layout} upto={upto} />}
+          {emph.length > 0 && (
+            <g className="ch-emph" aria-hidden="true">
+              {emph.map((n) => <circle key={n.id} cx={n.cx} cy={n.cy} r={0.8} />)}
+            </g>
+          )}
           {hl && hlGlyph && (
             <g className="ch-hl" aria-hidden="true">
               <circle cx={hl.cx} cy={hl.cy} r={0.62} />
@@ -371,6 +394,39 @@ export function ChartView(props: ChartViewProps) {
   );
 }
 export default ChartView;
+
+/** Lines and the shaded repeat of a symmetry overlay, in chart coordinates (centre at 0,0). */
+function symmetryGeometry(layout: ChartLayout, sym: SymmetryReport | null | undefined, upto: number) {
+  const f = sym?.frame;
+  if (!sym || !f || layout.mode !== 'radial' || sym.order < 1 || !f.elementNodes.length) return null;
+  const L = f.elementNodes.length;
+  const ang = (id: number) => { const n = layout.nodes[id]; return n ? Math.atan2(n.cy, n.cx) : 0; };
+  const at = (x: number) => {
+    const i0 = Math.floor(x), i1 = Math.ceil(x);
+    const a = ang(f.elementNodes[((i0 % L) + L) % L]);
+    if (i0 === i1) return a;
+    const b = ang(f.elementNodes[((i1 % L) + L) % L]);
+    return Math.atan2(Math.sin(a) + Math.sin(b), Math.cos(a) + Math.cos(b));
+  };
+  let R = 0;
+  for (const r of layout.rounds) if (r.index <= upto && r.first >= 0) R = Math.max(R, r.rOuter);
+  R += 0.8;
+  const pt = (a: number) => ({ x: R * Math.cos(a), y: R * Math.sin(a) });
+  const sectors = sym.order > 1 ? f.sectors.map((x) => pt(at(x))) : [];
+  const axes = f.axes.map((x) => pt(at(x)));
+  let wedge = '';
+  if (sym.order > 1) {
+    const p = L / sym.order;
+    const a0 = at(f.sectors[0]), a1 = at(f.sectors[1]), am = at(f.sectors[0] + p / 2);
+    const norm = (x: number) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    const d1 = norm(a1 - a0), dm = norm(am - a0);
+    const pos = dm < d1;
+    const span = pos ? d1 : 2 * Math.PI - d1;
+    const s0 = pt(a0), s1 = pt(a1);
+    wedge = `M0 0L${s0.x.toFixed(3)} ${s0.y.toFixed(3)}A${R.toFixed(3)} ${R.toFixed(3)} 0 ${span > Math.PI ? 1 : 0} ${pos ? 1 : 0} ${s1.x.toFixed(3)} ${s1.y.toFixed(3)}Z`;
+  }
+  return { sectors, axes, wedge };
+}
 
 const Chunk = memo(function Chunk({ stroke, fill, from, to, alt, state, cut }: {
   stroke: string[]; fill: string[]; from: number; to: number; alt: boolean; state: 'done' | 'todo' | 'split'; cut: number;

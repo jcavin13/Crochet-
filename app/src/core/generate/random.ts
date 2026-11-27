@@ -43,7 +43,7 @@ export interface RandomConstraints {
 }
 
 type W = Partial<Record<MotifId, number>>;
-const NEXT: Record<MotifId, W> = {
+export const GRAMMAR: Record<MotifId, W> = {
   centre: { solid: 2, spokes: 3, mesh: 2, clusters: 1.5, puffs: 1, vstitch: 1, accent: 0.7 },
   solid: { solid: 1.5, accent: 1.2, spokes: 2, mesh: 2, clusters: 1, puffs: 1, shells: 1, vstitch: 1 },
   accent: { solid: 2, spokes: 1.5, mesh: 1.5, clusters: 0.5 },
@@ -110,7 +110,7 @@ function sampleOnce(rnd: () => number, c: RandomConstraints): DoilySpec {
   const edge: MotifId[] = R >= 5 && rnd() < 0.35 ? ['fans', 'picot'] : rnd() < 0.65 ? ['picot'] : ['fans'];
   while (seq.length < R - edge.length) {
     const prev = seq[seq.length - 1];
-    const w = tilt({ ...NEXT[prev] });
+    const w = tilt({ ...GRAMMAR[prev] });
     if (seq.length >= 2 && seq[seq.length - 2] === prev) delete w[prev]; // no motif three times running
     seq.push(pick(rnd, w));
   }

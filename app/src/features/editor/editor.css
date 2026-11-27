@@ -187,3 +187,53 @@
   .ed-table th, .ed-table td { padding-left: 6px; padding-right: 6px; }
   .ed-table thead th { letter-spacing: 0.02em; }
 }
+
+/* ---- symmetry hints (not compiler diagnostics) ---- */
+.ed-hints { margin-top: var(--s-2); }
+.ed-diag[data-sev="hint"] { background: transparent; border: 1px dashed var(--border-strong); }
+.ed-diag[data-sev="hint"] svg { color: var(--accent); }
+.ed-hint-tag { font-weight: 600; color: var(--accent); }
+
+/* ---- flatness card ---- */
+.ed-flat__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); margin-bottom: var(--s-2); font-size: var(--text-sm); }
+.ed-flat__ok { display: inline-flex; align-items: center; gap: 6px; color: var(--ok); font-weight: 600; }
+.ed-flat__actions { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.ed-flat__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ed-flat__list > li { border-radius: var(--radius-sm); padding: 2px 0; }
+.ed-flat__list > li.is-off { background: var(--surface-2); padding: var(--s-1) var(--s-2); margin: 2px 0; }
+.ed-flat__row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--s-2); align-items: center; }
+.ed-flat__msg { border: 0; background: none; padding: 2px 0; font: inherit; font-size: var(--text-sm); color: var(--ink); text-align: left; cursor: pointer; overflow-wrap: anywhere; min-height: 32px; }
+.ed-flat__msg:hover { color: var(--accent); }
+.ed-flat__more { display: flex; justify-content: flex-start; padding: 2px 0 var(--s-1); }
+.ed-flat__calc {
+  min-width: 36px; min-height: 32px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink-2); font: 600 var(--text-xs) var(--font-mono); cursor: pointer;
+}
+.ed-flat__calc:hover, .ed-flat__calc.is-on { border-color: var(--accent); color: var(--accent); }
+@media (pointer: coarse) { .ed-flat__calc, .ed-flat__msg { min-height: var(--tap); } }
+
+.ed-fixes { margin: var(--s-2) 0 var(--s-1); }
+.ed-fixes__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.ed-fix { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s-2) var(--s-3); display: flex; flex-direction: column; gap: var(--s-1); }
+.ed-fix__top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-2); }
+.ed-fix__label { font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
+.ed-fix__label .muted { font-weight: 400; }
+.ed-fix__result { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.ed-fix__warn { display: flex; gap: 6px; align-items: flex-start; margin: 0; color: var(--warning); }
+.ed-diff { font: var(--text-xs)/1.5 var(--font-mono); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.ed-diff > div { padding: 2px var(--s-2) 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; display: grid; grid-template-columns: 1.6em 1fr; }
+.ed-diff > div > span { text-align: center; font-weight: 700; }
+.ed-diff__del { background: color-mix(in srgb, var(--error) 9%, var(--surface)); color: var(--ink-2); }
+.ed-diff__del > span { color: var(--error); }
+.ed-diff__add { background: color-mix(in srgb, var(--ok) 11%, var(--surface)); }
+.ed-diff__add > span { color: var(--ok); }
+
+.ed-calc { margin: var(--s-2) 0 var(--s-1); padding: var(--s-2) var(--s-3); border: 1px solid var(--accent); border-radius: var(--radius); background: var(--surface); display: flex; flex-direction: column; gap: var(--s-1); }
+.ed-calc__ctrl { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-2) var(--s-3); }
+.ed-calc__ctrl label { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-xs); color: var(--ink-3); }
+.ed-calc__ctrl select, .ed-calc__ctrl input { min-height: 36px; padding: 0 var(--s-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: inherit; font-size: var(--text-sm); width: 5.5em; }
+@media (pointer: coarse) { .ed-calc__ctrl select, .ed-calc__ctrl input { min-height: var(--tap); } }
+.ed-calc__msg { margin: 0; font-size: var(--text-sm); }
+.ed-calc__opts { margin: 0; padding-left: 1.1em; font-size: var(--text-sm); display: flex; flex-direction: column; gap: 2px; }
+.ed-calc__opts code { font-size: var(--text-xs); }
+.ed-sym { margin-top: var(--s-3); padding-top: var(--s-2); border-top: 1px solid var(--border); }

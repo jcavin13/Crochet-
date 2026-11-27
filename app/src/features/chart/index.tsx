@@ -11,10 +11,11 @@ import {
 import { ChartView, useChartLayout } from './ChartView';
 import { ChartLegend } from './Legend';
 import { downloadChartPng, downloadChartSvg } from './export';
+import { SymmetryPanel, useSymmetry } from '@/features/symmetry/SymmetryPanel';
 import './chart.css';
 
-type Prefs = { flatness: boolean; labels: boolean; set: SymbolSet; sc: ScGlyph; print: boolean };
-const DEFAULT_PREFS: Prefs = { flatness: true, labels: true, set: 'cyc', sc: 'x', print: false };
+type Prefs = { flatness: boolean; labels: boolean; set: SymbolSet; sc: ScGlyph; print: boolean; symmetry: boolean };
+const DEFAULT_PREFS: Prefs = { flatness: true, labels: true, set: 'cyc', sc: 'x', print: false, symmetry: false };
 
 export default function ChartPage() {
   const cur = useCurrentPattern();
@@ -64,6 +65,10 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
   const [upto, setUpto] = useState(rounds.length - 1);
   useEffect(() => { setUpto(rounds.length - 1); }, [rounds.length]);
   const showFlat = prefs.flatness && !prefs.print;
+  const sym = useSymmetry(pattern);
+  const [emphasis, setEmphasis] = useState<number[]>([]);
+  useEffect(() => { setEmphasis([]); }, [pattern]);
+  const showSym = prefs.symmetry && !prefs.print && layout.mode === 'radial' && !!sym?.applicable;
   const svgOpts = {
     symbols: { set: prefs.set, sc: prefs.sc }, showFlatness: showFlat, showLabels: prefs.labels, uptoRound: upto,
     title, terms, mono: prefs.print,
@@ -125,11 +130,20 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
                 symbolSet={prefs.set}
                 scGlyph={prefs.sc}
                 terms={terms}
+                symmetryOverlay={showSym ? sym : null}
+                emphasisNodes={prefs.print ? undefined : emphasis}
               />
             </Card>
             <p className="muted small" style={{ margin: 'var(--s-2) 0 0' }}>
               {nodeCount} stitches and chains shown · drag to pan, pinch or scroll to zoom, double-tap to reset · tap a symbol for what it is
             </p>
+            {showSym && sym && (
+              <p className="ch-symkey small" aria-label="Symmetry overlay key">
+                <span className="ch-symkey__wedge" aria-hidden="true" /> one repeat (the unit worked {sym.order}×)
+                {sym.mirror && <><span className="ch-symkey__axis" aria-hidden="true" /> mirror axes</>}
+                {emphasis.length > 0 && <><span className="ch-symkey__emph" aria-hidden="true" /> breaks the repeat <button type="button" className="ch-linkbtn" onClick={() => setEmphasis([])}>clear</button></>}
+              </p>
+            )}
           </div>
         </div>
 
@@ -139,6 +153,7 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
             <div className="ch-toggles">
               <Toggle label="Flatness band" checked={prefs.flatness} onChange={(v) => set({ flatness: v })} disabled={layout.mode !== 'radial' || prefs.print} />
               <Toggle label="Round numbers" checked={prefs.labels} onChange={(v) => set({ labels: v })} />
+              <Toggle label="Symmetry" checked={prefs.symmetry} onChange={(v) => set({ symmetry: v })} disabled={layout.mode !== 'radial' || prefs.print || !sym?.applicable} />
               <Toggle label="Print-friendly" checked={prefs.print} onChange={(v) => set({ print: v })} />
             </div>
             <div className="ch-segs">
@@ -170,6 +185,15 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
                 options={[{ value: 'US', label: 'US', title: 'US names (sc, dc…)' }, { value: 'UK', label: 'UK', title: 'UK names (dc, tr…)' }]}
               />
             </div>
+          </Card>
+          <Card className="ch-symcard">
+            <h2>Symmetry</h2>
+            <SymmetryPanel
+              pattern={pattern}
+              report={sym}
+              onSelectRound={(r) => setUpto(r)}
+              onSelectNodes={(nodes) => { setEmphasis(nodes); setUpto(rounds.length - 1); if (!prefs.symmetry) set({ symmetry: true }); }}
+            />
           </Card>
           <Card>
             <h2>Legend</h2>

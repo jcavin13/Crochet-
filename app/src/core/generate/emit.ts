@@ -9,7 +9,7 @@
  *   puff / popcorn      `ch 2, puff in same sp` / `ch 3, pc in same sp`
  * and every round ends `…, join.` with a count annotation.
  */
-import type { Entry, Item, Op, Place, Plain, Stitch } from './types';
+import type { Entry, HookStitch, Item, Op, Place, Plain, Stitch } from './types';
 
 export type Terms = 'US' | 'UK';
 
@@ -30,6 +30,13 @@ export function stitchName(s: Stitch, terms: Terms, legsOverride?: number): stri
 }
 
 const isTall = (s: Stitch): s is { t: 'dc' | 'tr' | 'dtr' } => s.t === 'dc' || s.t === 'tr' || s.t === 'dtr';
+
+/** English ordinal for "4th ch from hook". */
+export function ordinal(n: number): string {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
+}
 
 export function entryOf(s: Stitch): Entry {
   switch (s.t) {
@@ -54,7 +61,14 @@ export function sectorEntries(ops: Op[]): Entry[] {
     for (const it of items) {
       if (it.k === 'st') { for (let i = 0; i < it.n; i++) out.push(entryOf(it.s)); chainRun = false; }
       else if (it.k === 'ch') pushCh(it.n);
-      else chainRun = false; // picot interrupts a chain run
+      else if (it.k === 'hook') {
+        if (chainRun && out[out.length - 1]?.kind === 'sp') out.pop();
+        chainRun = false;
+        if (it.s.t !== 'slst') out.push(entryOf(it.s));
+      } else if (it.k === 'along') {
+        chainRun = false;
+        if (it.s.t !== 'slst') for (let i = 0; i < it.count; i++) out.push(entryOf(it.s as Stitch));
+      } else chainRun = false; // picot interrupts a chain run
     }
   };
   for (const op of ops) {
@@ -62,6 +76,15 @@ export function sectorEntries(ops: Op[]): Entry[] {
     else if (op.k === 'each') { for (let i = 0; i < op.count; i++) out.push(entryOf(op.s)); chainRun = false; }
     else if (op.k === 'ch') pushCh(op.n);
     else if (op.k === 'picot') chainRun = false;
+    else if (op.k === 'hook') {
+      // a hook-addressed chain run is plain chains, not a chain space (notation.md 4a)
+      if (chainRun && out[out.length - 1]?.kind === 'sp') out.pop();
+      chainRun = false;
+      if (op.s.t !== 'slst') out.push(entryOf(op.s));
+    } else if (op.k === 'along') {
+      chainRun = false;
+      if (op.s.t !== 'slst') for (let i = 0; i < op.count; i++) out.push(entryOf(op.s as Stitch));
+    }
   }
   return out;
 }
@@ -75,6 +98,7 @@ class Writer {
   sk() { return this.terms === 'UK' ? 'miss' : 'sk'; }
   slst() { return this.terms === 'UK' ? 'ss' : 'sl st'; }
   name(s: Stitch) { return stitchName(s, this.terms); }
+  hookName(s: HookStitch) { return s.t === 'slst' ? this.slst() : stitchName(s, this.terms); }
 
   place(p: Place): string {
     switch (p.to) {
@@ -87,6 +111,8 @@ class Writer {
   item(it: Item): string {
     if (it.k === 'ch') return `ch ${it.n}`;
     if (it.k === 'picot') return it.n === 3 ? 'picot' : `ch-${it.n} picot`;
+    if (it.k === 'hook') return `${this.hookName(it.s)} in ${ordinal(it.nth)} ch from hook`;
+    if (it.k === 'along') return it.count === 1 ? `${this.hookName(it.s)} in next ch` : `${this.hookName(it.s)} in next ${it.count} ch`;
     return it.n === 1 ? this.name(it.s) : `${it.n} ${this.name(it.s)}`;
   }
   items(items: Item[], where: string): string {
@@ -101,6 +127,8 @@ class Writer {
       case 'picot': return o.n === 3 ? 'picot' : `ch-${o.n} picot`;
       case 'skipSt': return `${this.sk()} ${o.n} st${o.n === 1 ? '' : 's'}`;
       case 'skipSp': return `${this.sk()} next ch-${o.len} sp`;
+      case 'hook': return `${this.hookName(o.s)} in ${ordinal(o.nth)} ch from hook`;
+      case 'along': return o.count === 1 ? `${this.hookName(o.s)} in next ch` : `${this.hookName(o.s)} in next ${o.count} ch`;
     }
   }
 
@@ -152,6 +180,13 @@ class Writer {
       const lead = s.t === 'sc' ? 1 : s.t === 'hdc' || s.t === 'puff' ? 2 : 3;
       pieces.push(`ch ${lead}`);
       remaining = items;
+    }
+    // a group with hook-addressed stitches (a snowflake arm) must stay one group, so that its last
+    // stitch goes back into the group's place and not into the chain worked last
+    if (items.some((it) => it.k === 'hook' || it.k === 'along') || (items.some((it) => it.k === 'picot') && items.some((it) => it.k === 'ch'))) {
+      if (remaining.length) pieces.push(this.items(remaining, where));
+      if (eachRest) pieces.push(eachRest === 1 ? `${this.name(s)} in next st` : `${this.name(s)} in next ${eachRest} sts`);
+      return { pieces, used };
     }
     // the rest of the first group, in the same place; chains between its stitches written out
     let run: Item[] = [];

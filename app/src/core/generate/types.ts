@@ -22,11 +22,18 @@ export type Stitch =
   | { t: 'puff' }
   | { t: 'pc'; legs: number };
 
+/** A stitch worked into a chain of this round by hook addressing: any designer stitch or a slip stitch. */
+export type HookStitch = Stitch | { t: 'slst' };
+
 /** What a group worked into one place contains. */
 export type Item =
   | { k: 'st'; s: Stitch; n: number }
   | { k: 'ch'; n: number }
-  | { k: 'picot'; n: number };
+  | { k: 'picot'; n: number }
+  /** Inside a group: `sl st in 4th ch from hook` (a stitch with its own target; see Op 'hook'). */
+  | { k: 'hook'; s: HookStitch; nth: number }
+  /** Inside a group: `sl st in next 5 ch` (see Op 'along'). */
+  | { k: 'along'; s: HookStitch; count: number };
 
 /** Where an op is worked. `same` re-uses the place of the previous op (a space or a stitch). */
 export type Place = { to: 'st' } | { to: 'sp'; len: number } | { to: 'same' } | { to: 'ring' };
@@ -39,7 +46,15 @@ export type Op =
   | { k: 'ch'; n: number }
   | { k: 'picot'; n: number }
   | { k: 'skipSt'; n: number }
-  | { k: 'skipSp'; len: number };
+  | { k: 'skipSp'; len: number }
+  /**
+   * `sl st in 4th ch from hook`: a stitch into the chain run just made (notation.md 3.3), counting
+   * back from the hook. The chain run becomes plain chains (no chain space); chains skipped at the
+   * hook end stand as a loop / standing chain. Used for snowflake spines, tips and spikes.
+   */
+  | { k: 'hook'; s: HookStitch; nth: number }
+  /** `sl st in next 5 ch`: continue along that chain run, away from the hook (back down a spine). */
+  | { k: 'along'; s: HookStitch; count: number };
 
 /* ------------------------------------------------------------------ interfaces */
 
@@ -110,6 +125,12 @@ export interface RoundSpec {
   motif: MotifId;
   /** Fixed parameters; anything absent is chosen automatically. */
   params?: RoundParams;
+  /**
+   * Double the repeats from this round outward (e.g. 6 → 12 points). Only possible where the round
+   * below splits into two identical halves per repeat (e.g. 2 loops per repeat); otherwise it is
+   * ignored with a warning.
+   */
+  double?: boolean;
   /** Soft preferences: used when they cost little flatness (the random sampler's "character"). */
   prefer?: RoundParams;
 }
@@ -154,6 +175,15 @@ export interface GeneratedRound {
   message: string;
   /** Notation of this round (one line). */
   text: string;
+  /** Repeats around in this round (the spec's symmetry, doubled where a round doubled it). */
+  repeats: number;
+  /** The targets one repeat of this round leaves for the next (for thumbnails and suggestions). */
+  entries: Entry[];
+  /** Stitch-top radius and radius handed to the next round, mm (flatness model). */
+  rho: number;
+  r: number;
+  /** This round doubled the repeats. */
+  doubled?: boolean;
 }
 
 export interface DoilyStats {

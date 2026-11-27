@@ -13,7 +13,11 @@ import { useSettings } from '@/store/settings';
 import { NotationEditor, type NotationEditorHandle } from './NotationEditor';
 import { parse, print } from '@/core/notation';
 import { compile, stripSrc, type Terms } from '@/core/graph';
-import { DiagnosticsList, RoundsTable } from './Panels';
+import { DiagnosticsList, RoundsTable, type Hint } from './Panels';
+import { FlatnessCard } from './FlatnessCard';
+import { useStitchParams } from '@/app';
+import type { ParamSet } from '@/core/params';
+import { SymmetryPanel, useSymmetry } from '@/features/symmetry/SymmetryPanel';
 import { NewPatternDialog } from './NewPatternDialog';
 import './editor.css';
 
@@ -54,6 +58,11 @@ function EditorView({ cur, onNew, newDialog }: { cur: ReturnType<typeof useCurre
   const terms = useSettings((s) => s.terms);
   const setSettings = useSettings((s) => s.set);
   const rec = cur.record!;
+  const { selected } = useStitchParams(cur.pattern);
+  const params = selected as unknown as ParamSet;
+  const sym = useSymmetry(cur.pattern);
+  // undo stack for applied fixes (texts before each fix); survives the fork of a built-in
+  const [undo, setUndo] = useState<{ text: string; label: string }[]>([]);
 
   const counts = { error: 0, warning: 0, info: 0 };
   for (const d of cur.diagnostics) if (d.code !== 'I_NO_COMPILER') counts[d.severity]++;
@@ -66,6 +75,36 @@ function EditorView({ cur, onNew, newDialog }: { cur: ReturnType<typeof useCurre
     navigate(patternHref('editor', copy.id), { replace: true });
     toast('Copied to My patterns — your edits are saved there.');
   }, [cur, rec, navigate]);
+
+  const applyFix = useCallback((text: string, label: string) => {
+    setUndo((u) => [...u.slice(-19), { text: cur.text, label }]);
+    onChange(text);
+    if (!cur.readOnly) toast(label ? `Applied — ${label}` : 'Applied');
+  }, [cur.text, cur.readOnly, onChange]);
+  const undoFix = useCallback(() => {
+    const last = undo[undo.length - 1];
+    if (!last) return;
+    setUndo(undo.slice(0, -1));
+    onChange(last.text);
+    toast('Fix undone');
+  }, [undo, onChange]);
+
+  // symmetry defects as hints in the Problems list, positioned by the nodes' source spans
+  const hints = useMemo<Hint[]>(() => {
+    if (!sym || !cur.pattern) return [];
+    const nodes = cur.pattern.graph.nodes;
+    return sym.defects.flatMap((d) => {
+      const src = d.nodes.map((id) => nodes[id]?.src).filter((x): x is NonNullable<typeof x> => !!x);
+      if (!src.length) return [];
+      const a = src.reduce((m, x) => (x.line < m.line || (x.line === m.line && x.col < m.col) ? x : m));
+      const b = src.reduce((m, x) => {
+        const el = x.endLine ?? x.line, ec = x.endCol ?? x.col + 1;
+        const ml = m.endLine ?? m.line, mc = m.endCol ?? m.col + 1;
+        return el > ml || (el === ml && ec > mc) ? x : m;
+      });
+      return [{ message: d.message, line: a.line, col: a.col, endLine: b.endLine ?? b.line, endCol: b.endCol ?? b.col + 1, kind: 'Symmetry' }];
+    });
+  }, [sym, cur.pattern]);
 
   const jump = useCallback((d: Pick<Diagnostic, 'line' | 'col'> & Partial<Diagnostic>) => {
     setPane('notation');
@@ -165,18 +204,46 @@ function EditorView({ cur, onNew, newDialog }: { cur: ReturnType<typeof useCurre
               <div className="ed-side">
                 <Card>
                   <h2 className="ed-side__title">Problems</h2>
-                  <DiagnosticsList diagnostics={cur.diagnostics.filter((d) => d.code !== 'I_NO_COMPILER')} onJump={jump} compilerReady={compilerAvailable} />
+                  <DiagnosticsList diagnostics={cur.diagnostics.filter((d) => d.code !== 'I_NO_COMPILER')} onJump={jump} compilerReady={compilerAvailable} hints={hints} />
                 </Card>
                 <Card>
                   <h2 className="ed-side__title">Stitch counts</h2>
                   {cur.pattern ? (
-                    <RoundsTable pattern={cur.pattern} onJump={(line) => jump({ line, col: 1 })} />
+                    <>
+                      <RoundsTable pattern={cur.pattern} onJump={(line) => jump({ line, col: 1 })} />
+                      <div className="ed-sym">
+                        <SymmetryPanel
+                          pattern={cur.pattern}
+                          report={sym}
+                          compact
+                          showLabel="Show in text"
+                          onSelectRound={(r) => { const l = cur.pattern?.graph.rounds[r]?.src?.line; if (l) jump({ line: l, col: 1 }); }}
+                          onSelectNodes={(ids) => { const h = hints.find((x) => sym?.defects.some((d) => d.nodes === ids && d.message === x.message)); if (h) jump(h); }}
+                        />
+                      </div>
+                    </>
                   ) : (
                     <p className="muted small" style={{ margin: 0 }}>
                       {compilerAvailable ? 'Fix the errors above to see per-round counts.' : 'Per-round counts appear here once the checker is available.'}
                     </p>
                   )}
                 </Card>
+                {cur.pattern && (
+                  <Card>
+                    <h2 className="ed-side__title">Flatness</h2>
+                    <FlatnessCard
+                      pattern={cur.pattern}
+                      text={cur.text}
+                      params={params}
+                      symmetry={sym}
+                      busy={cur.pending}
+                      onApply={applyFix}
+                      onUndo={undo.length ? undoFix : undefined}
+                      undoLabel={undo[undo.length - 1]?.label}
+                      onJump={(line) => jump({ line, col: 1 })}
+                    />
+                  </Card>
+                )}
               </div>
             ),
           },
