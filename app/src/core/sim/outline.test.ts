@@ -12,6 +12,7 @@ import { paramsFor, simConfig, stitchParam } from '../params';
 import { DEFAULT_SPEC, designBlanket, edgeFit, ROUND_STYLES, STITCH_PATTERNS } from '../blanket';
 import { buildNetwork, networkEnergy, networkMetric, simulate } from '.';
 import { regionShape } from './regions';
+import { detectPolygon } from '../flatness/corners';
 import { outlinePins } from './outline';
 
 const spec = fileURLToPath(new URL('../../../../spec/', import.meta.url));
@@ -169,19 +170,22 @@ describe('the new extra reference (spec/fixtures/extra/blanket_border) agrees wi
 
 describe('polygons from the centre (N10)', () => {
   const P = paramsFor(compile('title: t\nRnd 1: mr, 6 sc in ring. (6)\n'));
-  it('no canonical fixture, snowflake or corpus doily has an outline; the granny square motif does', () => {
+  it('no canonical fixture or snowflake has an outline; in the corpus only what the shared corner detector calls a polygon', () => {
     const dirs = [spec + 'fixtures/', spec + 'fixtures/extra/', corpus];
+    const polys: string[] = [];
     for (const d of dirs) {
       for (const f of readdirSync(d).filter((x) => x.endsWith('.cro'))) {
         const p = compile(readFileSync(d + f, 'utf8'));
         const o = buildNetwork(p, paramsFor(p)).outline;
-        if (f === 'granny-square-motif.cro') expect(o?.K, f).toBe(4);
-        else if (f === 'blanket_border.cro') expect(o?.K, f).toBe(4);
-        else expect(o, f).toBeNull();
+        if (f === 'blanket_border.cro') { expect(o?.K, f).toBe(4); continue; }
+        if (d === corpus && detectPolygon(p.graph)) { expect(o?.K, f).toBe(detectPolygon(p.graph)!.n); polys.push(f); continue; }
+        expect(o, f).toBeNull();
       }
     }
+    expect(polys).toEqual(['granny-square-motif.cro', 'hexagon-motif-6.cro']);
   });
-  const shapes: Record<string, number> = { 'granny-square': 4, 'solid-square': 4, 'mitred-square': 4, hexagon: 6, octagon: 8 };
+  // (the generated mitred square ends in a 2-sc-corner round, which core/flatness's detector does not call a polygon)
+  const shapes: Record<string, number> = { 'granny-square': 4, 'solid-square': 4, hexagon: 6, octagon: 8 };
   for (const st of ROUND_STYLES.filter((s) => s.id in shapes)) {
     it(`${st.id}: detected as a ${shapes[st.id]}-gon; its reference is (nearly) frustration-free`, () => {
       const d = designBlanket({ ...DEFAULT_SPEC, construction: 'round', size: { widthCm: 22, heightCm: 22 }, round: { style: st.id, textures: st.defaultTextures, corner: 'auto' } });

@@ -70,6 +70,8 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
 
   const flat = useMemo(() => analyzeFlatness(pattern.graph, params), [pattern.graph, params]);
   const analyticRound = flat.rounds[round];
+  // the rule core/flatness judged this round by: the circle rule, the n-gon corner rule, the border's edge fit
+  const ruleName = analyticRound?.shape === 'polygon' ? 'Corner rule' : analyticRound?.shape === 'border' ? 'Edge fit' : analyticRound?.shape === 'rows' ? 'Rows' : 'Count rule';
   const ready = status?.phase === 'ready' && status.shownRound === round;
 
   // play: step through the rounds, waiting for each one to be solved
@@ -134,10 +136,10 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
                   {approximate && <Badge tone="warning">{unsettled ? 'approximate — did not fully settle' : 'approximate (fast solve)'}</Badge>}</>
                   : <span className="small muted">{status?.phase === 'error' ? 'failed' : 'solving…'}</span>}
               </dd>
-              <dt>Count rule</dt>
+              <dt>{ruleName}</dt>
               <dd>
                 {analyticRound && analyticRound.class !== 'n/a'
-                  ? <><ShapeBadge shape={analyticRound.class}>{analyticRound.slackOnly ? 'flat (loose loops)' : undefined}</ShapeBadge><span className="small">{pct(analyticRound.e)}</span></>
+                  ? <><ShapeBadge shape={analyticRound.class}>{analyticRound.slackOnly ? 'flat (loose loops)' : undefined}</ShapeBadge>{analyticRound.shape === 'circle' && <span className="small">{pct(analyticRound.e)}</span>}</>
                   : <Badge>n/a</Badge>}
               </dd>
               {m && <><dt>Size</dt><dd className="small">Rg {(m.Rg / 10).toFixed(1)} cm · edge radius {(m.outer_radius / 10).toFixed(1)} cm</dd></>}
@@ -162,7 +164,7 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
               <p className="sim-explain">
                 {pattern.graph.rounds[round]?.label ?? 'This round'}: the simulated piece {CLASS_WORD[m.class]}
                 {m.class === 'flat' ? '' : m.class === 'cup' ? ` (depth A = ${m.A.toFixed(2)} of its size)` : ` (waviness W = ${m.W.toFixed(2)})`}.
-                {' '}{explanation ?? (approximate ? 'The count rule points the same way, but this state is approximate.' : 'The count rule points the same way.')}
+                {' '}{explanation ?? (approximate ? `The ${ruleName.toLowerCase()} points the same way, but this state is approximate.` : `The ${ruleName.toLowerCase()} points the same way.`)}
               </p>
             )}
             {approximate && (
@@ -174,7 +176,7 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
               </p>
             )}
             {closedNote && <p className="sim-explain muted">{closedNote}</p>}
-            {analyticRound && analyticRound.class !== 'n/a' && (analyticRound.class !== 'flat' || analyticRound.slackOnly) && (
+            {analyticRound && analyticRound.class !== 'n/a' && (analyticRound.class !== 'flat' || analyticRound.slackOnly || analyticRound.shape !== 'circle') && (
               <p className="sim-explain muted">{analyticRound.message}</p>
             )}
           </Card>

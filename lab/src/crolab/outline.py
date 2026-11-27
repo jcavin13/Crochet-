@@ -15,9 +15,6 @@ import numpy as np
 from .borders import anchor_key, border_lists, entry_key
 from .graph import Graph
 
-POLY_MIN_GROUP = 3
-POLY_MAX_CORNERS = 8
-POLY_SPACING_TOL = 0.25
 POLY_MIN_RUN = 2
 
 
@@ -634,69 +631,145 @@ def _outline_round(g: Graph, out: Outline, r: int, kind: str, keys: list, prev: 
 
 
 # ------------------------------------------------------------------------------------------
-# polygon detection (N10)
+# polygon detection (N10): a port of app/src/core/flatness/corners.ts (`cornerGroups`,
+# `detectPolygon`, `detectStadium`) — the one corner detector the chart and the corner rule use —
+# plus the sim's carry rule and run (TypeScript `polygonRuns`)
 # ------------------------------------------------------------------------------------------
-def polygon_corners(g: Graph, r: int, c, cont: bool):
-    if r < 1:
+def _sole_anchor(n: dict):
+    if not n["into"]:
         return None
-    R, B = g.rounds[r], g.rounds[r - 1]
-    if R["kind"] != "round" or B["kind"] != "round" or R["first"] < 0 or B["first"] < 0:
-        return None
-    cnt: dict = {}
-    order: list = []
-    for i in _round_ids(g, r):
-        if not _counts(g, i):
-            continue
-        seen = set()
-        for a in g.nodes[i]["into"]:
-            k = anchor_key(a)
-            rr = g.spaces[a["space"]]["round"] if "space" in a else g.nodes[a["node"]]["round"]
-            if rr != r - 1 or ("node" in a and a.get("part")) or k in seen:
-                continue
-            seen.add(k)
-            if k not in cnt:
-                order.append(k)
-            cnt[k] = cnt.get(k, 0) + 1
-    if not order:
-        return None
-    M = max(cnt[k] for k in order)
-    if M < (2 if cont else POLY_MIN_GROUP):
-        return None
-    Kset = [k for k in order if cnt[k] * 2 > M]
-    minK = min(cnt[k] for k in Kset)
-    other = max([cnt[k] for k in order if k not in Kset], default=0)
-    if minK < 2 * other:
-        return None
-    nK = len(Kset)
-    if nK < 3 or nK > POLY_MAX_CORNERS:
-        return None
-    ids = _round_ids(g, r - 1)
-    s = {}
-    C = 0.0
-    for i in ids:
-        s[i] = C + 0.5 * c[i]
-        C += c[i]
-    if not C > 0:
-        return None
-
-    def at(k):
-        if k.startswith("s"):
-            ch = g.spaces[int(k[1:])]["chains"]
-            if not ch or ch[0] not in s:
-                return math.nan
-            return 0.5 * (s[ch[0]] - 0.5 * c[ch[0]] + s[ch[-1]] + 0.5 * c[ch[-1]])
-        idd = int(k[1:])
-        return s.get(idd, math.nan)
-    xs = [at(k) for k in Kset]
-    if any(not math.isfinite(x) for x in xs):
-        return None
-    idx = sorted(range(nK), key=lambda q: xs[q])
-    for q in range(nK):
-        a = xs[idx[q]]
-        b = xs[idx[q + 1]] if q + 1 < nK else xs[idx[0]] + C
-        if abs((b - a) / C * nK - 1) > POLY_SPACING_TOL:
+    k = anchor_key(n["into"][0])
+    for a in n["into"]:
+        if anchor_key(a) != k:
             return None
-    return [Kset[q] for q in idx]
+    return n["into"][0]
+
+
+def _node_counts(n: dict) -> bool:
+    from .borders import node_counts
+    return node_counts(n)
+
+
+def _groups_of(g: Graph, k: int):
+    R = g.rounds[k] if 0 <= k < len(g.rounds) else None
+    if R is None or R["first"] < 0:
+        return []
+    by: dict = {}
+    order: list = []
+    for i in range(R["first"], R["last"] + 1):
+        n = g.nodes[i]
+        if not _node_counts(n) or n["type"] in ("slst", "ch"):
+            continue
+        a = _sole_anchor(n)
+        if a is None:
+            continue
+        if "space" in a:
+            if g.spaces[a["space"]]["kind"] == "ring":
+                continue
+        elif g.nodes[a["node"]]["round"] == k:
+            continue
+        key = anchor_key(a)
+        if key not in by:
+            by[key] = []
+            order.append(key)
+        by[key].append(i)
+    spaces = [s for s in g.spaces if s["round"] == k and s["kind"] == "chsp" and s["chains"]]
+    out = []
+    for key in order:
+        ids = by[key]
+        lo, hi = ids[0], ids[-1]
+        inside = len(ids) >= 2 and any(s["chains"][0] > lo and s["chains"][-1] < hi for s in spaces)
+        out.append((key, ids, inside))
+    return out
+
+
+def corner_groups(g: Graph, k: int) -> list:
+    gs = _groups_of(g, k)
+    A = [x for x in gs if x[2]]
+    if A:
+        return [x[1] for x in A]
+    mx = max((len(x[1]) for x in gs), default=0)
+    if mx < 3:
+        return []
+    return [x[1] for x in gs if len(x[1]) == mx]
+
+
+def _even_with_sides(g: Graph, k: int, groups: list) -> bool:
+    n = len(groups)
+    R = g.rounds[k]
+    counting = [i for i in range(R["first"], R["last"] + 1)
+                if _node_counts(g.nodes[i]) and g.nodes[i]["type"] not in ("slst", "ch")]
+    total = len(counting)
+    if not total:
+        return False
+    in_group = {i for ids in groups for i in ids}
+    if total - len(in_group) < n:
+        return False
+    at = {i: q for q, i in enumerate(counting)}
+    mid = sorted((at.get(ids[0], 0) + at.get(ids[-1], 0)) / 2 for ids in groups)
+    want = total / n
+    for j in range(n):
+        gap = mid[j + 1] - mid[j] if j + 1 < n else mid[0] + total - mid[n - 1]
+        if abs(gap - want) > max(1.5, 0.3 * want):
+            return False
+    return True
+
+
+def detect_stadium(g: Graph) -> bool:
+    if len(g.rounds) < 2:
+        return False
+    R0, R1 = g.rounds[0], g.rounds[1]
+    if R0["first"] < 0 or R1["first"] < 0:
+        return False
+    if any(r["kind"] == "row" for r in g.rounds):
+        return False
+    if any(g.nodes[i]["type"] != "ch" for i in range(R0["first"], R0["last"] + 1)):
+        return False
+    if any(s["kind"] == "ring" for s in g.spaces):
+        return False
+    for i in range(R1["first"], R1["last"] + 1):
+        for a in g.nodes[i]["into"]:
+            if "node" in a and a.get("part") == "base" and g.nodes[a["node"]]["round"] == 0:
+                return True
+    return False
+
+
+def detect_polygon(g: Graph):
+    """(n, from, groups) of a polygon worked from the centre, or None (corners.ts `detectPolygon`)."""
+    rounds = g.rounds
+    if len(rounds) < 3 or any(r["kind"] == "row" for r in rounds):
+        return None
+    if detect_stadium(g):
+        return None
+    per = []
+    for k, R in enumerate(rounds):
+        if k == 0 or R["first"] < 0 or R["kind"] != "round":
+            per.append(None)
+            continue
+        cg = corner_groups(g, k)
+        per.append(cg if 3 <= len(cg) <= 8 and _even_with_sides(g, k, cg) else None)
+    last = len(rounds) - 1
+    n = len(per[last]) if per[last] else 0
+    if not n:
+        return None
+    ks = [k for k, c in enumerate(per) if c and len(c) == n]
+    if len(ks) < 2:
+        return None
+    frm = ks[0]
+    span = last - frm + 1
+    if len(ks) < 0.6 * span:
+        return None
+    for k in range(frm, last):
+        if k not in ks and k + 1 not in ks:
+            return None
+
+    def all_corners(k):
+        return k >= 1 and rounds[k]["kind"] == "round" and len(corner_groups(g, k)) == n
+    while frm - 1 >= 1 and all_corners(frm - 1):
+        frm -= 1
+        ks.insert(0, frm)
+    groups = {k: (per[k] if per[k] else corner_groups(g, k)) for k in ks}
+    return n, frm, groups
 
 
 def even_heights(g: Graph, r: int, h) -> bool:
@@ -708,34 +781,62 @@ def even_heights(g: Graph, r: int, h) -> bool:
     return not hi > 1.5 * lo
 
 
-def polygon_runs(g: Graph, c, h=None):
-    """The first run of at least POLY_MIN_RUN consecutive polygon rounds: (first, last, n, corners)."""
-    nR = len(g.rounds)
-    if nR and any(R["kind"] != "round" for R in g.rounds):
+def polygon_runs(g: Graph, c=None, h=None):
+    """The polygon rounds (first, last, n, corner keys per round) of a piece the shared corner
+    detector calls a polygon, or None (TypeScript `polygonRuns`)."""
+    info = detect_polygon(g)
+    if info is None:
         return None
-    r = 1
-    while r < nR:
-        if h is not None and not even_heights(g, r, h):
-            r += 1
-            continue
-        k0 = polygon_corners(g, r, c, False)
-        if not k0:
-            r += 1
-            continue
-        corners = {r: k0}
-        last = r
-        while last + 1 < nR:
-            if h is not None and not even_heights(g, last + 1, h):
-                break
-            k = polygon_corners(g, last + 1, c, True)
-            if not k or len(k) != len(k0):
-                break
-            corners[last + 1] = k
-            last += 1
-        if last - r + 1 >= POLY_MIN_RUN:
-            return r, last, len(k0), corners
-        r = last + 1
-    return None
+    n, frm, dgroups = info
+    nR = len(g.rounds)
+    cache: dict = {}
+
+    def groups_of(k):
+        if k in cache:
+            return cache[k]
+        gs = dgroups.get(k) or corner_groups(g, k)
+        if len(gs) != n:
+            gs = None
+            prev = groups_of(k - 1) if k > 0 and k - 1 >= frm else None
+            R = g.rounds[k]
+            if prev and R["first"] >= 0:
+                out = []
+                for ids in prev:
+                    lo, hi = ids[0], ids[-1]
+                    inside = [sp for sp in g.spaces if sp["round"] == k - 1 and sp["kind"] == "chsp" and sp["chains"]
+                              and sp["chains"][0] > lo and sp["chains"][-1] < hi]
+                    key = f"s{inside[(len(inside) - 1) // 2]['id']}" if inside else f"n{ids[len(ids) // 2]}"
+                    mine = [i for i in range(R["first"], R["last"] + 1)
+                            if _counts(g, i) and any(anchor_key(a) == key for a in g.nodes[i]["into"])]
+                    if not mine:
+                        out = []
+                        break
+                    out.append(mine)
+                if len(out) == n:
+                    gs = out
+        if gs:
+            cache[k] = gs
+        return gs
+
+    def keys_of(k):
+        gs = groups_of(k)
+        return [anchor_key(g.nodes[ids[0]]["into"][0]) for ids in gs] if gs else None
+    first = frm
+    while first < nR and (first < 1 or (h is not None and not even_heights(g, first, h)) or not keys_of(first)):
+        first += 1
+    corners = {}
+    last = first - 1
+    for k in range(first, nR):
+        if h is not None and not even_heights(g, k, h):
+            break
+        ks = keys_of(k)
+        if not ks:
+            break
+        corners[k] = ks
+        last = k
+    if last - first + 1 < POLY_MIN_RUN:
+        return None
+    return first, last, n, corners
 
 
 def apply_outline(o: Outline, rounds, counting, chsp, Lc, gen: list, n: int) -> None:
@@ -771,6 +872,9 @@ def apply_outline(o: Outline, rounds, counting, chsp, Lc, gen: list, n: int) -> 
             L = 0.5 * (o.c[lo] + o.c[hi])
             if hi - lo == 2:
                 L += o.c[lo + 1]
+        elif rounds[lo] == rounds[hi] and o.round_kind[rounds[lo]] == "row":
+            if any(chsp[q] for q in range(lo, hi + 1)):
+                L = dist(lo, hi)
         elif rounds[lo] != rounds[hi]:
             if counting[lo] and counting[hi]:
                 L = dist(lo, hi)

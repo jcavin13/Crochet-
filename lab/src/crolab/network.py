@@ -157,7 +157,12 @@ def course_groups(g: Graph, w: np.ndarray, w_eff: np.ndarray, h: np.ndarray, cfg
     fl_round: dict[int, dict] = {}
     if params is not None and any(sp["kind"] == "chsp" for sp in g.spaces):
         from .flatness import analyse
+        from .borders import border_lists
+        border = border_lists(g)
         for row in analyse(g.pattern, params, cfg)["rounds"]:
+            # rows and border rounds have no centre: no circle-rule chain fraction (TypeScript same)
+            if g.rounds[row["round"]]["kind"] == "row" or row["round"] in border:
+                continue
             fl_round[row["round"]] = row
     smin = cfg.get("flatness", {}).get("chain_slack_min", 0.3)
     chain_frac: dict[int, float] = {}

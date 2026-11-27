@@ -190,7 +190,46 @@ function writeLines(lines: Line[], palette: PaletteColor[], fasten = true): { bl
   }
   if (fasten && blocks.length) {
     const b = blocks[blocks.length - 1];
-    b.text = `${b.text} Fasten off.`;
+    // A range line ("Rows 2-40: …") repeats its text for every row, so "fasten off" cannot ride on
+    // it: split the piece's final row out of its range and fasten off there.
+    const lines = b.text.split('\n');
+    const RANGE = /^(\s*)(Rows?|Rnds?|Rounds?)\s+(\d+)\s*-\s*(\d+)(\s*\((?:odd|even)\))?\s*:(.*)$/i;
+    let at = -1, last = -1;
+    lines.forEach((l, k) => { const m = RANGE.exec(l); if (m && Number(m[4]) > last) { last = Number(m[4]); at = k; } });
+    const tail = lines[lines.length - 1];
+    const tailIsRange = RANGE.test(tail);
+    if (!tailIsRange || at < 0) {
+      b.text = `${b.text} Fasten off.`;
+    } else {
+      const m = RANGE.exec(lines[at])!;
+      const [, ind, word, lo, hi, parity = '', body] = m;
+      const single = /^rnd|^round/i.test(word) ? 'Rnd' : 'Row';
+      const step = parity ? 2 : 1;
+      const newHi = Number(hi) - step;
+      const finalRow = `${ind}${single} ${hi}:${body.replace(/\s+$/, '')} Fasten off.`;
+      // the other half of an odd/even pair, if this range is one of a pair
+      const mateAt = parity ? [at - 1, at + 1].find((k) => { const q = RANGE.exec(lines[k] ?? ''); return !!q && !!q[5] && q[5] !== parity; }) ?? -1 : -1;
+      let rest: string[];
+      if (newHi > Number(lo) || mateAt < 0) {
+        const head = newHi > Number(lo) ? `${ind}${word} ${lo}-${newHi}${parity}:${body}`
+          : newHi === Number(lo) ? `${ind}${single} ${lo}:${body}` : null;
+        rest = lines.filter((_, k) => k !== at);
+        if (head) rest.splice(at, 0, head);
+      } else {
+        // Shortening would leave half a pair with fewer than two rows, which an odd/even pair
+        // cannot express: write this last pair out row by row instead.
+        const q = RANGE.exec(lines[mateAt])!;
+        const singles: [number, string][] = [];
+        for (let n = Number(lo); n <= newHi; n += 2) singles.push([n, `${ind}${single} ${n}:${body}`]);
+        for (let n = Number(q[3]); n <= Number(q[4]); n += 2) singles.push([n, `${q[1]}${single} ${n}:${q[6]}`]);
+        singles.sort((x, y) => x[0] - y[0]);
+        const first = Math.min(at, mateAt);
+        rest = lines.filter((_, k) => k !== at && k !== mateAt);
+        rest.splice(first, 0, ...singles.map((x) => x[1]));
+      }
+      rest.push(finalRow);
+      b.text = rest.join('\n');
+    }
   }
   return { blocks };
 }

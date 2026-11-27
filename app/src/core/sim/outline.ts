@@ -32,6 +32,7 @@
  */
 import type { Anchor, Graph } from '../graph';
 import { borderLists, type Entry } from '../graph/targets';
+import { cornerGroups, detectPolygon } from '../flatness/corners';
 import { dcos, dsin, npMean } from './detmath';
 
 export type OutlineKind = 'foundation' | 'row' | 'border' | 'polygon' | 'polybase';
@@ -682,97 +683,64 @@ function outlineRound(
 // ---------------------------------------------------------------------------------------------
 // polygon detection (N10)
 // ---------------------------------------------------------------------------------------------
-export const POLY_MIN_GROUP = 3;
-export const POLY_MAX_CORNERS = 8;
-export const POLY_SPACING_TOL = 0.25;
 /** a polygon is built over several rounds: a single cornered round is lace (stitches in spaces) */
 export const POLY_MIN_RUN = 2;
 
 /**
- * Corners of round r of a piece worked in the round from the centre, or null. Per entry e of the
- * round below (a stitch or a chain space), m_e = number of stitch-counting nodes of round r worked
- * into it; M = max m_e; corners K = {e : m_e > M/2}. A corner round: M ≥ 3 (or M ≥ 2 when `cont`,
- * inside a run), every corner's m_e at least twice every other entry's, 3 ≤ |K| ≤ 8, the corners
- * evenly spread round the round below (each gap within ±25 % of 1/|K| of its course). polygonRuns
- * also requires no stitch of round r more than 1.5× as tall as another (evenHeights: a squaring
- * round of a circle-to-square makes its corners from taller stitches, not from increases).
+ * The polygon rounds of a piece worked from the centre, from the shared corner detector
+ * (core/flatness/corners.ts `detectPolygon`, the chart's and the corner rule's): from its first
+ * cornered round (later, past any round whose stitches differ in height by more than 1.5× — a
+ * squaring round makes corners from height, not increases), every following round that has the n
+ * corner groups; at least POLY_MIN_RUN of them. Corner entries: the place each group is worked into.
  */
-export function polygonCorners(g: Graph, r: number, c: ArrayLike<number>, cont: boolean): string[] | null {
-  if (r < 1) return null;
-  const R = g.rounds[r], B = g.rounds[r - 1];
-  if (R.kind !== 'round' || B.kind !== 'round' || R.first < 0 || B.first < 0) return null;
-  const cnt = new Map<string, number>();
-  const order: string[] = [];
-  for (const i of roundIds(g, r)) {
-    if (!counts(g, i)) continue;
-    const seen = new Set<string>();
-    for (const a of g.nodes[i].into) {
-      const k = keyOf(a);
-      const rr = 'space' in a ? g.spaces[a.space].round : g.nodes[a.node].round;
-      if (rr !== r - 1 || ('node' in a && a.part) || seen.has(k)) continue;
-      seen.add(k);
-      if (!cnt.has(k)) order.push(k);
-      cnt.set(k, (cnt.get(k) ?? 0) + 1);
-    }
-  }
-  if (!order.length) return null;
-  let M = 0;
-  for (const k of order) M = Math.max(M, cnt.get(k)!);
-  if (M < (cont ? 2 : POLY_MIN_GROUP)) return null;
-  const Kset = order.filter((k) => cnt.get(k)! * 2 > M);
-  const minK = Math.min(...Kset.map((k) => cnt.get(k)!));
-  let other = 0;
-  for (const k of order) if (!Kset.includes(k)) other = Math.max(other, cnt.get(k)!);
-  if (minK < 2 * other) return null;
-  const nK = Kset.length;
-  if (nK < 3 || nK > POLY_MAX_CORNERS) return null;
-  // even spacing round the round below
-  const ids = roundIds(g, r - 1);
-  const s = new Map<number, number>();
-  let C = 0;
-  for (const i of ids) { s.set(i, C + 0.5 * c[i]); C += c[i]; }
-  if (!(C > 0)) return null;
-  const at = (k: string): number => {
-    if (k.startsWith('s')) {
-      const ch = g.spaces[Number(k.slice(1))].chains;
-      if (!ch.length || !s.has(ch[0])) return NaN;
-      return 0.5 * (s.get(ch[0])! - 0.5 * c[ch[0]] + s.get(ch[ch.length - 1])! + 0.5 * c[ch[ch.length - 1]]);
-    }
-    const id = Number(k.slice(1));
-    return s.has(id) ? s.get(id)! : NaN;
-  };
-  const xs = Kset.map(at);
-  if (xs.some((x) => !Number.isFinite(x))) return null;
-  const idx = xs.map((_, q) => q).sort((a, b) => xs[a] - xs[b]);
-  for (let q = 0; q < nK; q++) {
-    const a = xs[idx[q]], b = q + 1 < nK ? xs[idx[q + 1]] : xs[idx[0]] + C;
-    if (Math.abs(((b - a) / C) * nK - 1) > POLY_SPACING_TOL) return null;
-  }
-  // heights: no squaring round
-  return idx.map((q) => Kset[q]);
-}
-
-/** The first run of at least POLY_MIN_RUN consecutive polygon rounds (same corner count), or null. */
 export function polygonRuns(g: Graph, c: ArrayLike<number>, h?: ArrayLike<number>): { first: number; last: number; n: number; corners: Map<number, string[]> } | null {
-  const nR = g.rounds.length;
-  if (nR && g.rounds.some((R) => R.kind !== 'round')) return null;
-  for (let r = 1; r < nR; r++) {
-    if (h && !evenHeights(g, r, h)) continue;
-    const k0 = polygonCorners(g, r, c, false);
-    if (!k0) continue;
-    const corners = new Map<number, string[]>([[r, k0]]);
-    let last = r;
-    while (last + 1 < nR) {
-      if (h && !evenHeights(g, last + 1, h)) break;
-      const k = polygonCorners(g, last + 1, c, true);
-      if (!k || k.length !== k0.length) break;
-      corners.set(last + 1, k);
-      last++;
+  void c;
+  const info = detectPolygon(g);
+  if (!info) return null;
+  const n = info.n, nR = g.rounds.length;
+  const groupsAt = new Map<number, number[][]>();
+  /** the round's corner groups: the detector's, else carried from the round below (cornerTargets' rule) */
+  const groupsOf = (k: number): number[][] | null => {
+    if (groupsAt.has(k)) return groupsAt.get(k)!;
+    let gs: number[][] | null = info.groups.get(k) ?? cornerGroups(g, k);
+    if (gs.length !== n) {
+      gs = null;
+      const prev = k > 0 && k - 1 >= info.from ? groupsOf(k - 1) : null;
+      const R = g.rounds[k];
+      if (prev && R.first >= 0) {
+        const out: number[][] = [];
+        for (const ids of prev) {
+          const lo = ids[0], hi = ids[ids.length - 1];
+          const inside = g.spaces.filter((sp) => sp.round === k - 1 && sp.kind === 'chsp' && sp.chains.length > 0 && sp.chains[0] > lo && sp.chains[sp.chains.length - 1] < hi);
+          const key = inside.length ? `s${inside[Math.floor((inside.length - 1) / 2)].id}` : `n${ids[Math.floor(ids.length / 2)]}`;
+          const mine: number[] = [];
+          for (let id = R.first; id <= R.last; id++) if (counts(g, id) && g.nodes[id].into.some((a) => keyOf(a) === key)) mine.push(id);
+          if (!mine.length) { out.length = 0; break; }
+          out.push(mine);
+        }
+        if (out.length === n) gs = out;
+      }
     }
-    if (last - r + 1 >= POLY_MIN_RUN) return { first: r, last, n: k0.length, corners };
-    r = last;
+    if (gs) groupsAt.set(k, gs);
+    return gs;
+  };
+  const keysOf = (k: number): string[] | null => {
+    const groups = groupsOf(k);
+    return groups ? groups.map((ids) => keyOf(g.nodes[ids[0]].into[0])) : null;
+  };
+  let first = info.from;
+  while (first < nR && (first < 1 || (h && !evenHeights(g, first, h)) || !keysOf(first))) first++;
+  const corners = new Map<number, string[]>();
+  let last = first - 1;
+  for (let k = first; k < nR; k++) {
+    if (h && !evenHeights(g, k, h)) break;
+    const ks = keysOf(k);
+    if (!ks) break;
+    corners.set(k, ks);
+    last = k;
   }
-  return null;
+  if (last - first + 1 < POLY_MIN_RUN) return null;
+  return { first, last, n, corners };
 }
 
 /** No counting node of round r is more than 1.5× as tall as another (not a squaring round). */

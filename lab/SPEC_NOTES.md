@@ -247,14 +247,21 @@ N5) and the network takes its rest lengths from it:
   take its section plus the growth of the residual R = sign(A)·max(0, |A| − B) (factor clamped to
   [0.5, 2]). A *joining slip stitch* lies on the stitch it joins, its height towards the stitch
   before it (no cells: not stitch-counting).
-* *N10 polygons from the centre* (`polygonRuns`): round r is a corner round when, per entry of the
-  round below, m_e = stitch-counting nodes worked into it, M = max m_e ≥ 3 (≥ 2 inside a run), the
-  corners {e : m_e > M/2} number 3–8, each has at least twice every other entry's m_e, they are
-  evenly spread (gaps within ±25 % of 1/n), and no stitch of the round is 1.5× as tall as another
-  (a circle-to-square's squaring round makes corners from height, not increases). A run of ≥ 2
-  such rounds (a single cornered round is lace: stitches in spaces) gets N9's mapping; the round
-  below the run is a regular n-gon of its own course length, its corner entries' centres at the
-  vertices (its course springs follow the n-gon's chords, its magic-ring spokes the n-gon's centre).
+* *N10 polygons from the centre* (`polygonRuns` / `polygon_runs`): the piece must be what the shared
+  corner detector (`app/src/core/flatness/corners.ts` `detectPolygon`, spec/flatness.md v0.2; ported
+  to `crolab/outline.py` `detect_polygon`) calls a polygon. From its first cornered round (moved past
+  any round whose stitches differ in height by more than 1.5×: a circle-to-square's squaring round
+  makes corners from height, not increases), every following round with the n corner groups is a
+  polygon round — a round the detector finds no corner groups in (2-stitch corners: an octagon's
+  alternate rounds) carries the corners of the round below by the notation's rule (its corner
+  group's inner chain space, else its middle stitch); at least 2 such rounds. They get N9's mapping;
+  the round below the run is a regular n-gon of its own course length, its corner entries' centres
+  at the vertices (its course springs follow the n-gon's chords, its magic-ring spokes the n-gon's
+  centre). Detected in the corpus: the granny square and the hexagon motif. The generated mitred
+  square ends with a 2-sc-corner round, which the detector does not call a polygon: it keeps N1.
+* *N1 chain fraction*: rows and border rounds are left out of N1's circle-rule chain fraction in
+  both sims (core/flatness now reports rho = 0 for border rounds; the lab's flatness mirror has no
+  border rule).
 * *Rest lengths*: every wale, shear and wale-bend spring from a stitch-counting node with Q to a
   particle with Q: |Q_i − Q_p|; a course or course-bend spring within an outline round (not slack):
   |Q_b − Q_a| × (own length × compliance) / (reference path length) — the reference chord, corner
@@ -272,7 +279,7 @@ N5) and the network takes its rest lengths from it:
   sweep (dc and sc rows, 9 rules from −47 % to +58 %): the sim's per-side verdict equals the edge-fit
   check on every rule (outline.test.ts). Polygons on N1 vs on the polygon reference (fast
   tolerances, 22 cm blanket-studio motifs; A/W): solid square cup 0.78/0.50 → flat 0.08/0.04,
-  mitred square ruffle 0.08/0.50 → flat 0.06/0.08, octagon cup 0.56/0.28 → flat 0.15/0.13, granny
+  octagon cup 0.56/0.28 → flat 0.15/0.13, granny
   square flat → flat (0.01/0.03), every side and corner of them flat. The hexagon (ruffle on N1)
   has a frustration-free reference but settles in a shallow fold at 22 cm (cup 0.37 at energy ≈ 0:
   a near-isometric mode of this bending-free network, not a count error; flat at 30 cm). A

@@ -10,6 +10,7 @@
  */
 import type { Graph, Node, Pattern } from '../graph';
 import { analyzeFlatness } from '../flatness';
+import { borderLists } from '../graph/targets';
 import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../params';
 import { hyp, sq } from './lbfgs';
 import { dsin, npMean } from './detmath';
@@ -190,7 +191,13 @@ function courseGroups(g: Graph, w: Float64Array, wEff: Float64Array, h: Float64A
   const flRound = new Map<number, { cls: string; cMin: number; cMax: number; rho: number; r: number }>();
   if (g.spaces.some((sp) => sp.kind === 'chsp')) {
     const rep = analyzeFlatness(g, params, { tol: cfg.flatness?.tol, chainSlackMin: cfg.flatness?.chain_slack_min, chainNominal: cfg.flatness?.chain_nominal });
-    for (const row of rep.rounds) flRound.set(row.round, { cls: row.class, cMin: row.cMin, cMax: row.cMax, rho: row.rho, r: row.r });
+    // the circle rule's chain fraction is for rounds round a centre: rows and border rounds (where
+    // core/flatness now reports rho = 0) are left out, as the lab does
+    const border = borderLists(g);
+    for (const row of rep.rounds) {
+      if (g.rounds[row.round]?.kind === 'row' || border.has(row.round)) continue;
+      flRound.set(row.round, { cls: row.class, cMin: row.cMin, cMax: row.cMax, rho: row.rho, r: row.r });
+    }
   }
   const chainFrac = new Map<number, number>();
   for (const [r, row] of flRound) {
@@ -549,6 +556,12 @@ function applyOutline(o: Outline, round: number[], counting: boolean[], chsp: Ui
       let L = 0.5 * (o.c[lo] + o.c[hi]);
       if (hi - lo === 2) L += o.c[lo + 1];
       gL[idx] = L;
+    } else if (round[lo] === round[hi] && o.roundKind[round[lo]] === 'row') {
+      // a chain space in a row spans the stitches it skips (its chains' c is the row's stitch width):
+      // its (slack) springs take the layout distance; the rest of a row is straight (unchanged)
+      let slackish = false;
+      for (let q = lo; q <= hi; q++) if (chsp[q]) slackish = true;
+      if (slackish) gL[idx] = dist(lo, hi);
     } else if (round[lo] !== round[hi]) {
       if (counting[lo] && counting[hi]) gL[idx] = dist(lo, hi);
     } else if (ocourse(lo)) {
