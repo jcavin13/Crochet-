@@ -105,6 +105,8 @@ Errors come back in crocheter's terms with exact positions, e.g.
 `Rnd 3, line 5 col 9: count mismatch — pattern says (18) but the round makes 15 stitches.`
 Full grammar: [`spec/notation.md`](spec/notation.md).
 
+> **Open issues and decisions waiting for the owner are tracked in [`docs/issues.md`](docs/issues.md).**
+
 ## Honest status: what is approximate, stubbed or missing
 
 **Not done**
