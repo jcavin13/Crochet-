@@ -14,22 +14,22 @@ Timings are from the machine that generated the file and vary with load.
 
 | pattern | nodes | count rule (final round) | e nominal | sim | A | W | agree | converged | unsettled rounds | time |
 |---|---:|---|---:|---|---:|---:|:---:|:---:|---:|---:|
-| bobble-flower-coaster-6 | 234 | flat | +3 % | flat | 0.00 | 0.01 | yes | yes | 0 | 0.3 s |
-| granny-square-motif | 292 | flat | +3 % | flat | 0.07 | 0.17 | yes | yes | 0 | 0.3 s |
-| hexagon-motif-6 | 312 | flat | +5 % | flat | 0.02 | 0.21 | yes | yes | 0 | 1.0 s |
-| petal-doily-12 | 2064 | flat (loose loops) | +38 % | flat | 0.01 | 0.03 | yes | yes | 0 | 2.4 s |
-| picot-coaster-24 | 116 | flat (loose loops) | +28 % | flat | 0.01 | 0.04 | yes | yes | 0 | 0.1 s |
-| popcorn-ridge-mat-8 | 292 | flat | −3 % | cup | 0.34 | 0.18 | **no** | yes | 0 | 0.4 s |
-| puff-star-coaster-5 | 167 | flat | −2 % | ruffle | 0.02 | 0.32 | **no** | yes | 0 | 0.4 s |
-| rep-from-star-rosette-8 | 512 | flat | −7 % | cup | 0.88 | 0.35 | **no** | yes | 0 | 4.9 s |
-| solid-centre-lace-border-24 | 977 | flat (loose loops) | +30 % | flat | 0.04 | 0.09 | yes | yes | 0 | 1.7 s |
-| spiderweb-doily-10 | 2136 | flat (loose loops) | +28 % | flat | 0.01 | 0.15 | yes | yes | 0 | 6.0 s |
-| spiral-sc-mat-fan-edge | 415 | flat | −1 % | flat | 0.02 | 0.10 | yes | yes | 0 | 0.8 s |
-| sunburst-dtr-doily-20 | 1333 | flat (loose loops) | +23 % | flat | 0.03 | 0.03 | yes | yes | 0 | 1.5 s |
-| teaching-cup-basket | 416 | cup (closed form) | −54 % | cup | 1.80 | 0.20 | yes | yes | 0 | 0.9 s |
-| teaching-ruffle-shell-doily | 474 | ruffle | +207 % | cup | 0.67 | 0.32 | **no** | yes | 0 | 1.2 s |
-| uk-terms-wheel-16 | 758 | flat | −8 % | flat | 0.18 | 0.14 | yes | yes | 0 | 1.2 s |
-| wheel-mesh-centrepiece-8 | 2612 | flat (loose loops) | +12 % | flat | 0.07 | 0.14 | yes | yes | 0 | 5.2 s |
+| bobble-flower-coaster-6 | 234 | flat | +3 % | flat | 0.00 | 0.01 | yes | yes | 0 | 0.2 s |
+| granny-square-motif | 292 | flat | +3 % | flat | 0.07 | 0.17 | yes | yes | 0 | 0.2 s |
+| hexagon-motif-6 | 312 | flat | +5 % | flat | 0.02 | 0.21 | yes | yes | 0 | 0.9 s |
+| petal-doily-12 | 2064 | flat (loose loops) | +38 % | flat | 0.01 | 0.03 | yes | yes | 0 | 2.5 s |
+| picot-coaster-24 | 116 | flat (loose loops) | +28 % | flat | 0.01 | 0.04 | yes | yes | 0 | 0.0 s |
+| popcorn-ridge-mat-8 | 292 | flat | −3 % | cup | 0.34 | 0.18 | **no** | yes | 0 | 0.3 s |
+| puff-star-coaster-5 | 167 | flat | −2 % | ruffle | 0.02 | 0.32 | **no** | yes | 0 | 0.3 s |
+| rep-from-star-rosette-8 | 512 | flat | −7 % | cup | 0.88 | 0.35 | **no** | yes | 0 | 3.9 s |
+| solid-centre-lace-border-24 | 977 | flat (loose loops) | +30 % | flat | 0.04 | 0.09 | yes | yes | 0 | 1.3 s |
+| spiderweb-doily-10 | 2136 | flat (loose loops) | +28 % | flat | 0.01 | 0.15 | yes | yes | 0 | 4.7 s |
+| spiral-sc-mat-fan-edge | 415 | flat | −1 % | flat | 0.02 | 0.10 | yes | yes | 0 | 0.7 s |
+| sunburst-dtr-doily-20 | 1333 | flat (loose loops) | +23 % | flat | 0.03 | 0.02 | yes | yes | 0 | 2.3 s |
+| teaching-cup-basket | 416 | cup (closed form) | −54 % | cup | 1.80 | 0.20 | yes | yes | 0 | 0.8 s |
+| teaching-ruffle-shell-doily | 474 | ruffle | +207 % | cup | 0.67 | 0.32 | **no** | yes | 0 | 1.0 s |
+| uk-terms-wheel-16 | 758 | flat | −8 % | flat | 0.18 | 0.14 | yes | yes | 0 | 1.5 s |
+| wheel-mesh-centrepiece-8 | 2612 | flat (loose loops) | +12 % | flat | 0.07 | 0.14 | yes | yes | 0 | 6.1 s |
 
 ## Fixtures (`spec/fixtures`), for reference
 
@@ -38,7 +38,7 @@ Timings are from the machine that generated the file and vary with load.
 | chain_space_motif | 178 | flat (loose loops) | +34 % | flat | 0.02 | 0.02 | yes | yes | 0 | 0.1 s |
 | flat_dc_circle | 195 | flat | +0 % | flat | 0.08 | 0.07 | yes | yes | 0 | 0.2 s |
 | flat_sc_circle | 216 | flat | +0 % | flat | 0.01 | 0.05 | yes | yes | 0 | 0.1 s |
-| hyperbolic_plane | 213 | ruffle | +126 % | ruffle | 0.02 | 0.53 | yes | yes | 0 | 0.3 s |
-| sc_cone | 132 | cup | −43 % | cup | 1.55 | 0.08 | yes | yes | 0 | 0.1 s |
-| sc_sphere | 300 | cup (closed form) | −93 % | cup | 1.49 | 0.25 | yes | yes | 0 | 0.3 s |
+| hyperbolic_plane | 213 | ruffle | +126 % | ruffle | 0.02 | 0.53 | yes | yes | 0 | 0.2 s |
+| sc_cone | 132 | cup | −43 % | cup | 1.55 | 0.08 | yes | yes | 0 | 0.0 s |
+| sc_sphere | 300 | cup (closed form) | −93 % | cup | 1.49 | 0.25 | yes | yes | 0 | 0.2 s |
 | simple_doily | 396 | flat | −2 % | flat | 0.12 | 0.07 | yes | yes | 0 | 0.2 s |
