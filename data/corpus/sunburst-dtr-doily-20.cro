@@ -1,0 +1,18 @@
+# Original project pattern: twenty-ray sunburst doily with double trebles
+title: Sunburst doily (20-fold)
+terms: US
+yarn: crochet cotton no. 10
+hook: 1.5mm
+params: thread-10_1.5mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: An 8-round, 20-ray sunburst for testing tall stitches. Design intent: dc centre, a tr mesh, twenty named V-stitches, rays of 3 dtr gathered by tr3tog (one tr node with three legs over three dtr) into a star, then a ch-5/ch-6 web and an edge of (3 dc, picot, 3 dc) fans. Exercises ch 6 (counts as tr, ch 2), "ch 3 (does not count as st)" before a v-st worked in the same st, the v-st name and "v-sts" count unit, ch 5 (counts as dtr), dtr groups in a space, "sk next ch-1 sp", trNtog over stitches (counted as "20 tr" because a tog node has its base type), and a picot inside a group. Intended shape: flat.
+
+Rnd 1: mr, ch 3 (counts as dc), 19 dc in ring, join. (20)
+Rnd 2: ch 6 (counts as tr, ch 2), *tr in next st, ch 2* x19, join. (20 tr, 20 ch-2 sps)
+Rnd 3: ch 3 (does not count as st), v-st in same st, ch 1, *v-st in next tr, ch 1* x19, join. (40 dc, 20 v-sts, 40 ch-1 sps)
+Rnd 4: sl st in next ch-1 sp, ch 5 (counts as dtr), 2 dtr in same sp, ch 4, sk next ch-1 sp, *3 dtr in next ch-1 sp, ch 4, sk next ch-1 sp* x19, join. (60 dtr, 20 ch-4 sps)
+Rnd 5: ch 4 (does not count as st), tr3tog, ch 5, sc in next ch-4 sp, ch 5, *tr3tog, ch 5, sc in next ch-4 sp, ch 5* x19, join. (40 sts, 20 tr, 20 sc, 40 ch-5 sps)
+Rnd 6: sl st in next ch-5 sp, ch 1, sc in same sp, ch 6, *sc in next ch-5 sp, ch 6* x39, join. (40 sc, 40 ch-6 sps)
+Rnd 7: sl st in next ch-6 sp, ch 3 (counts as dc), ch 3, dc in same sp, ch 3, sc in next ch-6 sp, ch 3, *(dc, ch 3, dc) in next ch-6 sp, ch 3, sc in next ch-6 sp, ch 3* x19, join. (60 sts, 40 dc, 60 ch-3 sps)
+Rnd 8: sl st in next ch-3 sp, ch 3 (counts as dc), 2 dc in same sp, picot, 3 dc in same sp, ch 2, sc in next sc, ch 2, *(3 dc, picot, 3 dc) in next ch-3 sp, ch 2, sc in next sc, ch 2* x19, join, fasten off. (140 sts, 120 dc, 20 picot, 40 ch-2 sps)

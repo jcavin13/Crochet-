@@ -1,0 +1,20 @@
+# Original project pattern: spiral sc mat with a joined lace edge
+title: Spiral sc mat with fan edge (6-fold)
+terms: US
+yarn: worsted-4
+hook: 5.0mm
+params: worsted-4_5.0mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: An 8-round sc disc worked in a continuous (unjoined) spiral with the textbook six increases per round, then two joined rounds of lace edge: ch-4 loops and a 12-repeat fan edging of 5-dc scallops. Design intent: the spiral-to-joined transition. Exercises spiral rounds with no join or turning chain, the "inc x6", "*sc, inc* x6" and "sc 2" forms, "2 sc in next st", a joined lace round whose cursor starts at the first stitch of the spiral round below, and fans written out as "5 dc in next ch-4 sp". Rnd 8 ends with "join" in place of the usual smoothing "sl st in next st": in a spiral the next stitch is the first stitch of the current round, and v0.1 can only reach it through join (see NOTATION_FEEDBACK.md). Intended shape: flat.
+
+Rnd 1: mr, 6 sc in ring. (6)
+Rnd 2: inc x6. (12)
+Rnd 3: *sc, inc* x6. (18)
+Rnd 4: *sc 2, inc* x6. (24)
+Rnd 5: *sc in next 3 sts, 2 sc in next st* x6. (30)
+Rnd 6: *sc in next 4 sts, inc* x6. (36)
+Rnd 7: *sc 5, inc* x6. (42)
+Rnd 8: *sc in next 6 sts, 2 sc in next st* x6, join. (48)
+Rnd 9: ch 1, sc in same st, ch 4, sk 1 st, *sc in next st, ch 4, sk 1 st* x23, join. (24 sc, 24 ch-4 sps)
+Rnd 10: sl st in next ch-4 sp, ch 3 (counts as dc), 4 dc in same sp, sc in next ch-4 sp, *5 dc in next ch-4 sp, sc in next ch-4 sp* x11, join, fasten off. (72 sts, 60 dc, 12 sc)

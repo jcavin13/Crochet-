@@ -1,0 +1,15 @@
+# Original project pattern: six-petal bobble and puff coaster
+title: Bobble flower coaster (6-fold)
+terms: US
+yarn: dk-3
+hook: 4.0mm
+params: dk-3_4.0mm
+source: original (written for this project, 2026)
+license: CC0-1.0
+notes: A 5-round textured coaster. Design intent: twelve bobbles around a dc centre, 24 four-loop puffs in pairs, six 4-dc popcorns set between dc groups (the 6-fold structure starts here), and six graduated hdc/dc/tr scallops. Exercises a beginning "ch 3" that does not count followed by a stitch in the same st or sp, the bobble name (= 5-dc cl), "N-loop puff", "N-dc pc", "hdc inc", "dc inc" and "tr inc" compounds, "sc in next pc" (a stitch name as the target unit) passing over ch-1 spaces, and counts by "cl", "puff" and "pc". Intended shape: flat.
+
+Rnd 1: mr, ch 3 (counts as dc), 11 dc in ring, join. (12)
+Rnd 2: ch 3, bobble in same st, ch 2, *bobble in next st, ch 2* x11, join. (12 cl, 12 ch-2 sps)
+Rnd 3: sl st in next ch-2 sp, ch 2, 4-loop puff in same sp, ch 1, 4-loop puff in same sp, ch 1, *(4-loop puff, ch 1, 4-loop puff) in next ch-2 sp, ch 1* x11, join. (24 puff, 24 ch-1 sps)
+Rnd 4: sl st in next ch-1 sp, ch 3, 4-dc pc in same sp, ch 1, (2 dc in next ch-1 sp) x3, ch 1, *4-dc pc in next ch-1 sp, ch 1, (2 dc in next ch-1 sp) x3, ch 1* x5, join. (42 sts, 6 pc, 36 dc, 12 ch-1 sps)
+Rnd 5: ch 1, *sc in next pc, hdc in next st, dc inc in next st, tr inc in next st, tr inc in next st, dc inc in next st, hdc in next st* x6, join, fasten off. (66 sts, 6 sc)

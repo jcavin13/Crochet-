@@ -335,7 +335,7 @@ def simple_doily() -> dict:
     tg = b.targets(2)
     sps = b.chsps(2)
     b.begin("Rnd 4")
-    b.node("slst", [N(tg[1])])
+    b.node("slst", [N(tg[0])])  # as the compiler: "next dc" from the join = the counts-as-dc top
     b.node("slst", [S(sps[0])])
     b.tch(1)
     first = b.st("sc", S(sps[0]))

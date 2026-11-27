@@ -299,7 +299,9 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
     n = g.n
     types = [nd["type"] for nd in g.nodes]
     eff = [g.effective_type(i) for i in range(n)]
-    w = np.array([params.width(t) for t in types])            # course width
+    # course width: a counts-as turning-chain top occupies the course like the stitch it counts
+    # as (metric variant; SPEC_NOTES N2) — physics.md v0.1 ("spec") uses the chain width
+    w = np.array([params.width(e if variant == "metric" else t) for t, e in zip(types, eff)])
     w_eff = np.array([params.width(t) for t in eff])          # width of the stitch it counts as
     h = np.array([params.height(t) for t in eff])
     s_course = np.array([params.stiffness(t) for t in types])
@@ -330,6 +332,9 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
         return 0.5 * (w[a] + w[b])
 
     metric = variant == "metric"
+    # chains of a turning chain other than a counts-as top: a column climbing to the next round,
+    # not part of the fabric's course (SPEC_NOTES N3)
+    tch_chain = [nd.get("role") == "tch" and not nd.get("countsAs") for nd in g.nodes]
     cg = course_groups(g, w, w_eff, h, cfg)
     ref = Reference(g, anchors, cg, n) if metric else None
     G = cg.group
@@ -355,13 +360,15 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
             if a >= n:
                 continue
             for nb in (a - 1, a + 1):
-                if 0 <= nb < n and prounds[nb] == prounds[a] and nb != i:
+                if 0 <= nb < n and prounds[nb] == prounds[a] and nb != i and not (metric and tch_chain[nb]):
                     if metric and ref.has(i, a) and G[nb] == G[a]:
                         L = ref.cell(i, nb, h[i])
                     else:
                         L = math.hypot(h[i], Lc(a, nb))
                     gen.append((i, nb, L, ks * s_wale[i], SHEAR))
     for i in range(2, n):
+        if metric and (tch_chain[i - 2] or tch_chain[i - 1] or tch_chain[i]):
+            continue
         arc = Lc(i - 2, i - 1) + Lc(i - 1, i)
         k1 = G[i - 1]
         cont = metric and G[i - 2] == k1 == G[i] and cg.closed[k1]
