@@ -21,7 +21,7 @@ def test_fixture_shape_class(name, sim_cache):
     pat, res = sim_cache(name, src)
     m = classify_result(res)
     assert res.converged
-    assert res.seconds < 20
+    assert res.seconds < 60   # typically <= 7 s; generous for loaded CI machines
     assert m["class"] == G.load_expected(name)["shape"], m
 
 

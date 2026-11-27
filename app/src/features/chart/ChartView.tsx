@@ -182,8 +182,7 @@ export function ChartView(props: ChartViewProps) {
     if (id >= 0) {
       const n = graph.nodes[id];
       const R = layout.rounds[n.round];
-      const lines = [R?.label ?? ''];
-      if (showFlatness && R?.flat && R.flat.class !== 'n/a') lines.push(R.flat.message);
+      const lines = [showFlatness && R?.flat && R.flat.class !== 'n/a' ? R.flat.message : R?.label ?? ''];
       return { tip: { ...at, title: describeNode(graph, id, { terms }), lines, pinned }, node: id, round: n.round };
     }
     const r = roundAt(layout, c.x, c.y, upto);

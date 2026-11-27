@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Badge, Button, Card, ConfirmDialog, EmptyState, Icon, Menu, Page, SegmentedControl, SplitPane, buttonClass, toast,
@@ -10,6 +10,8 @@ import { exportPattern } from '@/app/patternActions';
 import { useLibrary } from '@/store/library';
 import { useSettings } from '@/store/settings';
 import { NotationEditor, type NotationEditorHandle } from './NotationEditor';
+import { parse, print } from '@/core/notation';
+import { compile, stripSrc, type Terms } from '@/core/graph';
 import { DiagnosticsList, RoundsTable } from './Panels';
 import { NewPatternDialog } from './NewPatternDialog';
 import './editor.css';
@@ -69,6 +71,17 @@ function EditorView({ cur, onNew, newDialog }: { cur: ReturnType<typeof useCurre
     requestAnimationFrame(() => editor.current?.jumpTo(d.line, d.col, d.endLine, d.endCol));
   }, []);
 
+  // US/UK: rewrite the notation in the other dialect (parse → print), keeping the compiled graph.
+  const textTerms = useMemo<Terms>(() => (/^\s*terms\s*:\s*UK\b/im.test(headerBlock(cur.text)) ? 'UK' : 'US'), [cur.text]);
+  const convertTerms = (v: Terms) => {
+    if (v === textTerms) { if (terms !== v) setSettings({ terms: v }); return; }
+    const res = convertNotationTerms(cur.text, v);
+    if (!res.ok) { toast(res.reason, { tone: 'error' }); return; }
+    setSettings({ terms: v });
+    onChange(res.text);
+    if (!cur.readOnly) toast(`Converted to ${v} terms${res.droppedComments ? ' (comments inside the rounds were removed)' : ''}.`);
+  };
+
   const save = () => { void useLibrary.getState().flush().then(() => toast(cur.readOnly ? 'Examples are read-only — type to make your own copy.' : 'Saved on this device')); };
 
   const status = cur.readOnly
@@ -94,8 +107,8 @@ function EditorView({ cur, onNew, newDialog }: { cur: ReturnType<typeof useCurre
         <div className="ed-head__actions">
           <SegmentedControl
             label="Terminology"
-            value={terms}
-            onChange={(v) => { setSettings({ terms: v }); toast(`Showing ${v} terms is coming with the pattern printer. The notation is unchanged.`); }}
+            value={textTerms}
+            onChange={(v) => convertTerms(v)}
             options={[{ value: 'US', label: 'US', title: 'US terms (sc, dc…)' }, { value: 'UK', label: 'UK', title: 'UK terms (dc, tr…)' }]}
           />
           <div className="ed-open" role="group" aria-label="Open this pattern in">
@@ -184,4 +197,37 @@ function EditorView({ cur, onNew, newDialog }: { cur: ReturnType<typeof useCurre
       />
     </Page>
   );
+}
+
+/** Lines before the first round line (headers and comments). */
+function headerBlock(text: string): string {
+  const m = /^\s*(Rnds?|Rounds?|R|Rows?|Foundation|Start|Setup)\b[^:\n]*:/im.exec(text);
+  return m ? text.slice(0, m.index) : text;
+}
+
+/**
+ * Rewrite notation in US or UK terms (parse → print), only when it parses without errors and the
+ * result compiles to the same graph. Comment lines at the top are kept; the printer drops others.
+ */
+function convertNotationTerms(text: string, terms: Terms): { ok: true; text: string; droppedComments: boolean } | { ok: false; reason: string } {
+  const p = parse(text);
+  const errs = p.diagnostics.filter((d) => d.severity === 'error');
+  if (errs.length) {
+    const d = errs[0];
+    return { ok: false, reason: `Can't switch to ${terms} terms while the notation has ${errs.length === 1 ? 'an error' : `${errs.length} errors`} (line ${d.line}: ${d.message}). Fix ${errs.length === 1 ? 'it' : 'them'} first.` };
+  }
+  let out = print(p.ast, { terms });
+  const before = compile(p.ast);
+  if (before.pattern) {
+    const after = compile(parse(out).ast);
+    if (!after.pattern || JSON.stringify(stripSrc(after.pattern).graph) !== JSON.stringify(stripSrc(before.pattern).graph)) {
+      return { ok: false, reason: `Can't switch to ${terms} terms: the converted text would not give the same stitches. The notation is unchanged.` };
+    }
+  }
+  const lines = text.split(/\r?\n/);
+  const lead: string[] = [];
+  for (const l of lines) { if (/^\s*#/.test(l)) lead.push(l); else if (l.trim()) break; }
+  const total = lines.filter((l) => /^\s*#/.test(l) || /\s#/.test(l)).length;
+  if (lead.length) out = `${lead.join('\n')}\n${out}`;
+  return { ok: true, text: out, droppedComments: total > lead.length };
 }

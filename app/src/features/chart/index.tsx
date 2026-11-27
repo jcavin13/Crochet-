@@ -89,7 +89,6 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
       <PageHeader
         kicker="Chart"
         title={title}
-        description={layout.mode === 'rows' ? 'Worked in rows: a grid chart, read from the bottom up.' : 'Symbol chart, read from the centre outward, round by round.'}
         actions={(
           <div className="row">
             <Link className={buttonClass('default', 'sm')} to={patternHref('editor', id)}><Icon name="edit" size={18} />Editor</Link>
@@ -99,44 +98,19 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
       />
       <div className="ch-layout">
         <div className="ch-main">
-          <Card className="ch-controls">
-            <div className="ch-toolbar">
-              <PatternPicker value={id} />
-              <div style={{ flex: '1 1 220px' }}>
-                <Slider
-                  label="Show up to"
-                  value={upto}
-                  min={0}
-                  max={Math.max(0, rounds.length - 1)}
-                  onChange={setUpto}
-                  format={(v) => `${rounds[v]?.label ?? ''} of ${rounds.length}`}
-                />
-              </div>
-            </div>
-            <div className="ch-toggles">
-              <Toggle label="Flatness band" checked={prefs.flatness} onChange={(v) => set({ flatness: v })} disabled={layout.mode !== 'radial' || prefs.print} />
-              <Toggle label="Round numbers" checked={prefs.labels} onChange={(v) => set({ labels: v })} />
-              <Toggle label="Print-friendly" checked={prefs.print} onChange={(v) => set({ print: v })} />
-              <SegmentedControl
-                label="Symbol set"
-                value={prefs.set}
-                onChange={(v) => set({ set: v })}
-                options={[{ value: 'cyc', label: 'CYC', title: 'Craft Yarn Council symbols' }, { value: 'jis', label: 'JIS', title: 'Japanese chart conventions' }]}
-              />
-              <SegmentedControl
-                label="Single crochet symbol"
-                value={prefs.sc}
-                onChange={(v) => set({ sc: v })}
-                options={[{ value: 'x', label: '×', title: 'sc as ×' }, { value: 'plus', label: '+', title: 'sc as +' }]}
-              />
-              <SegmentedControl
-                label="Terminology"
-                value={terms}
-                onChange={(v) => setSettings({ terms: v })}
-                options={[{ value: 'US', label: 'US', title: 'US names (sc, dc…)' }, { value: 'UK', label: 'UK', title: 'UK names (dc, tr…)' }]}
+          <div className="ch-toolbar">
+            <PatternPicker value={id} />
+            <div className="ch-slider">
+              <Slider
+                label="Show up to"
+                value={upto}
+                min={0}
+                max={Math.max(0, rounds.length - 1)}
+                onChange={setUpto}
+                format={(v) => `${rounds[v]?.label ?? ''} of ${rounds.length}`}
               />
             </div>
-          </Card>
+          </div>
           <div className="ch-print-area">
             <Card className="ch-stage">
               <ChartView
@@ -158,6 +132,34 @@ function ChartScreen({ id, pattern, title }: { id: string; pattern: NonNullable<
         </div>
 
         <aside className="ch-side">
+          <Card>
+            <h2>Display</h2>
+            <div className="ch-toggles">
+              <Toggle label="Flatness band" checked={prefs.flatness} onChange={(v) => set({ flatness: v })} disabled={layout.mode !== 'radial' || prefs.print} />
+              <Toggle label="Round numbers" checked={prefs.labels} onChange={(v) => set({ labels: v })} />
+              <Toggle label="Print-friendly" checked={prefs.print} onChange={(v) => set({ print: v })} />
+            </div>
+            <div className="ch-segs">
+              <SegmentedControl
+                label="Symbol set"
+                value={prefs.set}
+                onChange={(v) => set({ set: v })}
+                options={[{ value: 'cyc', label: 'CYC', title: 'Craft Yarn Council symbols' }, { value: 'jis', label: 'JIS', title: 'Japanese chart conventions' }]}
+              />
+              <SegmentedControl
+                label="Single crochet symbol"
+                value={prefs.sc}
+                onChange={(v) => set({ sc: v })}
+                options={[{ value: 'x', label: 'sc ×', title: 'sc as ×' }, { value: 'plus', label: 'sc +', title: 'sc as +' }]}
+              />
+              <SegmentedControl
+                label="Terminology"
+                value={terms}
+                onChange={(v) => setSettings({ terms: v })}
+                options={[{ value: 'US', label: 'US', title: 'US names (sc, dc…)' }, { value: 'UK', label: 'UK', title: 'UK names (dc, tr…)' }]}
+              />
+            </div>
+          </Card>
           <Card>
             <h2>Legend</h2>
             <ChartLegend layout={layout} terms={terms} symbolSet={prefs.set} scGlyph={prefs.sc} upto={upto} showFlatness={showFlat} />

@@ -99,17 +99,18 @@
 .ch-toolbar { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); align-items: end; }
 .ch-toolbar > * { min-width: 0; }
 .ch-stage { padding: var(--s-2); }
-.ch-stage .ch-view { max-height: min(78vh, 900px); margin-inline: auto; }
-.ch-controls { display: flex; flex-direction: column; gap: var(--s-3); }
-.ch-toggles { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); }
+.ch-stage .ch-view { max-height: max(420px, calc(100vh - 250px)); margin-inline: auto; }
+.ch-slider { flex: 1 1 240px; }
+.ch-toggles { display: flex; flex-direction: column; gap: var(--s-2); }
+.ch-segs { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
 .ch-side { display: flex; flex-direction: column; gap: var(--s-3); }
 .ch-side h2 { font-size: var(--text-md); margin: 0 0 var(--s-2); }
 .ch-export { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 
 .ch-legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s-1) var(--s-3); }
-.ch-legend li { display: flex; align-items: center; gap: var(--s-2); min-height: 32px; font-size: var(--text-sm); }
-.ch-legend svg { flex: none; width: 22px; height: 32px; }
-.ch-legend svg path { fill: none; stroke: var(--ink); stroke-width: 0.08; stroke-linecap: round; stroke-linejoin: round; }
+.ch-legend li { display: flex; align-items: center; gap: var(--s-2); min-height: 44px; font-size: var(--text-sm); }
+.ch-legend svg { flex: none; width: 28px; height: 44px; }
+.ch-legend svg path { fill: none; stroke: var(--ink); stroke-width: 0.11; stroke-linecap: round; stroke-linejoin: round; }
 .ch-legend svg path.f { fill: var(--ink); stroke: none; }
 .ch-legend b { font-weight: 600; }
 .ch-legend .muted { display: block; font-size: var(--text-xs); line-height: 1.2; }

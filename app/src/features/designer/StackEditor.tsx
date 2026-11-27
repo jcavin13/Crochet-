@@ -75,12 +75,12 @@ export function StackEditor({
               <div className="dz-round__row">
                 <span className="dz-num">{main?.number ?? '–'}</span>
                 <button type="button" className="dz-round__main" onClick={() => setOpen(isOpen ? null : i)} aria-expanded={isOpen}>
-                  <span className="dz-round__name">{m.label}</span>
+                  <span className="dz-round__top">
+                    <span className="dz-round__name">{m.label}</span>
+                    {main && main.class !== 'n/a' && <ShapeBadge shape={main.class} />}
+                  </span>
                   <span className="dz-round__sum">{main ? paramSummary(main) : 'could not be placed'}</span>
                 </button>
-                {main && main.class !== 'n/a' && (
-                  <ShapeBadge shape={main.class}>{main.class === 'flat' ? 'Flat' : main.class === 'cup' ? 'Cups' : 'Ruffles'}</ShapeBadge>
-                )}
                 <div className="dz-round__tools">
                   <IconButton icon="chevron-left" className="dz-up" label={`Move round ${i + 1} inwards`} disabled={i < 2} onClick={() => move(i, -1)} />
                   <IconButton icon="chevron-right" className="dz-down" label={`Move round ${i + 1} outwards`} disabled={i < 1 || i >= rounds.length - 1} onClick={() => move(i, 1)} />

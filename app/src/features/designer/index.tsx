@@ -123,7 +123,7 @@ function Designer({ state, setState }: { state: DesignerState; setState: (s: Des
               className="dz-preset"
               aria-pressed={state.presetId === p.id}
               onClick={() => patch({
-                presetId: p.id, symmetry: p.spec.symmetry, rounds: p.spec.rounds, title: '',
+                presetId: p.id, symmetry: p.spec.symmetry, rounds: p.spec.rounds, title: p.spec.title ?? '',
                 target: p.spec.target ?? { shape: 'flat' }, lacy: p.spec.style?.lacy ?? state.lacy,
               })}
             >
@@ -241,7 +241,7 @@ function Results({ result, params, summary, stale }: { result: GenerateResult; p
     catch { toast('Copy failed — select the text and copy it by hand', { tone: 'error' }); }
   };
   const st = result.stats;
-  const rows = showAll ? result.rounds : result.rounds.slice(-6);
+  const rows = showAll || result.rounds.length <= 12 ? result.rounds : result.rounds.slice(-8);
   return (
     <div className="dz-results" data-stale={stale}>
       <div className="dz-stats" aria-label="Pattern statistics">
@@ -275,13 +275,13 @@ function Results({ result, params, summary, stale }: { result: GenerateResult; p
                   <span className="dz-motif">{MOTIFS[r.motif].label}{r.auto ? <Badge tone="outline">added</Badge> : null}</span>
                   <span className="dz-motif__sum">{paramSummary(r)}</span>
                 </td>
-                <td>{r.class === 'n/a' ? '—' : <ShapeBadge shape={r.class} />}{r.aim !== 'flat' && <span className="small muted"> aim: {r.aim === 'cup' ? 'cup' : 'ruffle'}</span>}</td>
+                <td>{r.class === 'n/a' ? '—' : <ShapeBadge shape={r.class} />}{r.aim !== 'flat' && <span className="dz-aim">aimed: {r.aim === 'cup' ? 'cup' : 'ruffle'}</span>}</td>
                 <td className="dz-num-col" title={`flat window ${pct(r.eMin)} … ${pct(r.eMax)}`}>{pct(r.e)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {result.rounds.length > 6 && (
+        {result.rounds.length > 12 && (
           <Button size="sm" variant="ghost" onClick={() => setShowAll(!showAll)}>{showAll ? 'Show the outer rounds only' : `Show all ${result.rounds.length} rounds`}</Button>
         )}
       </Card>

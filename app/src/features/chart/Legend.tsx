@@ -12,9 +12,10 @@ export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet 
       <ul className="ch-legend" aria-label="Symbols used">
         {entries.map((e) => {
           const g = sampleGlyph(e.spec, { set: symbolSet, sc: scGlyph });
+          const small = e.key === 'mr' ? '-0.85 -1.2 1.7 2.5' : ['ch', 'slst', 'picot'].includes(e.spec.base) || (e.spec.base === 'sc' && e.spec.legs === 1) ? '-0.55 -0.8 1.1 1.6' : '-0.75 -1.6 1.5 3.1';
           return (
             <li key={e.key}>
-              <svg viewBox="-0.8 -1.75 1.6 3.3" aria-hidden="true">
+              <svg viewBox={small} aria-hidden="true">
                 {g.stroke && <path d={g.stroke} />}
                 {g.fill && <path className="f" d={g.fill} />}
               </svg>
