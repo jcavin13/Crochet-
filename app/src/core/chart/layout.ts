@@ -33,7 +33,7 @@ const TAU = Math.PI * 2;
 export const DIM = {
   stHalf: 0.32,
   clusterHalf: 0.42,
-  tchHalf: 0.34,
+  tchHalf: 0.32,
   tchLooseHalf: 0.22,
   chHalf: 0.08,
   picotHalf: 0.14,
@@ -359,11 +359,13 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     if (central) {
       // spread evenly by width: round 1 into a ring, foundation chain
       let cum = 0;
+      const tot = items.reduce((a, it) => a + (it.kind === 'join' ? 0 : lin(it)), 0);
       for (const it of items) {
-        const c = cum + it.half;
-        it.t = radial ? start + (dir * TAU * c) / Math.max(totalLin, 1e-9) : c;
+        const half = it.kind === 'join' ? 0 : it.half;
+        const c = cum + half;
+        it.t = radial ? start + (dir * TAU * c) / Math.max(tot, 1e-9) : c;
         it.w = 1;
-        cum += lin(it);
+        cum += 2 * half;
       }
     } else {
       for (const it of items) {
@@ -430,18 +432,19 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       }
     }
 
-    // --- solve the course
-    const n = items.length;
+    // --- solve the course (joins take no room: they sit between the last and the first stitch)
+    const solveItems = items.filter((it) => it.kind !== 'join');
+    const n = solveItems.length;
     const target = new Float64Array(n), weight = new Float64Array(n), gap = new Float64Array(Math.max(0, n - 1));
-    for (let i = 0; i < n; i++) { target[i] = dir * items[i].t; weight[i] = items[i].w; }
+    for (let i = 0; i < n; i++) { target[i] = dir * solveItems[i].t; weight[i] = solveItems[i].w; }
     const toCourse = (d: number) => (radial ? d / rho : d);
-    for (let i = 0; i + 1 < n; i++) gap[i] = toCourse(items[i].half + items[i + 1].half);
-    let wrapGap = n > 1 ? toCourse(items[n - 1].half + items[0].half) : 0;
+    for (let i = 0; i + 1 < n; i++) gap[i] = toCourse(solveItems[i].half + solveItems[i + 1].half);
+    let wrapGap = n > 1 ? toCourse(solveItems[n - 1].half + solveItems[0].half) : 0;
     if (radial && n > 2) {
       // Spread a closed round round its circle: share most of the free circumference among the
       // gaps (less between stitches worked into the same place, so fans stay fans); the anchors
       // decide the rest.
-      const span = dir * (items[n - 1].t - items[0].t);
+      const span = dir * (solveItems[n - 1].t - solveItems[0].t);
       let used = wrapGap;
       for (let i = 0; i + 1 < n; i++) used += gap[i];
       const free = TAU - used;
@@ -454,13 +457,13 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         // key of the stitch at or before / after each gap (gaps inside a group share the group's key)
         const before: string[] = new Array(n), after: string[] = new Array(n);
         let cur = '';
-        for (let i = 0; i < n; i++) { const kk = key(items[i]); if (kk || items[i].kind === 'st' || items[i].kind === 'tch') cur = kk; before[i] = cur; }
+        for (let i = 0; i < n; i++) { const kk = key(solveItems[i]); if (kk || solveItems[i].kind === 'st' || solveItems[i].kind === 'tch') cur = kk; before[i] = cur; }
         cur = '';
-        for (let i = n - 1; i >= 0; i--) { const kk = key(items[i]); if (kk || items[i].kind === 'st' || items[i].kind === 'tch') cur = kk; after[i] = cur; }
+        for (let i = n - 1; i >= 0; i--) { const kk = key(solveItems[i]); if (kk || solveItems[i].kind === 'st' || solveItems[i].kind === 'tch') cur = kk; after[i] = cur; }
         const share = new Float64Array(n);
         let tot = 0;
         for (let i = 0; i < n; i++) {
-          const a = items[i], b = items[(i + 1) % n];
+          const a = solveItems[i], b = solveItems[(i + 1) % n];
           const ka = before[i], kb = after[(i + 1) % n];
           share[i] = a.kind === 'join' || b.kind === 'join' ? 0.15 : ka && ka === kb ? 0.3 : 1;
           tot += share[i];
@@ -474,7 +477,17 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       target, weight, gap,
       maxSpan: radial && n > 1 ? TAU - wrapGap : undefined,
     });
-    for (let i = 0; i < n; i++) for (const id of items[i].ids) { S[id] = dir * sol[i]; course[id] = 1; }
+    for (let i = 0; i < n; i++) for (const id of solveItems[i].ids) { S[id] = dir * sol[i]; course[id] = 1; }
+    items.forEach((it, i) => {
+      if (it.kind !== 'join') return;
+      let a = -1, b = -1;
+      for (let j = i - 1; j >= 0; j--) if (items[j].kind !== 'join') { a = j; break; }
+      for (let j = i + 1; j < items.length; j++) if (items[j].kind !== 'join') { b = j; break; }
+      const sa = a >= 0 ? S[items[a].rep] : NaN;
+      const sb = b >= 0 ? S[items[b].rep] : solveItems.length ? S[solveItems[0].rep] + (radial ? dir * TAU : dir * 0.6) : NaN;
+      const v = Number.isFinite(sa) && Number.isFinite(sb) ? (sa + sb) / 2 : Number.isFinite(sa) ? sa + dir * 0.3 : Number.isFinite(sb) ? sb - dir * 0.3 : it.t;
+      for (const id of it.ids) { S[id] = v; course[id] = 1; }
+    });
 
     // --- radii and positions of stitches and counting turning chains
     const spiral = radial && R.kind === 'round' && !R.joined;
@@ -728,58 +741,66 @@ function shortLabel(label: string): string {
 }
 
 /**
- * Circular arc from P to Q holding `n` chains, bulging outward (away from the centre / upward),
- * long enough for the chains: L = n·pitch + 2·pad. Returns chain centres + tangent angles.
+ * Arc from P to Q holding `n` chains: a cubic Bézier that bulges outward (away from the centre /
+ * upward) at the chord's midpoint until it is long enough for the chains (L = n·pitch + 2·pad).
+ * Bulging along the outward direction rather than the chord normal keeps the two loops on either
+ * side of a stitch sitting in a valley from crossing. Returns chain centres + tangent angles.
  */
 function chainArc(F: Frame, radial: boolean, P: Pt, Q: Pt, n: number, sHint: number, _dir: number) {
   const L = n * DIM.chainPitch + 2 * DIM.chainEndPad;
-  let dx = Q.x - P.x, dy = Q.y - P.y;
-  let c = Math.hypot(dx, dy);
+  const dx = Q.x - P.x, dy = Q.y - P.y;
+  const c = Math.hypot(dx, dy);
   const mx = (P.x + Q.x) / 2, my = (P.y + Q.y) / 2;
-  // outward normal
-  let nx: number, ny: number;
-  if (c < 1e-6) {
-    const [ox, oy] = F.out(mx, my, sHint);
-    nx = ox; ny = oy; dx = -oy * 1e-3; dy = ox * 1e-3; c = 1e-3;
-  } else {
-    nx = -dy / c; ny = dx / c;
-    const [ox, oy] = radial ? F.out(mx, my, sHint) : [0, -1];
-    if (nx * ox + ny * oy < 0) { nx = -nx; ny = -ny; }
+  const [ox, oy] = radial ? F.out(mx, my, sHint) : [0, -1];
+  const ux = c > 1e-9 ? dx / c : -oy, uy = c > 1e-9 ? dy / c : ox;
+  const arm = Math.max(c / 3, 0.18);
+  const ctrl = (h: number) => ({
+    c1: { x: P.x + ux * arm + ox * h, y: P.y + uy * arm + oy * h },
+    c2: { x: Q.x - ux * arm + ox * h, y: Q.y - uy * arm + oy * h },
+  });
+  const at = (t: number, c1: Pt, c2: Pt): Pt => {
+    const u = 1 - t;
+    return {
+      x: u * u * u * P.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * Q.x,
+      y: u * u * u * P.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * Q.y,
+    };
+  };
+  const M = 48;
+  const sample = (h: number) => {
+    const { c1, c2 } = ctrl(h);
+    const pts: Pt[] = [];
+    const cum: number[] = [0];
+    for (let i = 0; i <= M; i++) pts.push(at(i / M, c1, c2));
+    for (let i = 1; i <= M; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    return { pts, cum, c1, c2 };
+  };
+  // gentle sag-free bow when the chord is long enough; otherwise solve the bulge for the length
+  let h = Math.min(0.25, c * 0.08);
+  let sm = sample(h);
+  if (sm.cum[M] < L) {
+    let lo = h, hi = Math.max(1, L);
+    while (sample(hi).cum[M] < L && hi < 1e4) hi *= 2;
+    for (let it = 0; it < 32; it++) { const mid = (lo + hi) / 2; if (sample(mid).cum[M] < L) lo = mid; else hi = mid; }
+    h = hi; sm = sample(h);
   }
-  let alpha: number;
-  if (L <= c * 1.01) alpha = 0.3;
-  else {
-    const ratio = L / c;
-    let lo = 1e-4, hi = 1.8 * Math.PI;
-    const f = (a: number) => a / 2 / Math.sin(a / 2);
-    if (f(hi) < ratio) alpha = hi;
-    else {
-      for (let it = 0; it < 48; it++) { const mid = (lo + hi) / 2; if (f(mid) < ratio) lo = mid; else hi = mid; }
-      alpha = (lo + hi) / 2;
-    }
-  }
-  const Rr = c / (2 * Math.sin(alpha / 2));
-  const cxx = mx - nx * Rr * Math.cos(alpha / 2), cyy = my - ny * Rr * Math.cos(alpha / 2);
-  const v0x = P.x - cxx, v0y = P.y - cyy;
-  const rotv = (a: number): [number, number] => [v0x * Math.cos(a) - v0y * Math.sin(a), v0x * Math.sin(a) + v0y * Math.cos(a)];
-  const apexX = cxx + nx * Rr, apexY = cyy + ny * Rr;
-  const [hx, hy] = rotv(alpha / 2);
-  const [gx, gy] = rotv(-alpha / 2);
-  const sgn = Math.hypot(cxx + hx - apexX, cyy + hy - apexY) <= Math.hypot(cxx + gx - apexX, cyy + gy - apexY) ? 1 : -1;
-  const Larc = Rr * alpha;
-  const pad = Math.min(DIM.chainEndPad, Larc * 0.18);
-  const pitch = (Larc - 2 * pad) / n;
+  const total = sm.cum[M];
+  const pad = Math.min(DIM.chainEndPad, total * 0.18);
+  const pitch = (total - 2 * pad) / n;
   const pts: { x: number; y: number; rot: number }[] = [];
+  let j = 1;
   for (let q = 0; q < n; q++) {
-    const u = (pad + (q + 0.5) * pitch) / Larc;
-    const a = sgn * alpha * u;
-    const [vx, vy] = rotv(a);
-    const ang = Math.atan2(vy, vx) + (sgn > 0 ? Math.PI / 2 : -Math.PI / 2);
-    pts.push({ x: cxx + vx, y: cyy + vy, rot: ang });
+    const target = pad + (q + 0.5) * pitch;
+    while (j < M && sm.cum[j] < target) j++;
+    const a = sm.pts[j - 1], b = sm.pts[j];
+    const seg = sm.cum[j] - sm.cum[j - 1] || 1;
+    const f = (target - sm.cum[j - 1]) / seg;
+    pts.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, rot: Math.atan2(b.y - a.y, b.x - a.x) });
   }
+  let apex = 0;
+  for (const p of sm.pts) apex = Math.max(apex, F.height(p.x, p.y));
   const f3 = (v: number) => (Math.round(v * 1000) / 1000).toString();
-  const d = `M${f3(P.x)} ${f3(P.y)}A${f3(Rr)} ${f3(Rr)} 0 ${alpha > Math.PI ? 1 : 0} ${sgn > 0 ? 1 : 0} ${f3(Q.x)} ${f3(Q.y)}`;
-  return { pts, d, apex: F.height(apexX, apexY) };
+  const d = `M${f3(P.x)} ${f3(P.y)}C${f3(sm.c1.x)} ${f3(sm.c1.y)} ${f3(sm.c2.x)} ${f3(sm.c2.y)} ${f3(Q.x)} ${f3(Q.y)}`;
+  return { pts, d, apex };
 }
 
 function circlePath(cx: number, cy: number, r: number): string {
