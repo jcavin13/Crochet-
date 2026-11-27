@@ -87,3 +87,6 @@
   .sim-main .sim-view { height: 52vh; min-height: 300px; }
   .sim-page .ui-pagehead { margin-bottom: var(--s-3); }
 }
+
+.sim-regions__list { list-style: none; margin: 0.25rem 0 0; padding: 0; display: grid; gap: 0.25rem; }
+.sim-regions__list li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.875rem; }

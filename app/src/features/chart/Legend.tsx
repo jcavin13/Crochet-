@@ -36,12 +36,12 @@ export const ChartLegend = memo(function ChartLegend({ layout, terms, symbolSet 
       )}
       {border && (
         <p className="ch-shapekey" aria-label="Border rounds">
-          <span title="Rounds worked round the rows (R1, R2…): flatness does not apply; the blanket studio checks how the border fits the edges and corners.">
+          <span title="Rounds worked round the rows (R1, R2…): each side is judged by the edge fit (stitches placed vs the length of the edge) and each corner by the polygon rule (2·h·tan(π/n) of growth per corner per round). The rows themselves have no centre and are not judged.">
             R1, R2… {BORDER_NOTE}
           </span>
         </p>
       )}
-      {showFlatness && layout.mode === 'radial' && (
+      {showFlatness && (layout.mode === 'radial' || border) && (
         <div className="ch-shapekey" aria-label="Flatness band">
           <span><i className="ch-swatch ch-swatch--flat" aria-hidden="true" />lies flat</span>
           {loose && (

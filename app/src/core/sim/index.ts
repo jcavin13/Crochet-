@@ -7,6 +7,8 @@
  *   createSim(graph, params, opts?)              → SimHandle (incremental: step(budgetMs), snapshots)
  *   shapeMetric(X, nodeRounds, config?)          → {class, A, W, Rg, outer_radius, axis, centroid}
  *   block(network, X, config?)                   → BlockResult (physics.md §6, with a verdict)
+ *   regionShape(network, X)                      → per-region shape of rows / borders / polygons (or null)
+ *   networkMetric(network, X)                    → shapeMetric with the row-piece axis rule
  */
 export {
   buildNetwork, springsOf, countsAsStitch, COURSE, WALE, SHEAR, BEND_COURSE, BEND_WALE, KIND_NAMES,
@@ -21,6 +23,10 @@ export type { ShapeMetric } from './metrics';
 export { block, setupBlock, blockVerdict, alignPins, pinOverstretch, PIN_OVERSTRETCH } from './blocking';
 export type { BlockResult, BlockVerdict, BlockPin, PinStretch } from './blocking';
 export { findSpines } from './spine';
+export { buildOutline, outlinePins, polygonRuns } from './outline';
+export type { Outline, OutlineCourse, OutlineKind, Poly } from './outline';
+export { regionShape, REGION_TAU, RECT_SIDE_LABELS, RECT_CORNER_LABELS } from './regions';
+export type { RegionReport, RegionSide, RegionCorner, SideClass, CornerClass } from './regions';
 export type { Spine } from './spine';
 export { addTableEnergy, TABLE_GRAVITY, TABLE_STIFFNESS } from './table';
 export type { TableOptions } from './table';

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compilePattern } from '../notation';
+import { estimateYarn } from '../yarn';
 import { analyzeFlatness } from '../flatness';
 import { paramSetById, paramsFile } from '../params';
 import {
@@ -240,6 +241,17 @@ describe('solver and predictor', () => {
     expect(r.stats.stitches).toBe(r.pattern!.graph.rounds.reduce((a, x) => a + x.stitchCount, 0));
     expect(r.stats.diameterMm).toBeGreaterThan(50);
     expect(r.stats.yarnM).toBeGreaterThan(1);
+  });
+
+  it('the yarn figure is core/yarn\'s nominal estimate (one source of truth), not the old 2 × (w + h) rule', () => {
+    const r = generateDoily(PRESETS[0].spec, THREAD);
+    const est = estimateYarn(r.pattern!, THREAD);
+    expect(r.stats.yarnM).toBeCloseTo(est.net.meters, 9);
+    expect(r.stats.yarnG).toBeCloseTo(est.net.grams!, 9);
+    // the old rule of thumb was half to two thirds of the model
+    let old = 0;
+    for (const nd of r.pattern!.graph.nodes) { const sp = THREAD.stitches[nd.type]; if (sp) old += 2 * (sp.width + sp.height); }
+    expect(old / 1000 / r.stats.yarnM).toBeLessThan(0.8);
   });
 
   it('every motif has the metadata the UI needs', () => {

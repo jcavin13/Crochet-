@@ -11,7 +11,7 @@ import {
   Badge, Button, Card, EmptyState, Icon, IconButton, Page, PageHeader, SegmentedControl, Select, ShapeBadge, Slider, buttonClass,
 } from '@/ui';
 import { SimView, usePalette, type ColorBy, type SimStatus } from './SimView';
-import { closedShapeNote, explainDisagreement } from './explain';
+import { closedShapeNote, explainDisagreement, regionsSentence } from './explain';
 import { roundColor, toCss, type Palette } from './topology';
 import './sim.css';
 
@@ -62,6 +62,7 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
   const nRounds = pattern.graph.rounds.length;
   const [round, setRound] = useState(nRounds - 1);
   const [blocked, setBlocked] = useState(false);
+  const [table, setTable] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [resetKey, setResetKey] = useState(0);
   const [status, setStatus] = useState<SimStatus | null>(null);
@@ -104,11 +105,14 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
             <SegmentedControl label="Boundary" value={blocked ? 'blocked' : 'relaxed'}
               onChange={(v) => { setPlaying(false); setBlocked(v === 'blocked'); }}
               options={[{ value: 'relaxed', label: 'Relaxed', title: 'Free in space' }, { value: 'blocked', label: 'Blocked', title: 'Pinned flat, edge stretched 5 %' }]} />
+            <SegmentedControl label="Support" value={table ? 'table' : 'free'}
+              onChange={(v) => { setPlaying(false); setTable(v === 'table'); }}
+              options={[{ value: 'free', label: 'Free', title: 'Relaxed in space (the shape check)' }, { value: 'table', label: 'On a table', title: 'Grown flat, then resting on a table under a light weight (a view for pieces meant to lie flat)' }]} />
             <span className="spacer" />
             <IconButton icon="cube" label="Reset view" onClick={() => setResetKey((k) => k + 1)} />
           </div>
           <SimView pattern={pattern} params={params} uptoRound={round} blocked={blocked} colorBy={prefs.colorBy}
-            onStatus={onStatus} resetViewKey={resetKey} />
+            onStatus={onStatus} resetViewKey={resetKey} table={table} />
           <div className="sim-roundbar">
             <Button className="sim-play" variant={playing ? 'default' : 'primary'} onClick={play} aria-pressed={playing}
               disabled={nRounds < 2}>{playing ? 'Pause' : 'Play'}</Button>
@@ -116,7 +120,8 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
               onChange={(v) => { setPlaying(false); setRound(v); }}
               format={(v) => `${pattern.graph.rounds[v]?.label ?? v + 1} (${v + 1} of ${nRounds})`} />
           </div>
-          <Legend by={prefs.colorBy} nRounds={nRounds} palette={palette} scale={status?.strainScale ?? 0.1} />
+          <Legend by={prefs.colorBy} nRounds={nRounds} palette={palette} scale={status?.strainScale ?? 0.1}
+            border={pattern.graph.rounds.some((r, i) => r.kind === 'round' && pattern.graph.rounds[i - 1]?.kind === 'row')} />
         </div>
 
         <aside className="sim-side">
@@ -137,6 +142,22 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
               </dd>
               {m && <><dt>Size</dt><dd className="small">Rg {(m.Rg / 10).toFixed(1)} cm · edge radius {(m.outer_radius / 10).toFixed(1)} cm</dd></>}
             </dl>
+            {status?.regions && round === nRounds - 1 && (
+              <div className="sim-regions" data-overall={status.regions.overall}>
+                <p className="sim-explain">{regionsSentence(status.regions)}</p>
+                <ul className="sim-regions__list">
+                  <li><ShapeBadge shape={status.regions.body.class === 'flat' ? 'flat' : 'cup'}>{status.regions.body.class === 'flat' ? 'flat' : 'curls'}</ShapeBadge> {status.regions.kind === 'rows' ? 'Body (rows)' : 'Body'}</li>
+                  {status.regions.sides.map((sd) => (
+                    <li key={`s${sd.index}`}><ShapeBadge shape={sd.class === 'flat' ? 'flat' : sd.class === 'waves' ? 'ruffle' : 'cup'}>{sd.class}</ShapeBadge> {sd.label}
+                      <span className="small muted"> {sd.excess >= 0 ? '+' : '−'}{Math.abs(sd.excess * 100).toFixed(0)} % edge length</span></li>
+                  ))}
+                  {status.regions.corners.map((c) => (
+                    <li key={`c${c.index}`}><ShapeBadge shape={c.class === 'flat' ? 'flat' : c.class === 'ruffle' ? 'ruffle' : 'cup'}>{c.class}</ShapeBadge> {c.label} corner
+                      <span className="small muted"> {c.perCorner >= 0 ? '+' : '−'}{Math.abs(c.perCorner).toFixed(1)} st</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {m && (
               <p className="sim-explain">
                 {pattern.graph.rounds[round]?.label ?? 'This round'}: the simulated piece {CLASS_WORD[m.class]}
@@ -215,7 +236,7 @@ function SimScreen({ id, pattern, title }: { id: string; pattern: Pattern; title
 const fmtPct = (x: number) => `${x < 0.1 ? (x * 100).toFixed(1) : Math.round(x * 100)} %`;
 const pct = (x: number) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)} % length`;
 
-function Legend({ by, nRounds, palette, scale }: { by: ColorBy; nRounds: number; palette: Palette; scale: number }) {
+function Legend({ by, nRounds, palette, scale, border }: { by: ColorBy; nRounds: number; palette: Palette; scale: number; border?: boolean }) {
   if (by === 'strain') {
     const grad = `linear-gradient(90deg, ${toCss(palette.compression)}, ${toCss(palette.neutral)}, ${toCss(palette.tension)})`;
     return (
@@ -237,6 +258,7 @@ function Legend({ by, nRounds, palette, scale }: { by: ColorBy; nRounds: number;
     <ul className="sim-legend" aria-label="Legend">
       <li><span className="sim-swatch" style={{ background: toCss(roundColor(0, nRounds, palette)) }} />odd rounds</li>
       <li><span className="sim-swatch" style={{ background: toCss(roundColor(1, nRounds, palette)) }} />even rounds</li>
+      {border && <li><span className="sim-swatch" style={{ background: toCss(roundColor(0, nRounds, palette, true)) }} />border rounds</li>}
       <li><span className="sim-swatch" style={{ background: toCss(palette.chain) }} />chain loops, slip stitches</li>
     </ul>
   );

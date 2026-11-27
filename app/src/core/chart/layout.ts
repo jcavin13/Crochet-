@@ -55,7 +55,7 @@
  *    border; border rounds are numbered R1, R2… at their start.
  *  - A piece worked round both sides of a foundation chain: the chain is a straight line and the
  *    rounds are stadiums round it.
- *  - A polygon worked from the centre (corners.ts: n corner groups, evenly spaced, round after
+ *  - A polygon worked from the centre (core/flatness/corners.ts, shared with the flatness check: n corner groups, evenly spaced, round after
  *    round, sides between them): from its first cornered round each round is a regular n-gon with
  *    rounded corners (straight sides, corner groups fanned), height = distance from the centre to
  *    the side; the piece is turned so it sits on a side. Everything else stays a circle.
@@ -64,7 +64,7 @@ import { analyzeFlatness, type RoundFlatness } from '../flatness';
 import { childrenOf, type Graph, type Node } from '../graph';
 import { heightOf, stitchParam, type ParamSet } from '../params';
 import { analyzeSymmetry } from '../symmetry';
-import { borderCornerGroups, detectPolygon, detectStadium } from './corners';
+import { borderCornerGroups, detectPolygon, detectStadium } from '../flatness/corners';
 import { offsetFrame, regularCore, type FrameSpec, type OffsetFrame } from './frames';
 import { solveOrdered } from './solve';
 import { symbolOf } from './symbols';
@@ -128,7 +128,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
   // Shape of the piece beyond circles and rows (frames.ts):
   //  - border rounds of a piece worked in rows: round the body's rectangle;
   //  - a piece worked round both sides of a foundation chain: a stadium round the chain;
-  //  - a polygon worked from the centre (corners unambiguous, corners.ts): concentric polygons.
+  //  - a polygon worked from the centre (corners unambiguous, core/flatness/corners.ts): concentric polygons.
   const shapes = opts.shapes !== false;
   const borderStart = !radial && shapes ? graph.rounds.findIndex((r, k) => k > 0 && r.kind === 'round' && graph.rounds[k - 1].kind === 'row') : -1;
   const stadium = radial && shapes && detectStadium(graph);
@@ -144,7 +144,8 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
   const unit = stitchParam(params, 'sc').width || 1;
   const hOf = (n: Node) => heightOf(params, n) / unit;
   const wRel = (n: Node) => stitchParam(params, n.type).width / unit;
-  const flat = radial ? analyzeFlatness(graph, params) : undefined;
+  // (a body in rows with a border: the border rounds are judged by the edge fit and the corner rule)
+  const flat = radial || borderStart > 0 ? analyzeFlatness(graph, params) : undefined;
   // Rotational order of the piece up to each round (core/symmetry): a closed round of an n-fold
   // piece is laid out exactly n-fold (its seam — turning chain, join — tucked in without
   // displacing its neighbours).
@@ -288,7 +289,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
   // Flatness ρ without the loop rise of the previous round: the drawn arcs model that rise.
   const flatTarget = (k: number) => {
     const fl = flat?.rounds[k];
-    if (!fl || fl.class === 'n/a') return 0;
+    if (!fl || fl.class === 'n/a' || fl.shape === 'border') return 0;
     const pr = k > 0 ? flat!.rounds[k - 1] : undefined;
     const rise = pr && pr.class !== 'n/a' ? Math.max(0, pr.r - pr.rho) : 0;
     return fl.rho - rise;

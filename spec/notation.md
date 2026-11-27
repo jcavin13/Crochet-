@@ -44,7 +44,9 @@ Rnd 3: *sc, inc* x6. (18)
     across lines.
   * `Row` lines are worked flat: the work is turned between consecutive rows automatically
     (explicit `turn` is accepted and redundant). `Rnd` lines are worked in the round without
-    turning unless an explicit `turn` appears.
+    turning unless an explicit `turn` appears: a `turn` before the round's first stitch — first,
+    or after its starting chain, before anything is worked into the round below (`ch 1, turn, sc in each st
+    around`) — turns that round; a `turn` after a stitch (`…, join, turn.`) turns the next round.
 * Keywords and stitch names are case-insensitive. `×` and `x` are interchangeable.
 * Item separators inside a round: `,` `;` and `.` are equivalent. A trailing separator is allowed.
 

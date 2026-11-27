@@ -144,6 +144,66 @@ Rnd 1: ch 1, 3 sc in corner, sc in next ch-1 sp, sc in next st, sc in next ch-1 
   });
 });
 
+describe('"turn" in border rounds and other rounds (regression: a turn after the starting chain was deferred)', () => {
+  const small = `Foundation: ch 5.
+Row 1: sc in 2nd ch from hook, sc in each ch across. (4)
+Row 2: ch 1, sc in each st across. (4)
+Rnd 1: ch 1, 3 sc in corner, sc in each st across to corner, 3 sc in corner, sc in each row end across to corner, 3 sc in corner, sc in each ch across to corner, 3 sc in corner, sc in each row end across, join.`;
+  const firstSt = (g: Graph, r: number) => g.nodes.slice(g.rounds[r].first, g.rounds[r].last + 1).find((n) => n.type !== 'ch' && n.type !== 'slst')!;
+  const lastSt = (g: Graph, r: number) => g.nodes.slice(g.rounds[r].first, g.rounds[r].last + 1).filter((n) => n.type !== 'ch' && n.type !== 'slst').pop()!;
+
+  it('the chart agent\'s repro: "Rnd 2: ch 1, turn, …" turns Rnd 2 (and Rnd 3 by its own turn)', () => {
+    const g = ok(`${small}\nRnd 2: ch 1, turn, sc in each st around, join.\nRnd 3: ch 1, turn, sc in each st around, join.`).graph;
+    const [r1, r2, r3] = [3, 4, 5];
+    expect(g.rounds.map((r) => r.turned)).toEqual([false, false, true, true, true, true]);
+    // turned: each round starts into the last stitch of the round below (its list reversed) …
+    expect(firstSt(g, r2).into).toEqual([{ node: lastSt(g, r1).id }]);
+    expect(firstSt(g, r3).into).toEqual([{ node: lastSt(g, r2).id }]);
+    // … the corners are still found, in reverse working order, and the counts are right
+    for (const r of [r2, r3]) {
+      const list = borderLists(g).get(r)!;
+      expect(list.filter((e) => e.corner)).toHaveLength(4);
+      expect(g.rounds[r].stitchCount).toBe(20);
+    }
+    const fwd = ok(`${small}\nRnd 2: ch 1, sc in each st around, join.`).graph;
+    const listFwd = borderLists(fwd).get(r2)!.map((e) => JSON.stringify(e));
+    expect(borderLists(g).get(r2)!.map((e) => JSON.stringify(e))).toEqual(listFwd.slice().reverse());
+  });
+
+  it('"turn" at the end of the round before, at the start of the round, or after its chain: the same graph', () => {
+    const atEnd = ok(`${small.replace(/join\.$/, 'join, turn.')}\nRnd 2: ch 1, sc in each st around, join.`).graph;
+    const atStart = ok(`${small}\nRnd 2: turn, ch 1, sc in each st around, join.`).graph;
+    const afterCh = ok(`${small}\nRnd 2: ch 1, turn, sc in each st around, join.`).graph;
+    const strip = (g: Graph) => stripSrc({ graph: g } as unknown as Pattern);
+    expect(strip(atStart)).toEqual(strip(atEnd));
+    expect(strip(afterCh)).toEqual(strip(atEnd));
+    expect(atEnd.rounds[4].turned).toBe(true);
+  });
+
+  it('a turned border round keeps its corners for the rounds after it', () => {
+    const g = ok(`${small}\nRnd 2: ch 1, turn, *sc in each st across to corner, 3 sc in corner* x4, sc in each st across, join. (28)\nRnd 3: ch 1, turn, *sc in each st across to corner, 3 sc in corner* x4, sc in each st across, join. (36)`).graph;
+    expect(g.rounds[4].turned).toBe(true);
+    expect(g.rounds[5].turned).toBe(true);
+    expect(sideOf(g, 4).corner).toBe(12);
+    expect(sideOf(g, 5).corner).toBe(12);
+  });
+
+  it('turned rounds after a spiral; a turn after the first stitch still turns the next round', () => {
+    const g = ok('Rnd 1: mr, 6 sc in ring. (6)\nRnd 2: 2 sc in each st around. (12)\nRnd 3: ch 1, turn, sc in each st around, join. (12)').graph;
+    expect(g.rounds.map((r) => !!r.turned)).toEqual([false, false, true]);
+    expect(firstSt(g, 2).into).toEqual([{ node: lastSt(g, 1).id }]);
+    const later = ok('Rnd 1: mr, 6 sc in ring, join. (6)\nRnd 2: ch 1, sc in next st, turn, sc in next 5 sts, join. (6)\nRnd 3: ch 1, sc in each st around, join. (6)').graph;
+    expect(later.rounds.map((r) => !!r.turned)).toEqual([false, false, true]);
+  });
+
+  it('"turn" in the first border round itself is redundant (it is turned already) and changes nothing', () => {
+    const plain = ok(small).graph;
+    const r = compilePattern(small.replace('Rnd 1: ch 1, ', 'Rnd 1: ch 1, turn, '));
+    expect(r.diagnostics.map((d) => d.code)).toEqual(['I_REDUNDANT_TURN']);
+    expect(stripSrc(r.pattern!).graph).toEqual(stripSrc({ graph: plain } as unknown as Pattern).graph);
+  });
+});
+
 describe('working along the other side of the chain (3.9)', () => {
   it('an oval / rectangle started round a foundation chain', () => {
     const p = ok(`Foundation: ch 11.
@@ -205,10 +265,13 @@ describe('printer round-trip (US and UK)', () => {
 describe('other modules on a rows + border piece (must not crash)', () => {
   const p = ok(`${rect(8, 6)}\nRnd 1: ch 1, 3 sc in corner, sc in each st across to corner, 3 sc in corner, 2 sc in each row end across to corner, 3 sc in corner, sc in each ch across to corner, 3 sc in corner, 2 sc in each row end across, join. (48)\nRnd 2: ch 1, *sc in each st across to corner, 3 sc in corner* x4, sc in each st across, join. (56)`);
   const P = paramsFor(p);
-  it('flatness: n/a (rows have no centre)', () => {
+  it('flatness: rows n/a (no centre); the border rounds judged by edge fit and corner rule', () => {
     const f = analyzeFlatness(p.graph, P);
-    expect(f.applicable).toBe(false);
-    expect(f.rounds.every((r) => r.class === 'n/a')).toBe(true);
+    expect(f.applicable).toBe(true);
+    for (const r of f.rounds) {
+      if (p.graph.rounds[r.round].kind !== 'round') { expect(r.class).toBe('n/a'); expect(r.shape).toBe('rows'); }
+      else { expect(r.shape).toBe('border'); expect(r.class, r.message).toBe('flat'); }
+    }
   });
   it('symmetry: not applicable', () => {
     expect(analyzeSymmetry(p.graph).applicable).toBe(false);

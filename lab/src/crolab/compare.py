@@ -92,7 +92,9 @@ def network_diff(cur: dict, ref: dict) -> list[str]:
 #: a spring network is multistable, so last-bit differences between CPUs / BLAS builds grow into
 #: differences of a few 1e-3 in A and W (seen on GitHub's runners). These bounds are well inside
 #: the cross-sim agreement tolerance (sim_config agree_abs = 0.12) and far from any class change.
-METRIC_ABS = {"A": 0.03, "W": 0.03}
+METRIC_ABS = {"A": 0.03, "W": 0.03,
+              # per-region report of outline extras (crolab.regions): classes exact, measures loose
+              "curl": 0.03, "wave": 0.1, "pull": 0.03, "excess": 0.02, "lift": 0.1, "perCorner": 0.3}
 METRIC_REL = {"Rg": 0.02, "outer_radius": 0.02}
 
 

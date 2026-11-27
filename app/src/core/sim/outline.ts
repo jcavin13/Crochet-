@@ -32,7 +32,7 @@
  */
 import type { Anchor, Graph } from '../graph';
 import { borderLists, type Entry } from '../graph/targets';
-import { npMean } from './detmath';
+import { dcos, dsin, npMean } from './detmath';
 
 export type OutlineKind = 'foundation' | 'row' | 'border' | 'polygon' | 'polybase';
 type P2 = [number, number];
@@ -59,6 +59,10 @@ export interface OutlineCourse {
   dir: number;
   h: number;
   corners: OutlineCorner[];
+  /** the round's nodes in working order, starting at the first corner's core */
+  order: number[];
+  /** segments in working order: corner group q then the side after it (own and section lengths, mm) */
+  segments: { region: 2 | 3; index: number; own: number; len: number }[];
 }
 
 export interface Outline {
@@ -78,10 +82,22 @@ export interface Outline {
   regionIndex: Int16Array;
   /** the body rectangle of a row piece (O_0), null for polygon pieces */
   body: Poly | null;
+  /** the n-gon of the base round of a polygon piece (centred at the origin), null otherwise */
+  base: Poly | null;
   /** number of corners of the outline courses (0: rows only) */
   K: number;
   /** foundation span (chains under the first row) */
   span: number[];
+  /**
+   * Turning-chain columns: per turning chain in a run between two laid-out nodes, the factor its
+   * run's course springs are scaled by so that the run is a straight column between them (0: none).
+   */
+  colScale: Float64Array;
+  /**
+   * Compliance factor per node of an outline round (N9): the course rest lengths of its segment
+   * (side run or corner group) are its stitch widths × this; 1 elsewhere. See `segLam`.
+   */
+  lam: Float64Array;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -110,18 +126,26 @@ export function makePoly(V: P2[]): Poly {
   return { V, L, cum, P: s, t, n };
 }
 
-/** Edge index containing arc-length S (cum_j ≤ S < cum_j + L_j), S taken mod P. */
+/** S taken into [0, P). */
+function norm(poly: Poly, S: number): number {
+  let s = mod(S, poly.P);
+  if (!(s < poly.P)) s = 0;
+  if (s < 0) s = 0;
+  return s;
+}
+
+/** Edge index containing arc-length S (cum_j ≤ S < cum_j + L_j), S taken into [0, P). */
 function edgeAt(poly: Poly, S: number): number {
-  const s = mod(S, poly.P);
+  const s = norm(poly, S);
   let j = poly.V.length - 1;
   for (let q = 0; q < poly.V.length; q++) if (s < poly.cum[q] + poly.L[q]) { j = q; break; }
   return j;
 }
 
 export function pointAt(poly: Poly, S: number): P2 {
-  const s = mod(S, poly.P);
+  const s = norm(poly, S);
   const j = edgeAt(poly, s);
-  const u = s - poly.cum[j];
+  const u = Math.min(Math.max(s - poly.cum[j], 0), poly.L[j]);
   return [poly.V[j][0] + poly.t[j][0] * u, poly.V[j][1] + poly.t[j][1] * u];
 }
 
@@ -172,7 +196,7 @@ export function offsetPoly(poly: Poly, h: number): { poly: Poly; e: number[] } {
  */
 function project(old: Poly, neu: Poly, e: number[], S: number, end: boolean): number {
   const K = old.V.length;
-  const s = mod(S, old.P);
+  const s = norm(old, S);
   let j = edgeAt(old, s);
   let u = s - old.cum[j];
   if (end && u < 1e-9 * Math.max(1, old.P)) { j = (j + K - 1) % K; u = old.L[j]; }
@@ -236,13 +260,79 @@ function entryShare(g: Graph, key: string, sh: Map<number, Share>, P: number): S
 // build
 // ---------------------------------------------------------------------------------------------
 interface Share { lo: number; hi: number }
+interface Acc { A: number; B: number; R: number }
 
-export function buildOutline(g: Graph, wEff: ArrayLike<number>, w: ArrayLike<number>, h: ArrayLike<number>, chainNominal: number): Outline | null {
+export function buildOutline(g: Graph, wEff: ArrayLike<number>, w: ArrayLike<number>, h: ArrayLike<number>, chainNominal: number, tol: number): Outline | null {
+  const out = buildLayout(g, wEff, w, h, chainNominal, tol);
+  if (out) tchColumns(g, out, w, h);
+  return out;
+}
+
+/**
+ * Joining slip stitches (N9): a slip stitch of an outline round worked into a laid-out stitch of
+ * its own round (the `join`) lies on that stitch, its own height away from it towards the node
+ * before it (no reference cells: it is not a stitch-counting node; region none).
+ *
+ * Turning-chain columns (N8): a maximal run of turning chains (not counting) whose neighbours a
+ * (before) and b (after) both have reference positions, b in a's round or the next, is a straight
+ * column from a to b: its chains get reference positions evenly along it by course rest length, and
+ * the run's course springs (a → first chain … last chain → b) are scaled by |Q_b − Q_a| / (their
+ * summed width rest lengths). Without it, the 15.6 mm of yarn of a dc row's `ch 3` over a 12.35 mm
+ * row bulges out of the fabric at every row end.
+ */
+function tchColumns(g: Graph, out: Outline, w: ArrayLike<number>, h: ArrayLike<number>) {
+  const n = g.nodes.length;
+  // a joining slip stitch of an outline round lies on the stitch it is worked into
+  for (let i = 0; i < n; i++) {
+    const nd = g.nodes[i];
+    const k = out.roundKind[nd.round];
+    if (nd.type !== 'slst' || out.has[i] || !(k === 'border' || k === 'polygon') || nd.into.length !== 1) continue;
+    const a = nd.into[0];
+    if (!('node' in a) || a.part || !out.has[a.node] || g.nodes[a.node].round !== nd.round) continue;
+    // on the stitch it joins, its height away towards the stitch before it
+    let ux = 0, uy = 0;
+    if (i > 0 && out.has[i - 1]) {
+      const dx = out.qx[i - 1] - out.qx[a.node], dy = out.qy[i - 1] - out.qy[a.node];
+      const dd = hyp2(dx, dy);
+      if (dd > 0) { const f = Math.min(h[i], dd) / dd; ux = f * dx; uy = f * dy; }
+    }
+    out.qx[i] = out.qx[a.node] + ux; out.qy[i] = out.qy[a.node] + uy; out.has[i] = 1;
+  }
+  const tch = (i: number) => g.nodes[i].type === 'ch' && g.nodes[i].role === 'tch' && !g.nodes[i].countsAs;
+  let i = 0;
+  while (i < n) {
+    if (!tch(i)) { i++; continue; }
+    let j = i;
+    while (j + 1 < n && tch(j + 1)) j++;
+    const a = i - 1, b = j + 1;
+    if (a >= 0 && b < n && out.has[a] && out.has[b] && !out.has[i] && g.nodes[b].round >= g.nodes[a].round && g.nodes[b].round <= g.nodes[a].round + 1) {
+      const D = hyp2(out.qx[b] - out.qx[a], out.qy[b] - out.qy[a]);
+      let S = 0;
+      for (let q = a; q < b; q++) S += 0.5 * (w[q] + w[q + 1]);
+      if (S > 0) {
+        const f = D / S;
+        let cum = 0;
+        for (let q = i; q <= j; q++) {
+          cum += 0.5 * (w[q - 1] + w[q]);
+          const t = cum / S;
+          out.qx[q] = out.qx[a] + t * (out.qx[b] - out.qx[a]);
+          out.qy[q] = out.qy[a] + t * (out.qy[b] - out.qy[a]);
+          out.has[q] = 1;
+          out.colScale[q] = f;
+          out.region[q] = out.region[a] === 1 || out.region[b] === 1 ? 1 : 0;
+        }
+      }
+    }
+    i = j + 1;
+  }
+}
+
+function buildLayout(g: Graph, wEff: ArrayLike<number>, w: ArrayLike<number>, h: ArrayLike<number>, chainNominal: number, tol: number): Outline | null {
   const n = g.nodes.length, nR = g.rounds.length;
   const out: Outline = {
     qx: new Float64Array(n).fill(NaN), qy: new Float64Array(n).fill(NaN), has: new Uint8Array(n), c: new Float64Array(n),
     S: new Float64Array(n).fill(NaN), roundKind: new Array(nR).fill(null), courses: new Map(), region: new Uint8Array(n),
-    regionIndex: new Int16Array(n).fill(-1), body: null, K: 0, span: [],
+    regionIndex: new Int16Array(n).fill(-1), body: null, base: null, K: 0, span: [], colScale: new Float64Array(n), lam: new Float64Array(n).fill(1),
   };
   // course contributions: counting nodes w_X, chains of a chain space of their round chain_nominal·w_ch
   const chsp = new Map<number, number>();
@@ -258,6 +348,7 @@ export function buildOutline(g: Graph, wEff: ArrayLike<number>, w: ArrayLike<num
   };
 
   let shares: Map<number, Share> | null = null;   // node shares on the previous outline curve
+  const acc = new Map<string, Acc>();             // cumulative compliance per side / corner
   let prev: Poly | null = null;
   let r0 = -1;   // first round handled as an outline round
   let K = 0;
@@ -275,6 +366,15 @@ export function buildOutline(g: Graph, wEff: ArrayLike<number>, w: ArrayLike<num
       for (const a of nd.into) if ('node' in a && !a.part && g.nodes[a.node].round === 0 && g.nodes[a.node].type === 'ch' && !g.nodes[a.node].countsAs) worked.push(a.node);
     }
     if (!worked.length) return null;
+    // a chain space in a row sits over the stitches it skips: each of its chains takes the row's
+    // mean stitch width (the blanket library's convention: a ch-1 sp in moss or mesh is a column)
+    for (let r = 1; r <= last; r++) {
+      const ids = roundIds(g, r);
+      const st = ids.filter((i) => counts(g, i));
+      if (!st.length) continue;
+      const wr = npMean(st.map((i) => wEff[i]));
+      for (const i of ids) if (!counts(g, i) && chsp.get(i) === r) out.c[i] = wr;
+    }
     const lo = Math.min(...worked), hi = Math.max(...worked);
     const span: number[] = [];
     for (let i = lo; i <= hi; i++) if (g.nodes[i].type === 'ch') span.push(i);
@@ -354,7 +454,7 @@ export function buildOutline(g: Graph, wEff: ArrayLike<number>, w: ArrayLike<num
     cornerKeys.set(r0, cornersE.map(entryKey));
     for (let r = r0 + 1; r < nR && lists.has(r); r++) cornerKeys.set(r, lists.get(r)!.filter((e) => e.corner).map(entryKey));
     for (let r = r0; r < nR && cornerKeys.has(r); r++) {
-      const res = outlineRound(g, out, r, 'border', cornerKeys.get(r)!, prev!, shares!, K, h, hbar(r));
+      const res = outlineRound(g, out, r, 'border', cornerKeys.get(r)!, prev!, shares!, K, h, hbar(r), tol, acc);
       if (!res) break;
       prev = res.poly; shares = res.shares;
     }
@@ -383,13 +483,14 @@ export function buildOutline(g: Graph, wEff: ArrayLike<number>, w: ArrayLike<num
     return s.get(Number(key.slice(1)))!;
   };
   const cs0 = keys0.map(centre);
-  const Rc = C / (2 * nc * Math.sin(Math.PI / nc));
+  const Rc = C / (2 * nc * dsin(Math.PI / nc));
   const V: P2[] = [];
   for (let j = 0; j < nc; j++) {
     const th = (2 * Math.PI * j) / nc;
-    V.push([Rc * Math.cos(th), Rc * Math.sin(th)]);
+    V.push([Rc * dcos(th), Rc * dsin(th)]);
   }
   const O = makePoly(V);
+  out.base = O;
   const side = O.P / nc;
   // own coordinate → arc-length: corner centre q at vertex q (cum_q), linear in between (cyclic)
   const mapBase = (x: number): number => {
@@ -401,7 +502,6 @@ export function buildOutline(g: Graph, wEff: ArrayLike<number>, w: ArrayLike<num
     return 0;
   };
   shares = new Map();
-  const hb0 = hbar(base);
   for (const i of ids) {
     if (!(out.c[i] > 0)) continue;
     const Si = mapBase(s.get(i)!);
@@ -409,17 +509,17 @@ export function buildOutline(g: Graph, wEff: ArrayLike<number>, w: ArrayLike<num
     const b = mapBase(s.get(i)! + 0.5 * out.c[i]);
     const lo2 = Si + wrapc(a - Si, O.P), hi2 = Si + wrapc(b - Si, O.P);
     shares.set(i, { lo: Math.min(lo2, hi2), hi: Math.max(lo2, hi2) });
-    const p = pointAt(O, Si), nn = normalAt(O, Si);
-    const dh = counts(g, i) ? h[i] - hb0 : 0;
-    set(i, p[0] + dh * nn[0], p[1] + dh * nn[1]);
-    out.S[i] = Si;
+    // the n-gon is where this round's tops are (the next round is worked into them): no height offset
+    const p = pointAt(O, Si);
+    set(i, p[0], p[1]);
+    out.S[i] = norm(O, Si);
     out.region[i] = 1;
   }
   out.roundKind[base] = 'polybase';
   for (let r = 0; r < base; r++) for (const i of roundIds(g, r)) out.region[i] = 1;
   prev = O;
   for (let r = first; r <= lastR; r++) {
-    const res = outlineRound(g, out, r, 'polygon', corners.get(r)!, prev, shares, nc, h, hbar(r));
+    const res = outlineRound(g, out, r, 'polygon', corners.get(r)!, prev, shares, nc, h, hbar(r), tol, acc);
     if (!res) break;
     prev = res.poly; shares = res.shares;
   }
@@ -434,7 +534,7 @@ export function buildOutline(g: Graph, wEff: ArrayLike<number>, w: ArrayLike<num
  */
 function outlineRound(
   g: Graph, out: Outline, r: number, kind: 'border' | 'polygon', keys: string[], prev: Poly, shares: Map<number, Share>, K: number,
-  h: ArrayLike<number>, hb: number,
+  h: ArrayLike<number>, hb: number, tol: number, acc: Map<string, Acc>,
 ): { poly: Poly; shares: Map<number, Share> } | null {
   if (keys.length !== K || !(hb > 0)) return null;
   const ids = roundIds(g, r);
@@ -452,8 +552,6 @@ function outlineRound(
   const d = K >= 2 && vtx[1] === (vtx[0] + K - 1) % K ? -1 : 1;
   for (let q = 0; q < K; q++) if (vtx[(q + 1) % K] !== (((vtx[q] + d) % K) + K) % K) return null;
   // corner groups: the minimal cyclic run of the round's nodes worked into each corner entry
-  const pos = new Map<number, number>();
-  ids.forEach((i, k) => pos.set(i, k));
   const groups: [number, number][] = [];
   for (const k of keys) {
     const ps: number[] = [];
@@ -486,17 +584,40 @@ function outlineRound(
     secA.push(Math.min(cv - e[v], a, b));
     secB.push(Math.max(cv + e[v], a, b));
   }
-  // segments in round order: group q, then the side to group q+1
+  // corner segments in own coordinate: the whole group, or — for a group with a chain space inside
+  // it (the next round's corner, cornerTargets) — its core centred on that space, no longer than the
+  // corner's section (a granny's `(3 dc, ch 2, 3 dc)`: the 3-dc halves lie along the sides)
+  const core: [number, number][] = [];
+  const kIn = new Map<number, number>();
+  order.forEach((i, k) => kIn.set(i, k));
+  for (let q = 0; q < K; q++) {
+    const g0 = cumAt[G[q][0]], g1 = cumAt[G[q][1] + 1];
+    const lo = order[G[q][0]], hi = order[G[q][1]];
+    const inside = g.spaces.filter((sp) => sp.kind === 'chsp' && sp.round === r && sp.chains.length > 0
+      && kIn.has(sp.chains[0]) && kIn.get(sp.chains[0])! > kIn.get(lo)! && kIn.get(sp.chains[sp.chains.length - 1])! < kIn.get(hi)!);
+    const need = secB[q] - secA[q];
+    if (inside.length && g1 - g0 > need) {
+      const sp = inside[Math.floor((inside.length - 1) / 2)];
+      const k0 = kIn.get(sp.chains[0])!, k1 = kIn.get(sp.chains[sp.chains.length - 1])!;
+      const cen = 0.5 * (cumAt[k0] + cumAt[k1 + 1]);
+      let c0 = cen - 0.5 * need;
+      c0 = Math.min(Math.max(c0, g0), g1 - need);
+      core.push([c0, c0 + need]);
+    } else core.push([g0, g1]);
+  }
+  // segments in round order from the first corner's core: corner q, then the side to corner q+1
   type Seg = { s0: number; s1: number; len: number; region: number; index: number };
   const segs: Seg[] = [];
   let total = 0;
+  const base0 = core[0][0];
   for (let q = 0; q < K; q++) {
     const cl = secB[q] - secA[q];
-    segs.push({ s0: cumAt[G[q][0]], s1: cumAt[G[q][1] + 1], len: cl, region: 3, index: vtx[q] });
+    segs.push({ s0: core[q][0], s1: core[q][1], len: cl, region: 3, index: vtx[q] });
     const nq = (q + 1) % K;
     const sl = d > 0 ? mod(secA[nq] - secB[q], P) : mod(secA[q] - secB[nq], P);
-    const s1 = q + 1 < K ? cumAt[G[nq][0]] : C;
-    segs.push({ s0: cumAt[G[q][1] + 1], s1, len: sl, region: 2, index: d > 0 ? vtx[q] : vtx[nq] });
+    const s1 = q + 1 < K ? core[nq][0] : base0 + C;
+    if (s1 < core[q][1] - 1e-9) return null;
+    segs.push({ s0: core[q][1], s1, len: sl, region: 2, index: d > 0 ? vtx[q] : vtx[nq] });
     total += cl + sl;
   }
   if (Math.abs(total - P) > 1e-6 * P) return null;
@@ -504,36 +625,57 @@ function outlineRound(
   const segStart: number[] = [];
   let T = T0;
   for (const sg of segs) { segStart.push(T); T += d * sg.len; }
-  const mapS = (x: number): number => {
-    for (let q = 0; q < segs.length; q++) {
-      const sg = segs[q];
-      if (x <= sg.s1 + 1e-12 || q === segs.length - 1) {
-        const f = sg.s1 > sg.s0 ? (x - sg.s0) / (sg.s1 - sg.s0) : 0.5;
-        return segStart[q] + d * f * sg.len;
-      }
-    }
-    return T0;
+  /** own coordinate (cyclic, from the rotated start) → segment index */
+  const segIdx = (x0: number): number => {
+    const x = x0 < base0 - 1e-12 ? x0 + C : x0;
+    for (let q = 0; q < segs.length; q++) if (x < segs[q].s1 - 1e-12) return q;
+    return segs.length - 1;
   };
-  const segOf = (x: number): Seg => {
-    for (const sg of segs) if (x < sg.s1 - 1e-12) return sg;
-    return segs[segs.length - 1];
+  const mapS = (x0: number, q = segIdx(x0)): number => {
+    const x = x0 < base0 - 1e-12 ? x0 + C : x0;
+    const sg = segs[q];
+    const f = sg.s1 > sg.s0 ? (x - sg.s0) / (sg.s1 - sg.s0) : 0.5;
+    return segStart[q] + d * f * sg.len;
   };
+  const segOf = (x: number): Seg => segs[segIdx(x)];
+  // cumulative compliance (N9): per side / corner, the natural excess A (own − section) accumulates
+  // over the outline rounds; up to tol of the accumulated own length B is absorbed; a round's
+  // course springs take its section plus the growth of the residual R this round
+  const segLam = segs.map((sg) => {
+    const own = sg.s1 - sg.s0;
+    const key = `${sg.region}:${sg.index}`;
+    const st = acc.get(key) ?? { A: 0, B: 0, R: 0 };
+    st.A += own - sg.len;
+    st.B += tol * own;
+    const Rn = Math.sign(st.A) * Math.max(0, Math.abs(st.A) - st.B);
+    const eff = sg.len + Rn - st.R;
+    st.R = Rn;
+    acc.set(key, st);
+    return own > 0 ? Math.min(2, Math.max(0.5, eff / own)) : 1;
+  });
   const newShares = new Map<number, Share>();
   order.forEach((i, k) => {
     if (!(out.c[i] > 0)) return;
     const sc = 0.5 * (cumAt[k] + cumAt[k + 1]);
-    const Si = mapS(sc);
-    const a = mapS(cumAt[k]), b = mapS(cumAt[k + 1]);
+    const qs = segIdx(sc);
+    const Si = mapS(sc, qs);
+    // the node's share: its own interval through the map (continuous across segment boundaries)
+    const a = mapS(cumAt[k]), b = mapS(cumAt[k + 1] - 1e-9 * C);
     newShares.set(i, { lo: Math.min(a, b), hi: Math.max(a, b) });
     const p = pointAt(poly, Si), nn = normalAt(poly, Si);
     const dh = counts(g, i) ? h[i] - hb : 0;
     out.qx[i] = p[0] + dh * nn[0]; out.qy[i] = p[1] + dh * nn[1]; out.has[i] = 1;
-    out.S[i] = mod(Si, P);
+    out.S[i] = norm(poly, Si);
     const sg = segOf(sc);
     out.region[i] = sg.region; out.regionIndex[i] = sg.index;
+    out.lam[i] = segLam[segs.indexOf(sg)];
   });
   out.roundKind[r] = kind;
-  out.courses.set(r, { round: r, kind, poly, dir: d, h: hb, corners: keys.map((key, q) => ({ key, vertex: vtx[q], nodes: order.slice(G[q][0], G[q][1] + 1) })) });
+  // the round's order for measuring, from the first corner's core
+  let k0 = 0;
+  while (k0 < m && 0.5 * (cumAt[k0] + cumAt[k0 + 1]) < base0 - 1e-12) k0++;
+  const order2 = [...order.slice(k0), ...order.slice(0, k0)];
+  out.courses.set(r, { round: r, kind, poly, dir: d, h: hb, order: order2, segments: segs.map((sg) => ({ region: sg.region as 2 | 3, index: sg.index, own: sg.s1 - sg.s0, len: sg.len })), corners: keys.map((key, q) => ({ key, vertex: vtx[q], nodes: order.slice(G[q][0], G[q][1] + 1) })) });
   return { poly, shares: newShares };
 }
 
@@ -543,15 +685,17 @@ function outlineRound(
 export const POLY_MIN_GROUP = 3;
 export const POLY_MAX_CORNERS = 8;
 export const POLY_SPACING_TOL = 0.25;
+/** a polygon is built over several rounds: a single cornered round is lace (stitches in spaces) */
+export const POLY_MIN_RUN = 2;
 
 /**
  * Corners of round r of a piece worked in the round from the centre, or null. Per entry e of the
  * round below (a stitch or a chain space), m_e = number of stitch-counting nodes of round r worked
  * into it; M = max m_e; corners K = {e : m_e > M/2}. A corner round: M ≥ 3 (or M ≥ 2 when `cont`,
  * inside a run), every corner's m_e at least twice every other entry's, 3 ≤ |K| ≤ 8, the corners
- * evenly spread round the round below (each gap within ±25 % of 1/|K| of its course), and no stitch
- * of round r more than 1.5× as tall as another (a squaring round of a circle-to-square is not a
- * polygon round: its corners come from taller stitches, not from increases).
+ * evenly spread round the round below (each gap within ±25 % of 1/|K| of its course). polygonRuns
+ * also requires no stitch of round r more than 1.5× as tall as another (evenHeights: a squaring
+ * round of a circle-to-square makes its corners from taller stitches, not from increases).
  */
 export function polygonCorners(g: Graph, r: number, c: ArrayLike<number>, cont: boolean): string[] | null {
   if (r < 1) return null;
@@ -559,7 +703,6 @@ export function polygonCorners(g: Graph, r: number, c: ArrayLike<number>, cont: 
   if (R.kind !== 'round' || B.kind !== 'round' || R.first < 0 || B.first < 0) return null;
   const cnt = new Map<string, number>();
   const order: string[] = [];
-  const hs: number[] = [];
   for (const i of roundIds(g, r)) {
     if (!counts(g, i)) continue;
     const seen = new Set<string>();
@@ -571,7 +714,6 @@ export function polygonCorners(g: Graph, r: number, c: ArrayLike<number>, cont: 
       if (!cnt.has(k)) order.push(k);
       cnt.set(k, (cnt.get(k) ?? 0) + 1);
     }
-    hs.push(i);
   }
   if (!order.length) return null;
   let M = 0;
@@ -610,7 +752,7 @@ export function polygonCorners(g: Graph, r: number, c: ArrayLike<number>, cont: 
   return idx.map((q) => Kset[q]);
 }
 
-/** The first run of consecutive polygon rounds (same corner count), or null. */
+/** The first run of at least POLY_MIN_RUN consecutive polygon rounds (same corner count), or null. */
 export function polygonRuns(g: Graph, c: ArrayLike<number>, h?: ArrayLike<number>): { first: number; last: number; n: number; corners: Map<number, string[]> } | null {
   const nR = g.rounds.length;
   if (nR && g.rounds.some((R) => R.kind !== 'round')) return null;
@@ -627,7 +769,8 @@ export function polygonRuns(g: Graph, c: ArrayLike<number>, h?: ArrayLike<number
       corners.set(last + 1, k);
       last++;
     }
-    return { first: r, last, n: k0.length, corners };
+    if (last - r + 1 >= POLY_MIN_RUN) return { first: r, last, n: k0.length, corners };
+    r = last;
   }
   return null;
 }
@@ -637,4 +780,31 @@ export function evenHeights(g: Graph, r: number, h: ArrayLike<number>): boolean 
   let lo = Infinity, hi = 0;
   for (const i of roundIds(g, r)) if (counts(g, i)) { lo = Math.min(lo, h[i]); hi = Math.max(hi, h[i]); }
   return !(hi > 1.5 * lo);
+}
+
+/**
+ * Pins for blocking an outline piece (viewer, physics.md §6 explicit pins): the outermost outline
+ * round's stitches (and chain-space chains) at their reference positions — a border pinned to its
+ * reference rectangle, a polygon to its polygon; a piece of rows alone: its perimeter (the last
+ * row, the first and last stitch of every row, the foundation span). Null without an outline.
+ */
+export function outlinePins(net: { nNodes: number; graph: Graph; outline: Outline | null }): { node: number; x: number; y: number }[] | null {
+  const o = net.outline;
+  if (!o) return null;
+  const rounds = [...o.courses.keys()].sort((a, b) => a - b);
+  const ids: number[] = [];
+  if (rounds.length) {
+    for (const i of o.courses.get(rounds[rounds.length - 1])!.order) if (o.has[i] && o.c[i] > 0) ids.push(i);
+  } else {
+    const rows = o.roundKind.map((k, r) => (k === 'row' ? r : -1)).filter((r) => r >= 0);
+    const set = new Set<number>(o.span);
+    rows.forEach((r, k) => {
+      const st = roundIds(net.graph, r).filter((i) => o.has[i] && o.c[i] > 0);
+      if (!st.length) return;
+      if (k === rows.length - 1) for (const i of st) set.add(i);
+      set.add(st[0]); set.add(st[st.length - 1]);
+    });
+    ids.push(...[...set].sort((a, b) => a - b));
+  }
+  return ids.map((i) => ({ node: i, x: o.qx[i], y: o.qy[i] }));
 }

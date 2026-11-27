@@ -18,6 +18,7 @@ import { compilePattern } from '../notation';
 import { analyzeFlatness } from '../flatness';
 import { simConfig, stitchParam, type ParamSet } from '../params';
 import type { Pattern } from '../graph';
+import { estimateYarn } from '../yarn';
 import { countAnnotation, picotCount, sectorEntries, writeRound } from './emit';
 import { MOTIFS, spaceSlots, type Candidate, type MotifCtx } from './motifs';
 import { predictRound, startState, type FlatState, type Prediction } from './predict';
@@ -251,19 +252,14 @@ function planOnce(spec: DoilySpec, params: ParamSet, overrides: Map<number, numb
   return { planned, warnings, ringChains, score, overrides };
 }
 
-/** Rough yarn per node, mm: about 2 × (width + height) of the stitch it makes. */
-export function yarnOf(pattern: Pattern, params: ParamSet): number {
-  let mm = 0;
-  for (const nd of pattern.graph.nodes) {
-    const sp = stitchParam(params, nd.type);
-    let f = 2 * (sp.width + sp.height);
-    if (nd.type === 'picot') { const ch = stitchParam(params, 'ch'); f = (nd.chains ?? 3) * 2 * (ch.width + ch.height); }
-    if (nd.tag === 'cluster' || nd.into.length > 1) f *= 0.75 * Math.max(1, nd.into.length);
-    if (nd.type === 'popcorn') f *= nd.legs ?? 5;
-    if (nd.type === 'puff') f *= 0.8 * (nd.loops ?? 3);
-    mm += f;
-  }
-  return mm / 1000;
+/**
+ * Yarn of a generated pattern: core/yarn's nominal estimate (net, without the waste allowance; no
+ * calibration — the designers show the user's own yarn through `estimateYarn` / YarnPanel). One
+ * source of truth: the old rule of thumb here (2 × (w + h) per stitch) was half to two thirds of it.
+ */
+export function yarnOf(pattern: Pattern, params: ParamSet): { meters: number; grams: number } {
+  const est = estimateYarn(pattern, params);
+  return { meters: est.net.meters, grams: est.net.grams ?? 0 };
 }
 
 export function generateDoily(spec: DoilySpec, params: ParamSet): GenerateResult {
@@ -336,7 +332,7 @@ export function generateDoily(spec: DoilySpec, params: ParamSet): GenerateResult
     stitches: rounds.reduce((a, r) => a + r.stitches, 0),
     chains: pattern ? pattern.graph.nodes.filter((nd) => nd.type === 'ch').length : 0,
     diameterMm: 2 * (last?.r ?? planned[planned.length - 1]?.pred.r ?? 0),
-    yarnM: pattern ? yarnOf(pattern, params) : 0,
+    ...(() => { const y = pattern ? yarnOf(pattern, params) : { meters: 0, grams: 0 }; return { yarnM: y.meters, yarnG: y.grams }; })(),
   };
   return { text, pattern, flatness, rounds, warnings, stats, diagnostics };
 }

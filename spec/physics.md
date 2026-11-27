@@ -9,7 +9,10 @@
 > them, e.g. snowflake arms — as straight doubled cords (N5, growth placement P7), lays out pointed
 > chain loops (`ch ≥ 4, picot, ch ≥ 4`, nothing worked into them) as starched open loops (N6, P8)
 > and lets the seam slip stitch of an arm's space take no share of its chains (N7). Placement rules
-> P0–P8 are made exact there.
+> P0–P8 are made exact there. Rows, the border rounds worked round them and polygons worked from
+> the centre take their rest lengths from a planar reference layout (N8–N10, placement P9), and
+> are reported per region (body / sides / corners) besides the §5 metric (pieces with rows use the
+> PCA axis).
 > Both sims implement the amended model; `tau_flat` is 0.25.
 
 Two simulators exist: the research one in `lab/` (Python, reference) and the real-time one in

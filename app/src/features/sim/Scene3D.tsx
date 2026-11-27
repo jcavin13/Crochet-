@@ -176,7 +176,7 @@ function Piece({ topology: t, positions, rotation, colors, highlightNode }: Omit
     if (picotRef.current && t.picots.count) {
       const col = new THREE.Color();
       for (let k = 0; k < t.picots.count; k++) {
-        const base = colors.by === 'strain' ? colors.palette.neutral : mix(roundColor(t.picots.round[k], t.nRounds, colors.palette), colors.palette.ink, 0.25);
+        const base = colors.by === 'strain' ? colors.palette.neutral : mix(roundColor(t.picots.round[k], t.nRounds, colors.palette, t.border[t.picots.round[k]] === 1), colors.palette.ink, 0.25);
         col.setRGB(base[0], base[1], base[2], THREE.SRGBColorSpace);
         for (let j = 0; j < PICOT_SEGS; j++) picotRef.current.setColorAt(k * PICOT_SEGS + j, col);
       }

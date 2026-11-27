@@ -13,7 +13,7 @@ import { describeNode } from '@/core/graph';
 import { paramsFor, type ParamSet } from '@/core/params';
 import {
   bandPath, boundsUpto, buildHitIndex, cornerView, edgePath, glyph, hitTest, hullPath, layoutChart, magicRingGlyph, roundAt, symbolRoom, wedgeNote, wedgeView,
-  BORDER_NOTE, POINTED_NOTE, type ChartLayout, type ScGlyph, type SymbolSet, type WedgeView,
+  POINTED_NOTE, type ChartLayout, type ScGlyph, type SymbolSet, type WedgeView,
 } from '@/core/chart';
 import { analyzeSymmetry, type SymmetryReport } from '@/core/symmetry';
 import { useSettings } from '@/store/settings';
@@ -250,7 +250,13 @@ function ChartViewInner(props: ChartViewProps) {
   }, [layout]);
 
   const bands = useMemo(() => {
-    if (layout.mode !== 'radial') return [];
+    if (layout.mode !== 'radial') {
+      // a body in rows: only its border rounds have a band (edge fit + corner rule), and only with the flatness band on
+      return layout.rounds.filter((r) => r.border && r.frame && r.first >= 0 && r.flat && r.flat.class !== 'n/a').map((r) => ({
+        index: r.index, d: bandPath(layout, r.index), edge: r.flat!.class !== 'flat' ? edgePath(r) : '',
+        cls: r.flat!.class, message: r.flat!.message, loose: false,
+      }));
+    }
     return layout.rounds.filter((r) => r.first >= 0 && (r.r > r.r0 || r.pointed)).map((r) => (r.pointed
       // a pointed round is judged by blocking: no tint (a filled star reads as a flower), only the
       // faint dashed outline it is pinned out to (tips and valley pins)
@@ -335,13 +341,13 @@ function ChartViewInner(props: ChartViewProps) {
     if (id >= 0) {
       const n = graph.nodes[id];
       const R = layout.rounds[n.round];
-      const lines = [R?.pointed ? `${R.label}: ${POINTED_NOTE}` : R?.border ? `${R.label}: ${BORDER_NOTE}` : showFlatness && R?.flat && R.flat.class !== 'n/a' ? R.flat.message : R?.label ?? ''];
+      const lines = [R?.pointed ? `${R.label}: ${POINTED_NOTE}` : showFlatness && R?.flat && R.flat.class !== 'n/a' ? R.flat.message : R?.label ?? ''];
       return { tip: { ...at, title: describeNode(graph, id, { terms }), lines, pinned }, node: id, round: n.round };
     }
     const r = roundAt(layout, c.x, c.y, upto);
     if (r >= 0) {
       const R = layout.rounds[r];
-      const msg = R.pointed ? `Pointed round — judged by blocking, not by the flatness rule` : R.border ? `Border round — see the blanket studio's edge and corner checks` : showFlatness && R.flat && R.flat.class !== 'n/a' ? R.flat.message : '';
+      const msg = R.pointed ? `Pointed round — judged by blocking, not by the flatness rule` : showFlatness && R.flat && R.flat.class !== 'n/a' ? R.flat.message : '';
       return { tip: { ...at, title: R.label, lines: msg ? [msg] : [], pinned }, node: -1, round: r };
     }
     return { tip: null, node: -1, round: -1 };
@@ -478,7 +484,7 @@ function ChartViewInner(props: ChartViewProps) {
         onDoubleClick={() => { reset(); setTip(null); }}
       >
         <g ref={gRef}>
-          <Bands bands={bands} upto={upto} flatness={showFlatness} hatchId={hatchId} />
+          <Bands bands={bands} upto={upto} flatness={showFlatness} hatchId={hatchId} rowsMode={layout.mode !== 'radial'} />
           {symGeo && (
             <g className="ch-symov" aria-hidden="true">
               {symGeo.wedge && <path className="ch-symov__wedge" d={symGeo.wedge} />}
@@ -629,8 +635,8 @@ const Chunk = memo(function Chunk({ stroke, fill, from, to, alt, state, cut, lev
   return part(from, to, state === 'todo' ? `${base} ch-dim` : base, 'a');
 });
 
-const Bands = memo(function Bands({ bands, upto, flatness, hatchId }: {
-  bands: { index: number; d: string; edge: string; cls: string; message: string; loose: boolean }[]; upto: number; flatness: boolean; hatchId: string;
+const Bands = memo(function Bands({ bands, upto, flatness, hatchId, rowsMode }: {
+  bands: { index: number; d: string; edge: string; cls: string; message: string; loose: boolean }[]; upto: number; flatness: boolean; hatchId: string; rowsMode?: boolean;
 }) {
   const anyLoose = flatness && bands.some((b) => b.loose && b.index <= upto);
   return (
@@ -650,7 +656,7 @@ const Bands = memo(function Bands({ bands, upto, flatness, hatchId }: {
           return b.edge ? <path key={b.index} className="ch-hull" d={b.edge}><title>{b.message}</title></path> : null;
         }
         const shape = flatness && b.cls !== 'n/a' ? b.cls : '';
-        if (!shape && b.index % 2 === 0) return null;
+        if (!shape && (b.index % 2 === 0 || rowsMode)) return null;
         return (
           <g key={b.index}>
             <path className={shape ? `ch-band ch-band--${shape}${b.index % 2 ? ' ch-band--odd' : ''}` : 'ch-band ch-band--alt'} d={b.d} fillRule="evenodd" />

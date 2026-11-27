@@ -208,7 +208,7 @@ function ChartScreen({ id, pattern, title, fixedParams }: {
           <Card>
             <h2>Display</h2>
             <div className="ch-toggles">
-              <Toggle label="Flatness band" checked={prefs.flatness} onChange={(v) => set({ flatness: v })} disabled={layout.mode !== 'radial' || prefs.print} />
+              <Toggle label="Flatness band" checked={prefs.flatness} onChange={(v) => set({ flatness: v })} disabled={(layout.mode !== 'radial' && !border) || prefs.print} />
               <Toggle label="Round numbers" checked={prefs.labels} onChange={(v) => set({ labels: v })} />
               <Toggle label="Symmetry" checked={prefs.symmetry} onChange={(v) => set({ symmetry: v })} disabled={layout.mode !== 'radial' || prefs.print || !sym?.applicable} />
               <Toggle
@@ -266,8 +266,7 @@ function ChartScreen({ id, pattern, title, fixedParams }: {
             <h2>Flatness by round</h2>
             {!flat.applicable ? (
               <p className="muted small" style={{ margin: 0 }}>
-                Worked in rows — the flatness check applies to pieces worked in the round.
-                {border && <> The border rounds (R1, R2…) are worked round the rows: see the blanket studio&apos;s edge and corner checks.</>}
+                Worked in rows — the flatness check applies to pieces worked in the round and to borders worked round rows.
               </p>
             ) : (
               <>
@@ -285,15 +284,22 @@ function ChartScreen({ id, pattern, title, fixedParams }: {
                     Also flat only with loose loops: {looseList}.
                   </p>
                 )}
+                {(flat.polygon || border) && (
+                  <p className="muted small" style={{ margin: '0 0 var(--s-2)' }}>
+                    {flat.polygon
+                      ? <>Cornered piece: from {rounds[flat.polygon.from]?.label} on, each round is judged against a flat {flat.polygon.stadium ? 'rectangle' : ({ 3: 'triangle', 4: 'square', 5: 'pentagon', 6: 'hexagon', 8: 'octagon' } as Record<number, string>)[flat.polygon.n] ?? `${flat.polygon.n}-gon`} (the corners carry the increases: 2·n·h·tan(π/n) more per round), not a circle.</>
+                      : <>The rows are not judged (no centre). The border rounds (R1, R2…): each side by the edge fit, each corner by the polygon rule.</>}
+                  </p>
+                )}
                 <ul className="ch-report">
-                  {flat.rounds.map((r) => (
+                  {flat.rounds.filter((r, i) => r.shape !== 'rows' || !border || i === 0).map((r) => (
                     <li key={r.round} className={worst && worst.round === r.round ? 'is-worst' : undefined}>
                       <button type="button" onClick={() => setUpto(r.round)} aria-label={`Show up to ${r.label}`}>
                         {pointed.has(r.round) ? <Badge tone="outline">Pointed</Badge>
                           : r.class === 'n/a' ? <Badge tone="outline">n/a</Badge>
                           : r.slackOnly ? <ShapeBadge shape="flat">flat (loose loops)</ShapeBadge>
                           : <ShapeBadge shape={r.class} />}
-                        <span>{pointed.has(r.round) ? `${r.label}: pointed round — judged by blocking: its arms are stiffened and pinned out to the dashed star (tips and valleys), not laid on a circle.` : r.message}</span>
+                        <span>{pointed.has(r.round) ? `${r.label}: pointed round — judged by blocking: its arms are stiffened and pinned out to the dashed star (tips and valleys), not laid on a circle.` : border && r.shape === 'rows' ? 'Foundation and rows: worked in rows — not judged (no centre).' : r.message}</span>
                       </button>
                     </li>
                   ))}

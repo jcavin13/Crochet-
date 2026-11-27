@@ -16,7 +16,7 @@ const fixtures = fileURLToPath(new URL('../../../../spec/fixtures/', import.meta
 const load = (n: string) => JSON.parse(readFileSync(fixtures + n + '.graph.json', 'utf8')) as Pattern;
 
 const palette: Palette = {
-  roundA: [0.6, 0.2, 0.1], roundB: [0.2, 0.3, 0.5], chain: [0.5, 0.5, 0.5], ink: [0.1, 0.1, 0.1], muted: [0.4, 0.4, 0.4],
+  roundA: [0.6, 0.2, 0.1], roundB: [0.2, 0.3, 0.5], borderA: [0, 0.5, 0.3], borderB: [0, 0.3, 0.2], chain: [0.5, 0.5, 0.5], ink: [0.1, 0.1, 0.1], muted: [0.4, 0.4, 0.4],
   flat: [0, 0.5, 0.3], cup: [0, 0.4, 0.6], ruffle: [0.8, 0.3, 0], tension: [0.8, 0.3, 0], compression: [0, 0.4, 0.6],
   neutral: [0.6, 0.6, 0.6], highlight: [0.5, 0.3, 0], bg: [1, 1, 0.95], dark: false,
 };

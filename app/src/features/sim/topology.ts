@@ -23,6 +23,8 @@ export interface Topology {
   nNodes: number;
   nParticles: number;
   nRounds: number;
+  /** per round: 1 = a border round worked round rows (tinted distinctly) */
+  border: Uint8Array;
   /** stitch posts: anchor → top, one per (node, anchor particle) */
   stitches: Segments;
   /** the yarn along the course: node i−1 → i */
@@ -101,7 +103,8 @@ export function buildTopology(net: Network): Topology {
     nodeRadius[i] = t === 'picot' ? 0 : (t === 'ch' || t === 'slst' ? 0.12 : 0.2) * Math.min(net.width[i], wbar * 1.5);
     nodeRound[i] = g.nodes[i].round;
   }
-  return { nNodes: n, nParticles: P, nRounds: g.rounds.length, stitches: segs(stitches), yarn: segs(yarn), nodeRadius, nodeRound, wbar, picots, wch };
+  const border = Uint8Array.from(g.rounds.map((_, r) => (net.outline?.roundKind[r] === 'border' ? 1 : 0)));
+  return { nNodes: n, nParticles: P, nRounds: g.rounds.length, border, stitches: segs(stitches), yarn: segs(yarn), nodeRadius, nodeRound, wbar, picots, wch };
 }
 
 /** Segments per drawn picot loop. */
@@ -156,6 +159,8 @@ export type RGB = [number, number, number];
 
 export interface Palette {
   roundA: RGB; roundB: RGB; chain: RGB; ink: RGB; muted: RGB;
+  /** border rounds (rounds worked round rows) */
+  borderA: RGB; borderB: RGB;
   flat: RGB; cup: RGB; ruffle: RGB; tension: RGB; compression: RGB; neutral: RGB;
   highlight: RGB; bg: RGB; dark: boolean;
 }
@@ -188,6 +193,8 @@ export function readPalette(el: Element = document.documentElement): Palette {
   return {
     roundA: accent,
     roundB: dark ? mix(indigo, [1, 1, 1], 0.25) : indigo,
+    borderA: v('--shape-flat', [0, 0.48, 0.35]),
+    borderB: mix(v('--shape-flat', [0, 0.48, 0.35]), dark ? [1, 1, 1] : ink, 0.4),
     chain: mix(ink, bg, 0.35),
     ink,
     muted: v('--ink-3', [0.48, 0.43, 0.37]),
@@ -226,10 +233,12 @@ export interface ColorInputs {
   roundClass?: RoundClass[];
   /** full-colour strain (default 0.1) */
   strainScale?: number;
+  /** per round: 1 = border round (Topology.border) */
+  border?: Uint8Array;
 }
 
-export function roundColor(r: number, nRounds: number, p: Palette): RGB {
-  const base = r % 2 === 0 ? p.roundA : p.roundB;
+export function roundColor(r: number, nRounds: number, p: Palette, border = false): RGB {
+  const base = border ? (r % 2 === 0 ? p.borderA : p.borderB) : r % 2 === 0 ? p.roundA : p.roundB;
   // gentle ramp so neighbouring rounds of the same colour are still distinguishable
   const t = nRounds > 1 ? r / (nRounds - 1) : 0;
   return mix(base, p.dark ? [1, 1, 1] : [1, 0.98, 0.94], 0.28 * t);
@@ -248,7 +257,7 @@ export function segmentColor(s: Segments, k: number, nRounds: number, c: ColorIn
   if (c.by === 'flatness') {
     const cls = c.roundClass?.[s.round[k]];
     col = cls === 'flat' ? p.flat : cls === 'cup' ? p.cup : cls === 'ruffle' ? p.ruffle : p.muted;
-  } else col = roundColor(s.round[k], nRounds, p);
+  } else col = roundColor(s.round[k], nRounds, p, c.border?.[s.round[k]] === 1);
   if (s.light[k]) col = mix(col, p.chain, 0.55);
   else if (yarn) col = mix(col, p.ink, 0.25);
   return col;
@@ -261,7 +270,7 @@ export function nodeColor(t: Topology, i: number, c: ColorInputs): RGB {
     const cls = c.roundClass?.[t.nodeRound[i]];
     return cls === 'flat' ? p.flat : cls === 'cup' ? p.cup : cls === 'ruffle' ? p.ruffle : p.muted;
   }
-  return mix(roundColor(t.nodeRound[i], t.nRounds, p), p.ink, 0.12);
+  return mix(roundColor(t.nodeRound[i], t.nRounds, p, t.border[t.nodeRound[i]] === 1), p.ink, 0.12);
 }
 
 // ---------------------------------------------------------------------------------------------

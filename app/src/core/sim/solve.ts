@@ -154,16 +154,18 @@ export class Placer {
     }
     const byP3 = new Map<number, string>();
     const o = net.outline;
-    const p9 = !!o && (o.roundKind[r] === 'row' || o.roundKind[r] === 'border' || o.roundKind[r] === 'polygon');
-    const [e1, e2] = p9 ? this.outlineFrame() : [Z, Z];
+    const p9 = !!o && (o.roundKind[r] === 'foundation' || o.roundKind[r] === 'row' || o.roundKind[r] === 'border' || o.roundKind[r] === 'polygon');
+    const fr = p9 ? this.outlineFrame() : null;
+    const [e1, e2] = fr ? [fr.e1, fr.e2] : [Z, Z];
     for (const i of ids) {
       if (this.ringChain.has(i)) continue;
       const A = net.anchors[i];
       const b9 = p9 && o!.has[i] ? this.outlineBase(i, r) : -1;
       if (b9 >= 0) {
-        // P9: in the reference layout, relative to a placed reference particle (SPEC_NOTES P9)
-        const dx = o!.qx[i] - o!.qx[b9], dy = o!.qy[i] - o!.qy[b9];
-        set(X, i, add(get(X, b9), add(scale(e1, dx), scale(e2, dy))));
+        // P9: in the reference layout — in the fitted plane of the piece when the fit is planar,
+        // else relative to a placed reference particle (SPEC_NOTES P9)
+        if (fr!.planar) set(X, i, add(fr!.c, add(scale(e1, o!.qx[i] - fr!.q[0]), scale(e2, o!.qy[i] - fr!.q[1]))));
+        else set(X, i, add(get(X, b9), add(scale(e1, o!.qx[i] - o!.qx[b9]), scale(e2, o!.qy[i] - o!.qy[b9]))));
       } else if (A.length === 1 && A[0] >= nn) {
         // P2
         const p = A[0];
@@ -240,26 +242,28 @@ export class Placer {
 
   /**
    * P9 base of node i: its first anchor particle that has a reference position and is placed, else
-   * the nearest earlier node of its round that has one; −1 if none.
+   * the nearest earlier node that has one and is placed; −1 if none.
    */
   private outlineBase(i: number, r: number): number {
     const o = this.net.outline!, X = this.X, nn = this.net.nNodes;
     for (const a of this.net.anchors[i]) if (a < nn && o.has[a] && isPlaced(X, a)) return a;
-    for (let j = i - 1; j >= 0 && this.g.nodes[j].round === r; j--) if (o.has[j] && isPlaced(X, j)) return j;
+    for (let j = i - 1; j >= 0; j--) if (o.has[j] && isPlaced(X, j)) return j;
     return -1;
   }
 
   /**
    * P9 frame: the orthonormal in-plane frame (e1, e2) of the least-squares affine map from the
-   * reference layout to the placed positions, over every placed node with a reference position
-   * (crolab.sim._outline_frame). Collinear references (the foundation chain alone): e1 along the
-   * fitted direction of the line, e2 = unit(z × e1) (fallback unit(e1 × x)); fewer than two: x, y.
+   * reference layout to the placed positions, over every placed node with a reference position,
+   * with the centroids c (positions) and q (references) (crolab.sim._outline_frame). `planar`:
+   * the references span a plane (det S > 1e-9 tr(S)²). Collinear references (the foundation chain
+   * alone): e1 along the fitted direction of the line, e2 = unit(z × e1) (fallback unit(e1 × x));
+   * fewer than two: x, y.
    */
-  outlineFrame(): [V3, V3] {
+  outlineFrame(): { e1: V3; e2: V3; c: V3; q: [number, number]; planar: boolean } {
     const o = this.net.outline!, X = this.X;
     const ps: number[] = [];
     for (let p = 0; p < this.net.nNodes; p++) if (o.has[p] && isPlaced(X, p)) ps.push(p);
-    if (ps.length < 2) return [[1, 0, 0], [0, 1, 0]];
+    if (ps.length < 2) return { e1: [1, 0, 0], e2: [0, 1, 0], c: [0, 0, 0], q: [0, 0], planar: false };
     const qx = npMean(ps.map((p) => o.qx[p])), qy = npMean(ps.map((p) => o.qy[p]));
     const xb: V3 = [npMean(ps.map((p) => X[3 * p])), npMean(ps.map((p) => X[3 * p + 1])), npMean(ps.map((p) => X[3 * p + 2]))];
     let sxx = 0, sxy = 0, syy = 0;
@@ -270,10 +274,11 @@ export class Placer {
       for (let d = 0; d < 3; d++) { const v = X[3 * p + d] - xb[d]; cx[d] += v * ux; cy[d] += v * uy; }
     }
     const tr = sxx + syy;
-    if (!(tr > 0)) return [[1, 0, 0], [0, 1, 0]];
+    if (!(tr > 0)) return { e1: [1, 0, 0], e2: [0, 1, 0], c: xb, q: [qx, qy], planar: false };
     const det = sxx * syy - sxy * sxy;
     let e1: V3, e2: V3;
-    if (det > 1e-9 * tr * tr) {
+    const planar = det > 1e-9 * tr * tr;
+    if (planar) {
       const m1 = scale(add(scale(cx, syy), scale(cy, -sxy)), 1 / det);
       const m2 = scale(add(scale(cy, sxx), scale(cx, -sxy)), 1 / det);
       let [u, nu] = unit(m1);
@@ -292,7 +297,7 @@ export class Placer {
       e1 = add(scale(eq, qh[0]), scale(ep, -qh[1]));
       e2 = add(scale(eq, qh[1]), scale(ep, qh[0]));
     }
-    return [e1, e2];
+    return { e1, e2, c: xb, q: [qx, qy], planar };
   }
 
   private perp(e: V3): V3 {
@@ -348,7 +353,7 @@ export class Placer {
     const o = this.net.outline;
     if (!o || !o.has[i]) return false;
     const k = o.roundKind[this.g.nodes[i].round];
-    return k === 'row' || k === 'border' || k === 'polygon';
+    return k === 'foundation' || k === 'row' || k === 'border' || k === 'polygon';
   }
 
   private placeLoops(r: number, ids: number[]) {

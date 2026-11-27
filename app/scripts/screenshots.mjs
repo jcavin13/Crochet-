@@ -10,6 +10,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { SIM_BLANKET_ROUTES } from './sim-blanket-shots.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -90,6 +91,8 @@ export const ROUTES = [
       { name: 'chart-blanket-hexagon', path: c('round:hexagon:dc'), wait: '.ch-svg', only: 'desktop', prepare: toStage },
       { name: 'chart-blanket-c2s', path: `${c('round:circle-to-square:dc,hdc')}&full=1&w=30`, wait: '.ch-svg', only: 'desktop', prepare: toStage },
       { name: 'chart-blanket-rect-round', path: c('round:rect-round:sc'), wait: '.ch-svg', only: 'desktop', prepare: toStage },
+      // polygon rule: a mitred (sc) square from the centre reads flat, not "ruffles"
+      { name: 'chart-blanket-mitred-square', path: c('round:mitred-square:sc'), wait: '.ch-svg', only: 'desktop', prepare: toStage },
       // the blanket studio's own swatch chart (it embeds ChartView)
       {
         name: 'blanket-swatch-chart', path: '/blanket?demo=moss-throw', wait: '.bk-controls',
@@ -116,6 +119,27 @@ export const ROUTES = [
       { name: 'chart-symmetry-mirror', path: '/chart/fixture%3Asimple_doily', wait: '.ch-svg', only: 'desktop', prepare: symOn },
     ];
   })(),
+  // flatness card on a mitred square: every round judged by the polygon rule (no false "ruffles")
+  {
+    name: 'editor-flatness-square', path: '/editor/fixture%3Aflat_sc_circle', wait: '.ed-box', only: 'desktop',
+    prepare: async (page) => {
+      const lines = ['title: Mitred sc square', 'Rnd 1: mr, 8 sc in ring, join. (8)', 'Rnd 2: ch 1, *sc in next st, 3 sc in next st* x4, join. (16)'];
+      for (let r = 3; r <= 9; r++) lines.push(`Rnd ${r}: ch 1, *sc in next ${r - 1} sts, 3 sc in next st, sc in next ${r - 2} sts* x4, join. (${8 * r})`);
+      const ta = page.locator('.ed-input');
+      await ta.click();
+      await ta.fill(lines.join('\n'));
+      await page.waitForTimeout(900);
+      const tab = page.getByRole('tab', { name: /Check/ });
+      if (await tab.isVisible().catch(() => false)) await tab.click();
+      await page.locator('.ed-flat').evaluate((el) => {
+        const card = el.closest('section, .ui-card') ?? el;
+        card.scrollIntoView({ block: 'start' });
+        if (window.innerWidth >= 900) window.scrollTo(0, 0);
+      });
+      await page.waitForTimeout(3500); // let the "copied to My patterns" toast go
+
+    },
+  },
   // symmetry defect as a hint in the Problems list + the compact symmetry panel
   { name: 'editor-symmetry', path: '/editor/corpus%3Asunburst-dtr-doily-20', wait: '.ed-box', only: 'desktop' },
   // flatness assistant: ranked fixes for the ruffling round of the teaching pattern
@@ -177,6 +201,8 @@ export const ROUTES = [
         prepare: async (page) => { await settle(page); await page.getByRole('combobox', { name: 'Colour' }).selectOption('strain'); await page.waitForTimeout(500); },
       },
       { name: 'sim-doily-dark', path: fx('simple_doily'), wait: 'main h1', scheme: 'dark', only: 'desktop', prepare: settle },
+      // rows, borders and polygons from the centre (lab/SPEC_NOTES.md N8–N10)
+      ...SIM_BLANKET_ROUTES,
     ];
   })(),
   { name: 'designer', path: '/designer', wait: '.dz-controls' },

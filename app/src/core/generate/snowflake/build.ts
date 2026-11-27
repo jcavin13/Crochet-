@@ -668,7 +668,7 @@ export function generateSnowflake(specIn: SnowflakeSpec, params: ParamSet): Snow
     rounds: rounds.length,
     stitches: rounds.reduce((a, r) => a + r.stitches, 0),
     diameterMm: shape.acrossMm,
-    threadM: pattern ? yarnOf(pattern, params) : 0,
+    ...(() => { const y = pattern ? yarnOf(pattern, params) : { meters: 0, grams: 0 }; return { threadM: y.meters, threadG: y.grams }; })(),
   };
   return { spec, text, pattern, flatness, rounds, planned, shape, check, stats, warnings, diagnostics };
 }

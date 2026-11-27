@@ -14,6 +14,7 @@
 import { stitchParam, type ParamSet } from '../params';
 import { RoundSim, type Make, type RoundResult, type StType, type Tok, type Unit } from './engine';
 import type { PolygonInput } from './checks';
+import { polygonCornerGrowth } from '../flatness/polygon';
 
 export type BorderKind = 'sc' | 'hdc' | 'dc' | 'sc-blo' | 'shell' | 'picot' | 'mesh' | 'ruffle' | 'granny';
 export type CornerStyle = 'auto' | 'solid' | 'chain';
@@ -384,7 +385,7 @@ export function chooseCorner(list: Tok[], kind: BorderKind, style: CornerStyle, 
   if (loop) cands = cands.map((ms) => ms.map((m) => ('st' in m ? { ...m, loop } : m)));
   const corners = cornersOf(list);
   const k = Math.max(1, corners.length);
-  const need = 2 * roundHeight(kind, P) * Math.tan(Math.PI / n);
+  const need = polygonCornerGrowth(n, roundHeight(kind, P));
   const grow = (ms: Make[]) => corners.reduce((a, ci) => a + cornerGrowth(ms, list[ci], P), 0) / k;
   const score = (ms: Make[]) => Math.abs(grow(ms) - need) / w + complexity(ms) + (prefer && sameMakes(prefer, ms) ? -0.2 : 0) + (fixed && sameMakes(fixed, ms) ? -0.3 : 0);
   const natural = cands.reduce((b, ms) => (score(ms) < score(b) - 1e-9 ? ms : b));
@@ -450,7 +451,7 @@ export function workLayers(list: Tok[], layers: BorderLayer[], P: ParamSet, corn
   let cur = list;
   const rounds: LayerOut[] = [];
   const checks: PolygonInput[] = [];
-  const need = (h: number) => 2 * h * Math.tan(Math.PI / n);
+  const need = (h: number) => polygonCornerGrowth(n, h);
   const record = (r: RoundResult, before: Tok[], intended?: boolean) => {
     const growth = r.perimeter - listPerimeter(before) - (r.adjust ?? 0);
     drift += growth - r.corners * need(r.height);

@@ -1,12 +1,12 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { analyzeFlatness } from '../flatness';
+import { analyzeFlatness, borderCornerGroups, cornerGroups, detectPolygon } from '../flatness';
 import { compilePattern } from '../notation';
 import { paramSetById, paramsFor } from '../params';
 import { analyzeSymmetry } from '../symmetry';
 import {
-  applyFix, fixAll, needsFix, suggestCounts, suggestCountsForRound, suggestFixes, suggestRoundFixes, updateCountAnnotations,
+  applyFix, cornerAdvice, fixAll, needsFix, suggestCounts, suggestCountsForRound, suggestFixes, suggestRoundFixes, updateCountAnnotations,
 } from './index';
 
 const FIX = fileURLToPath(new URL('../../../../spec/fixtures/', import.meta.url));
@@ -177,5 +177,101 @@ describe('what should this round be', () => {
     expect(s.stitch).toBe('dc');
     expect(s.order).toBe(12);
     expect(Math.abs(s.options[0].total - 60)).toBeLessThanOrEqual(12);
+  });
+});
+
+describe('cornered rounds: fixes change the corner group, never the sides (polygon / border rules)', () => {
+  /** dc square from a magic ring with "(L dc, ch 2, R dc)" corners (see flatness/polygon.test.ts) */
+  function dcSquare(rounds: number, L: number, R: number): string {
+    const lines = ['Rnd 1: mr, ch 3 (does not count as st), (3 dc in ring, ch 2) x4, join. (12 sts, 4 ch-2 sps)'];
+    let X = 3, T = 0, Lp = 0, Rp = 0;
+    for (let k = 2; k <= rounds; k++) {
+      const a = X + Lp, b = Rp + T;
+      const grp = `(${L > 1 ? `${L} dc` : 'dc'}, ch 2, ${R > 1 ? `${R} dc` : 'dc'}) in next ch-2 sp`;
+      lines.push(`Rnd ${k}: ch 3 (does not count as st), *${[a ? `dc in next ${a} sts` : '', grp, b ? `dc in next ${b} sts` : ''].filter(Boolean).join(', ')}* x4, join. (${4 * (a + b + L + R)} sts, 4 ch-2 sps)`);
+      X = a; T = b; Lp = L; Rp = R;
+    }
+    return lines.join('\n');
+  }
+  /** corner groups and side stitches of every round from the polygon's first cornered round */
+  const structure = (text: string) => {
+    const g = compilePattern(text).pattern!.graph;
+    const p = detectPolygon(g);
+    return { n: p?.n, rounds: g.rounds.slice(p ? p.from : 0).map((R, i) => {
+      const k = (p ? p.from : 0) + i;
+      const cg = cornerGroups(g, k);
+      const inG = new Set(cg.flat());
+      let sides = 0;
+      for (let id = R.first; id <= R.last; id++) if (!inG.has(id) && !['ch', 'slst'].includes(g.nodes[id].type)) sides++;
+      return { groups: cg.length, sides };
+    }) };
+  };
+
+  it('a flat square and a granny square need no fixes (no circle-style "ruffle" fixes)', () => {
+    for (const text of [dcSquare(7, 2, 2), corpus('granny-square-motif')]) {
+      const params = check(text).params;
+      expect(suggestFixes(text, params)).toEqual([]);
+      expect(fixAll(text, params).steps).toEqual([]);
+    }
+  });
+  it('the hexagon motif: no cupping or ruffling round; its one loose-loop round gets a corner-chain advice', () => {
+    const text = corpus('hexagon-motif-6');
+    const fixes = suggestFixes(text, check(text).params);
+    expect(fixes.every((f) => f.flatness.class === 'flat' && f.flatness.slackOnly)).toBe(true);
+    for (const f of fixes) {
+      expect(f.advice).toBe('Cornered round: flat only with loose loops — use (3-dc cl, ch 2, 3-dc cl) in each corner instead of (3-dc cl, ch 3, 3-dc cl).');
+      for (const s of f.suggestions) expect(s.change).toMatch(/^work \d+ /);
+    }
+  });
+
+  it('one dc short per corner: advice names the corner group; every edit keeps the corners and the sides', () => {
+    const text = dcSquare(6, 2, 1);
+    const params = check(text).params;
+    const before = structure(text);
+    const fixes = suggestFixes(text, params, { max: 3 });
+    expect(fixes.length).toBeGreaterThan(0);
+    for (const f of fixes) {
+      expect(f.flatness.shape).toBe('polygon');
+      expect(f.advice).toBe('Cornered round: adjust the corner group — use (2 dc, ch 2, 2 dc) in each corner instead of (2 dc, ch 2, dc).');
+      expect(cornerAdvice(f.flatness)).toBe(f.advice);
+      for (const s of f.suggestions) {
+        expect(s.change).toMatch(/^work \d+ dc instead of \d+ dc in each group$/);
+        const after = structure(s.text);
+        expect(after.n).toBe(4);
+        // the edited round keeps 4 corner groups and exactly its side stitches
+        const k = f.round - (detectPolygon(compilePattern(text).pattern!.graph)!.from);
+        expect(after.rounds[k]).toEqual(before.rounds[k]);
+      }
+    }
+    // the circle calculator does not apply at corners
+    const g = compilePattern(text).pattern!.graph;
+    expect(suggestCountsForRound(g, 3, params)).toBeNull();
+  });
+
+  it('fix-all on a square with short corners never breaks the corner structure', () => {
+    const text = dcSquare(5, 2, 1);
+    const params = check(text).params;
+    const res = fixAll(text, params);
+    for (const s of res.steps) expect(s.change).toMatch(/^work \d+ dc instead of \d+ dc in each group$/);
+    const after = structure(res.text);
+    expect(after.n).toBe(4);
+    for (const r of after.rounds) expect(r.groups).toBe(4);
+  });
+
+  it('a border with missing corner increases: advice "3 sc in each corner"; suggestions keep the corners', () => {
+    const text = `Foundation: ch 15.
+Row 1: dc in 4th ch from hook, dc in each ch across. (12)
+Rows 2-8: ch 3 (counts as dc), dc in each st across. (12)
+Rnd 1: ch 1, 3 sc in corner, sc in each st across to corner, 3 sc in corner, 2 sc in each row end across to corner, 3 sc in corner, sc in each ch across to corner, 3 sc in corner, 2 sc in each row end across, join.
+Rnd 2: ch 1, *sc in each st across to corner, sc in corner* x4, sc in each st across, join.`;
+    const params = check(text).params;
+    const fixes = suggestFixes(text, params);
+    expect(fixes.map((f) => f.label)).toEqual(['Rnd 2']);
+    expect(fixes[0].flatness.shape).toBe('border');
+    expect(fixes[0].advice).toBe('Cornered round: adjust the corner group — use 3 sc in each corner instead of sc.');
+    for (const s of fixes[0].suggestions) {
+      const g = compilePattern(s.text).pattern!.graph;
+      expect(borderCornerGroups(g).get(10)).toHaveLength(4);
+    }
   });
 });

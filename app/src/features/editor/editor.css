@@ -205,6 +205,7 @@
 .ed-flat__msg { border: 0; background: none; padding: 2px 0; font: inherit; font-size: var(--text-sm); color: var(--ink); text-align: left; cursor: pointer; overflow-wrap: anywhere; min-height: 32px; }
 .ed-flat__msg:hover { color: var(--accent); }
 .ed-flat__more { display: flex; justify-content: flex-start; padding: 2px 0 var(--s-1); }
+.ed-flat__advice { margin: 2px 0 var(--s-1); padding: var(--s-1) var(--s-2); border-left: 3px solid var(--accent); background: var(--surface-2, transparent); color: var(--ink); }
 .ed-flat__calc {
   min-width: 36px; min-height: 32px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--ink-2); font: 600 var(--text-xs) var(--font-mono); cursor: pointer;

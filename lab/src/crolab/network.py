@@ -53,6 +53,7 @@ class Network:
     slack: np.ndarray = None  # bool [m]: tension-only springs (chain-space chains, SPEC_NOTES N4)
     spines: list = field(default_factory=list)  # crolab.spine.Spine per spine (SPEC_NOTES N5)
     pointed_loops: list = field(default_factory=list)  # crolab.spine.PointedLoop (SPEC_NOTES N6)
+    outline: object = None  # crolab.outline.Outline: rows / borders / polygons (SPEC_NOTES N8-N10)
 
     @property
     def m(self) -> int:
@@ -460,6 +461,19 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
             L = ref.wale_bend(i, a, b, h[i], h[a])
         gen.append((i, b, L, kb, BEND_WALE))
 
+    # N8-N10: rows, border rounds and polygon rounds take their reference cells from the planar
+    # layout (crolab.outline): wale, shear and wale-bend rest lengths are layout distances; course
+    # springs keep the stitch widths, bent by the chord/arc ratio of the reference curve; the
+    # foundation span takes the first row's length
+    outline = None
+    if metric:
+        from .outline import apply_outline, build_outline
+        fl = cfg.get("flatness", {})
+        outline = build_outline(g, w_eff, w, h, fl.get("chain_nominal", 0.85), fl.get("tol", 0.1))
+        if outline is not None:
+            counting = [g.counts_as_stitch(i) for i in range(n)]
+            apply_outline(outline, [nd["round"] for nd in g.nodes], counting, chsp_chain, Lc, gen, n)
+
     # N5: spines (chains with stitches worked back along them) are doubled cords: every spring
     # between two nodes of one spine takes its rest length from the spine's flat reference layout,
     # and the course bends along the stem and along the return row get course stiffness
@@ -533,5 +547,5 @@ def build_network(pattern: dict, params: StitchParams | None = None, config: dic
         particle_round=np.array(prounds, dtype=np.int64), virtual_space=virtual_space,
         space_particle=space_particle, anchor_particles=anchors, width=w, height=h, graph=g,
         params=params, slack=np.array([is_slack(a[0], a[1], a[4]) for a in arr], dtype=bool),
-        spines=spines, pointed_loops=pointed,
+        spines=spines, pointed_loops=pointed, outline=outline,
     )

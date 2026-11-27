@@ -57,7 +57,7 @@ export function SvgView({ topology: t, positions, rotation: R, colors, highlight
         return [X, -(Y * ce - Z * se), Y * se + Z * ce];
       };
       for (let k = 0; k < t.picots.count; k++) {
-        const c = colors.by === 'strain' ? colors.palette.neutral : mix(roundColor(t.picots.round[k], t.nRounds, colors.palette), colors.palette.ink, 0.25);
+        const c = colors.by === 'strain' ? colors.palette.neutral : mix(roundColor(t.picots.round[k], t.nRounds, colors.palette, t.border[t.picots.round[k]] === 1), colors.palette.ink, 0.25);
         for (let j = 0; j < PICOT_SEGS; j++) {
           const A = pj(3 * (K * k + j)), B = pj(3 * (K * k + j + 1));
           if (!Number.isFinite(A[0]) || !Number.isFinite(B[0])) continue;

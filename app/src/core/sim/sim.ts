@@ -10,6 +10,8 @@ import { hyp, now } from './lbfgs';
 import { setupBlock, type BlockPin, type BlockResult, type BlockSetup, type PinStretch } from './blocking';
 import { networkMetric, type ShapeMetric } from './metrics';
 import { buildNetwork, type Network } from './network';
+import { outlinePins } from './outline';
+import { regionShape, type RegionReport } from './regions';
 import { Grower } from './solve';
 
 export interface CreateSimOptions {
@@ -33,7 +35,11 @@ export interface CreateSimOptions {
    * grown state. Default false (the plain free relaxation of physics.md).
    */
   table?: boolean;
-  /** Explicit pins for the blocked state of the last round (see BlockPin). Default: physics.md §6. */
+  /**
+   * Explicit pins for the blocked state of the last round (see BlockPin). Default: a piece with an
+   * outline (rows, border, polygon) is pinned to its reference outline (outlinePins: a border's outer
+   * round to its rectangle); any other piece physics.md §6.
+   */
   pins?: BlockPin[];
 }
 
@@ -86,6 +92,12 @@ export interface SimHandle {
   converged(): boolean | undefined;
   /** Shape metric of the shown relaxed state (undefined until solved). */
   metric(): ShapeMetric | undefined;
+  /**
+   * Per-region shape (body / each side / each corner) of a piece with rows, a border or polygon
+   * rounds (core/sim/regions.ts), for the relaxed full piece; undefined for other pieces, other
+   * rounds, or until solved.
+   */
+  regions(): RegionReport | undefined;
   /** Blocking summary of the shown round (undefined unless blocked and solved). */
   block(): BlockSummary | undefined;
   /** Per-spring strain |d|/L − 1 of the shown state (NaN where not made). */
@@ -106,6 +118,7 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
   let blocked = !!opts.blocked;
   const blockCache = new Map<number, BlockResult>();
   const metricCache = new Map<number, ShapeMetric>();
+  let regionCache: RegionReport | null | undefined;
   let blockJob: { round: number; setup: BlockSetup } | null = null;
   let shown: Float64Array | null = null;
   let lastEnergy = 0;
@@ -150,7 +163,8 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
     if (!blockJob || blockJob.round !== target) {
       // table mode: block from the flat grown state (the snapshot of an earlier round is flat too)
       const start = opts.table && target === nRounds - 1 && grower.planar ? grower.planar : X;
-      const pins = target === nRounds - 1 ? opts.pins : undefined;
+      // a piece with an outline (rows, border, polygon) blocks to its reference outline by default
+      const pins = target === nRounds - 1 ? (opts.pins ?? (net.outline ? outlinePins(net) ?? undefined : undefined)) : undefined;
       // pinned blocking is a picture for the viewer: a looser tolerance (it converges in a second)
       blockJob = { round: target, setup: setupBlock(net, start, cfg, pins?.length ? 1e-6 : 1e-8, pins) };
     }
@@ -187,6 +201,13 @@ export function createSim(input: Pattern | Graph, params: ParamSet, opts: Create
         metricCache.set(target, m);
       }
       return m;
+    },
+    regions() {
+      if (!net.outline || target !== nRounds - 1) return undefined;
+      const X = relaxedState(target);
+      if (!X) return undefined;
+      if (regionCache === undefined) regionCache = regionShape(net, X);
+      return regionCache ?? undefined;
     },
     block() {
       if (!blocked) return undefined;

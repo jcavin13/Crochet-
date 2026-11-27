@@ -202,6 +202,98 @@ chain_space_motif start rounds the same way); the owner may extend it to all sea
   (x_close − x_base)·v < 0, else +1. P4′ skips the loop's two chain spaces.
   `spec/fixtures/extra/snowflake_lacy.network.json` stores one placement the app test reproduces.
 
+**N8–N10 — rows, borders and polygons have a planar reference layout.** (Only constructs that no
+canonical fixture, snowflake reference or corpus doily contains: rows, rounds worked round rows,
+anchors with `part`, and runs of polygon rounds. `crolab/outline.py`, `app/src/core/sim/outline.ts`,
+identical; `spec/fixtures/extra/blanket_border` pins them, network + placement + metrics + regions,
+lab vs app; both test suites assert that no other reference has an outline layout.)
+N1's cells assume rounds round a centre. A blanket has none: before N8 the foundation chain had
+course length 0, so Row 1's wales fanned out to 28.8 mm (a 9-dc row: 12.35 mm in the middle), the
+rows grew in the xz-plane, and the round-centroid axis lay in the fabric, so every rectangle
+classified as "cup" (A 2.4); a border round took a `part: "side"` anchor for the stitch's top and
+was grown as a ring round the centroid, so it crumpled and read "tends to cup".
+For these pieces every node gets a reference position Q (a flat layout, like the spine layouts of
+N5) and the network takes its rest lengths from it:
+
+* *Course contributions c*: stitch-counting nodes `w_X`; chains of a chain space of their own round
+  `chain_nominal·w_ch` — except in rows, where a chain space sits over the stitches it skips and each
+  of its chains takes the row's mean stitch width (the blanket library's convention for moss / mesh).
+* *N8 rows* (round 0 a foundation, round 1.. rows): the *foundation span* (the chains under Row 1, as
+  in `perimeterTargets`) is one straight course stretched to Row 1's length (`c = C_1/n_span`; its
+  course springs `(c_a+c_b)/2`, bends `c_a/2 + c_b + c_c/2`), y = 0. Each row is a straight course:
+  `x = x0_r + f_r·s` (s = own course coordinate, f_r = f_{r−1}·σ, σ as in N1 from the first anchors,
+  x0_r = mean over the row's wale pairs of x_p − f_r·s_i), `y = base_r + h_i` (base_r = Σ mean
+  heights of the rows below; chain-space chains at the row's mean height). A *turning-chain column*
+  (a run of turning chains between two laid-out nodes, the second in the same or the next round) is
+  straight: its chains lie evenly between them and its course springs are scaled by
+  |Q_b − Q_a| / (summed width rest lengths) — a dc row's `ch 3` no longer bulges.
+* *N9 border rounds* (rounds with a corner list, `crolab/borders.py` = `borderLists`): the reference
+  curve of round k is the **mitred** outward offset of round k−1's (round 1: the body rectangle) by
+  the round's mean height — a flat n-gon grows 2·n·h·tan(π/n) per round (8h for a rectangle), which
+  is what flat granny squares do and what the blanket studio's polygon check assumes (a rounded
+  offset, 2πh, would call every flat granny square 27 % over at its corners). The corner entries
+  (shares on the previous curve) are matched to its vertices (same cyclic order, either direction).
+  Each *corner group* (the stitches worked into a corner entry; for a group with a chain space inside
+  it — the next round's corner — its core centred on that space, no longer than its section: a
+  granny corner's 3-dc halves lie along the sides) is mapped by its own course coordinate onto its
+  *corner section* = the corner entry's share projected outward + the vertex's fan 2·h·tan(θ/2); the
+  stitches between two corners onto the straight section between the corner sections. Q = that
+  point of the curve + (h_i − mean h) along the edge normal. So a side with the right number of
+  stitches and corners with the right increases lie exactly in the reference; too many stitches are
+  squeezed (the edge waves), too few stretched (it puckers), missing corner increases stretch the
+  corner (it cups). *Cumulative compliance*: stitches give a little along the course — per side and
+  per corner, the natural excess A = Σ (own − section) accumulates over the rounds, up to
+  B = tol·Σ own (tol = `flatness.tol`, the edge-fit band) is absorbed, and a round's course springs
+  take its section plus the growth of the residual R = sign(A)·max(0, |A| − B) (factor clamped to
+  [0.5, 2]). A *joining slip stitch* lies on the stitch it joins, its height towards the stitch
+  before it (no cells: not stitch-counting).
+* *N10 polygons from the centre* (`polygonRuns`): round r is a corner round when, per entry of the
+  round below, m_e = stitch-counting nodes worked into it, M = max m_e ≥ 3 (≥ 2 inside a run), the
+  corners {e : m_e > M/2} number 3–8, each has at least twice every other entry's m_e, they are
+  evenly spread (gaps within ±25 % of 1/n), and no stitch of the round is 1.5× as tall as another
+  (a circle-to-square's squaring round makes corners from height, not increases). A run of ≥ 2
+  such rounds (a single cornered round is lace: stitches in spaces) gets N9's mapping; the round
+  below the run is a regular n-gon of its own course length, its corner entries' centres at the
+  vertices (its course springs follow the n-gon's chords, its magic-ring spokes the n-gon's centre).
+* *Rest lengths*: every wale, shear and wale-bend spring from a stitch-counting node with Q to a
+  particle with Q: |Q_i − Q_p|; a course or course-bend spring within an outline round (not slack):
+  |Q_b − Q_a| × (own length × compliance) / (reference path length) — the reference chord, corner
+  bend and height steps included; between two counting nodes of different courses (a jog): the
+  layout distance. Every other spring keeps N1–N7.
+* *P9 placement* (after P2–P4 would have run, replacing them for these nodes; P5 and P4′ skip them):
+  a node of the foundation, a row or an outline round with Q goes to c + e1·(Q_x − q_x) + e2·(Q_y −
+  q_y), (e1, e2) the orthonormal frame of the least-squares affine fit reference → positions over
+  every placed node with Q (c, q their centroids) when those references span a plane, else relative
+  to its base (first anchor particle with Q, else the nearest earlier placed node with Q); collinear
+  references (the foundation alone): e1 along the fitted line, e2 = unit(z × e1). Rows therefore
+  grow flat in the xy-plane, border rounds along the perimeter, outward, with their corners fanned.
+* Results: plain sc / dc / moss / granny-stripe / ripple swatches: exactly realisable flat
+  references, relaxed flat ("flat", PCA axis), corner distances within 5 % of the reference. Border
+  sweep (dc and sc rows, 9 rules from −47 % to +58 %): the sim's per-side verdict equals the edge-fit
+  check on every rule (outline.test.ts). Polygons on N1 vs on the polygon reference (fast
+  tolerances, 22 cm blanket-studio motifs; A/W): solid square cup 0.78/0.50 → flat 0.08/0.04,
+  mitred square ruffle 0.08/0.50 → flat 0.06/0.08, octagon cup 0.56/0.28 → flat 0.15/0.13, granny
+  square flat → flat (0.01/0.03), every side and corner of them flat. The hexagon (ruffle on N1)
+  has a frustration-free reference but settles in a shallow fold at 22 cm (cup 0.37 at energy ≈ 0:
+  a near-isometric mode of this bending-free network, not a count error; flat at 30 cm). A
+  circle-to-square still cups (0.37; 0.69 on N1): its squaring round sits between the N1 circle
+  below and the n-gon above, which this layout does not reconcile.
+
+## Per-region shape (rows, borders, polygons)
+
+physics.md §5 assumes rounds round an axis. For a piece with an outline both sims add
+`region_shape` / `regionShape` (body flat / curling, each side flat / waves / puckers, each corner
+flat / cup / ruffle; definitions in `app/src/core/sim/regions.ts`): the body is fitted rigidly to its
+reference layout (its plane); per side the *measured excess* of the edge (3D path along stitch-to-
+stitch steps vs reference, the worst border round), the out-of-plane *wave* (RMS about a line, / w̄)
+and the in-plane *pull*; per corner the cumulative measured growth in stitches (the polygon rule,
+tolerance max(1, tol·growth/w̄)) with the corner's *lift* and *wave*. Thresholds `REGION_TAU`
+(body 0.1, wave 0.3, pull 0.04, lift 0.3, excess 0.02). `simulate()`'s `{class, A, W, …}` is
+unchanged for every piece without rows; **a piece with rows uses the PCA axis** (its first and last
+rows lie side by side), so a flat rectangle is "flat". `crolab.fixtures` writes
+`spec/fixtures/extra/<name>.lab.json` (metric + regions) for outline extras; the app checks its own
+result against it.
+
 ## Viewer-only options (app; not part of the shared model)
 
 * **Resting on a table** (`createSim({table: true})`, `app/src/core/sim/table.ts`): grow the piece
@@ -212,6 +304,9 @@ chain_space_motif start rounds the same way); the owner may extend it to all sea
   flat with its arms radial. Cups and ruffles still lift off the table but less than in the free
   solve (hyperbolic fixture: z range 13 mm vs 53 mm), so this is a view for pieces meant to lie flat
   and is never used by `simulate()` defaults, the shape metric or the lab agreement.
+* **Blocking an outline piece**: without explicit pins, `createSim` blocks a piece with an outline
+  layout by pinning its outermost outline round (a border's outer round; a rows-only piece's
+  perimeter) to its reference positions (`outlinePins`), through the explicit-pins path below.
 * **Blocking with explicit pins** (`createSim({pins})`, `block(..., pins)`, `crolab.blocking.block(res,
   pins=...)`): pins `{node, x, y}` in any rigid frame are aligned to the piece (handedness from the
   winding of the pins in node order, then best rotation + translation — never scaled); the plane is

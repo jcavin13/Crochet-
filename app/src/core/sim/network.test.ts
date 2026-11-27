@@ -106,12 +106,12 @@ describe('spines, pointed loops and arm seams (SPEC_NOTES N5–N7, P7–P8)', ()
     expect(buildNetwork(lacy, paramsFor(lacy)).pointedLoops.length).toBe(6);
   });
   for (const name of extraNames) {
-    it(`${name}: growth placement of the last round (P0–P7) matches the lab`, () => {
+    it(`${name}: growth placement of the last round (P0–P9) matches the lab`, () => {
       const ref = JSON.parse(readFileSync(extra + name + '.network.json', 'utf8')) as RefFile;
       const pl = ref.placement!;
       const pat = loadGraph(name);
       const net = buildNetwork(pat, paramsFor(pat));
-      expect(net.spines.length + net.pointedLoops.length).toBeGreaterThan(0);
+      expect(net.spines.length + net.pointedLoops.length + (net.outline ? 1 : 0)).toBeGreaterThan(0);
       const placer = new Placer(net, simConfig);
       pl.before.forEach((row, p) => { if (row) placer.X.set(row, 3 * p); });
       placer.placeRound(pl.round);
@@ -124,4 +124,22 @@ describe('spines, pointed loops and arm seams (SPEC_NOTES N5–N7, P7–P8)', ()
       expect(worst).toBeLessThan(1e-6);
     });
   }
+});
+
+describe('rows, borders and polygons (SPEC_NOTES N8–N10, P9)', () => {
+  it('no canonical fixture or snowflake reference has an outline layout, so their networks are what they were', () => {
+    for (const n of names.filter((x) => x !== 'blanket_border')) {
+      const pat = loadGraph(n);
+      expect(buildNetwork(pat, paramsFor(pat)).outline, n).toBeNull();
+    }
+  });
+  it('blanket_border: rows, a foundation span and three border rounds with four corners', () => {
+    expect(extraNames).toContain('blanket_border');
+    const pat = loadGraph('blanket_border');
+    const o = buildNetwork(pat, paramsFor(pat)).outline!;
+    expect(o.roundKind).toEqual(['foundation', 'row', 'row', 'row', 'row', 'row', 'border', 'border', 'border']);
+    expect(o.K).toBe(4);
+    expect([...o.courses.keys()]).toEqual([6, 7, 8]);
+    expect(o.body).not.toBeNull();
+  });
 });

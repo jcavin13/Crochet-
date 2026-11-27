@@ -647,6 +647,18 @@ class Compiler {
       this.diag('info', 'I_REDUNDANT_TURN', `${c.label}: "turn" is not needed — a round worked around rows starts across the top of ${c.prevLabel}, turned.`, span, c.index);
       return;
     }
+    // "ch 1, turn, sc in each st around": a turn after the starting chain (or anything else that
+    // works into nothing yet) turns THIS round, exactly like a turn written first. Before this,
+    // such a turn was deferred to the next round, so a border's "Rnd 2: ch 1, turn, …" was worked
+    // forwards and its turn leaked into Rnd 3.
+    if (!c.madeStitch && c.cursor === 0 && c.used.length === 0 && !c.chainCursor && c.lastUsed === undefined) {
+      if (!c.turned) {
+        c.turned = true;
+        c.targets = c.targets.slice().reverse();
+        this.rounds[c.index].turned = true;
+      }
+      return;
+    }
     this.turnNext = true;
   }
 

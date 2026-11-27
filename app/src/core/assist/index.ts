@@ -10,7 +10,8 @@
  *   updateCountAnnotations(text)           → rewrite "(N …)" counts to what the rounds make
  */
 import type { Diagnostic, Graph } from '../graph';
-import { analyzeFlatness, type FlatnessReport, type RoundClass, type RoundFlatness } from '../flatness';
+import { analyzeFlatness, borderCornerGroups, cornerGroups, detectPolygon, detectStadiumRectangle, type FlatnessReport, type RoundClass, type RoundFlatness } from '../flatness';
+import { nodeCounts } from '../graph/targets';
 import type { BaseType, PatternAst } from '../notation';
 import { compilePattern, parse } from '../notation';
 import { simConfig, stitchParam, type ParamSet } from '../params';
@@ -82,6 +83,57 @@ export interface RoundFixes {
   label: string;
   flatness: RoundFlatness;
   suggestions: FixSuggestion[];
+  /** A cornered round (polygon / border): what to change in its corner groups (`cornerAdvice`). */
+  advice?: string;
+}
+
+/** Is this round judged by a corner rule (a polygon worked from the centre, or a border round rows)? */
+export const isCornered = (r: RoundFlatness) => r.shape === 'polygon' || r.shape === 'border';
+
+/**
+ * For a cornered round that is not flat: the fix is in the corner groups, never a circle-style
+ * rewrite of the sides. "Cornered round: adjust the corner group — use (4 dc, ch 2, 4 dc) in each
+ * corner instead of (3 dc, ch 2, 3 dc)." Null for other rounds.
+ */
+export function cornerAdvice(r: RoundFlatness): string | null {
+  if (!isCornered(r) || r.class === 'n/a' || (r.class === 'flat' && !r.slackOnly)) return null;
+  if (r.closing) return null;
+  if (r.shape === 'border' && r.border?.sides.some((s) => s.class !== 'ok')) {
+    const s = r.border.sides.filter((x) => x.class !== 'ok');
+    return `Border round: fit the sides to the edge — ${s.map((x) => `${x.side.toLowerCase()}: ${x.fix ? `use ${x.fix}` : x.class === 'wavy' ? 'fewer stitches' : 'more stitches'}`).join('; ')}.`;
+  }
+  if (/sides will (wave|pull in)/.test(r.message) && !/corners/.test(r.message)) {
+    return 'Cornered round: work one stitch in each stitch along the sides and keep the increases in the corner groups.';
+  }
+  const ce = r.polygon?.corner ?? r.border?.corner;
+  if (ce?.suggest && r.class === 'flat') return `Cornered round: flat only with loose loops — use ${ce.suggest} in each corner instead of ${ce.now}.`;
+  if (ce?.suggest) return `Cornered round: adjust the corner group — use ${ce.suggest} in each corner instead of ${ce.now}.`;
+  if (r.slackOnly) return 'Cornered round: flat only with loose loops — adjust the chain inside the corner groups, not the sides.';
+  return `Cornered round: adjust the corner group — ${r.class === 'cup' ? 'a bigger' : 'a smaller'} group in each corner, not extra stitches along the sides.`;
+}
+
+/** Corner groups of round g and the number of stitches outside them (polygon or border round). */
+function cornerShape(graph: Graph, g: number, shape: RoundFlatness['shape']): { groups: number; sides: number } | null {
+  let groups: number[][] | undefined;
+  if (shape === 'border') groups = borderCornerGroups(graph).get(g);
+  else {
+    const poly = detectPolygon(graph) ?? detectStadiumRectangle(graph);
+    if (!poly || g < poly.from) return null;
+    groups = cornerGroups(graph, g);
+    if (groups.length !== poly.n) return null;
+  }
+  const R = graph.rounds[g];
+  if (!groups || !R || R.first < 0) return null;
+  const inG = new Set(groups.flat());
+  let sides = 0;
+  for (let id = R.first; id <= R.last; id++) { const n = graph.nodes[id]; if (nodeCounts(n) && n.type !== 'slst' && !inG.has(id)) sides++; }
+  return { groups: groups.length, sides };
+}
+
+/** The edit kept the round's corner structure: as many corner groups, the sides untouched (only the groups changed). */
+function keepsCorners(before: Graph, after: Graph, g: number, shape: RoundFlatness['shape']): boolean {
+  const a = cornerShape(before, g, shape), b = cornerShape(after, g, shape);
+  return !!a && !!b && a.groups === b.groups && a.sides === b.sides;
 }
 
 export interface AssistOptions {
@@ -349,11 +401,15 @@ function roundSuggestions(c: Ctx, g: number, opts: AssistOptions): FixSuggestion
   const ra = c.ast.rounds[a];
   const flatCount = Math.round(c.graph.rounds[g].stitchCount - before.stitchesNominal);
   const order = g > 0 ? (c.sym.rounds[g - 1]?.cumulative ?? c.sym.order) : c.sym.order;
-  const ds = drafts(c.text, c.li, c.ast, ra, c.graph, g, { order: Math.max(1, Math.min(order, c.sym.order || 1) || order), flatCount, ownOrder: c.sym.rounds[g]?.order ?? 1 });
+  const all = drafts(c.text, c.li, c.ast, ra, c.graph, g, { order: Math.max(1, Math.min(order, c.sym.order || 1) || order), flatCount, ownOrder: c.sym.rounds[g]?.order ?? 1 });
+  // a cornered round is fixed in its corner groups only: stitches-per-place edits that keep the
+  // corners and leave the sides alone — never a circle-style rewrite or spread increases
+  const cornered = isCornered(before);
+  const ds = cornered ? all.filter((d) => d.kind === 'count') : all;
   const evs: Evaluated[] = [];
   for (const d of ds) {
     const ev = evaluate(c, g, d, before);
-    if (ev) evs.push(ev);
+    if (ev && (!cornered || (isCornered(ev.res) && keepsCorners(c.graph, ev.graph, g, before.shape)))) evs.push(ev);
   }
   const best = evs.some((e) => e.rank < 2) ? evs.filter((e) => e.rank < 2) : evs;
   best.sort((x, y) => x.score - y.score);
@@ -379,9 +435,10 @@ export function suggestRoundFixes(text: string, round: number, params: ParamSet,
 export function suggestFixes(text: string, params: ParamSet, opts: AssistOptions = {}): RoundFixes[] {
   const c = prepare(text, params);
   if (!c) return [];
-  return c.flat.rounds.filter((r) => needsFix(r, opts.loose ?? true)).map((r) => ({
-    round: r.round, label: r.label, flatness: r, suggestions: roundSuggestions(c, r.round, opts),
-  }));
+  return c.flat.rounds.filter((r) => needsFix(r, opts.loose ?? true)).map((r) => {
+    const advice = cornerAdvice(r);
+    return { round: r.round, label: r.label, flatness: r, suggestions: roundSuggestions(c, r.round, opts), ...(advice ? { advice } : {}) };
+  });
 }
 
 /** Apply a suggestion. Throws if the text changed since the suggestion was made. */
@@ -505,7 +562,7 @@ export function suggestCountsForRound(graph: Graph, round: number, params: Param
   if (!R || R.kind !== 'round') return null;
   const flat = opts.flatness ?? analyzeFlatness(graph, params);
   const fr = flat.rounds[round];
-  if (!fr || fr.class === 'n/a') return null;
+  if (!fr || fr.class === 'n/a' || isCornered(fr)) return null; // the circle calculator does not apply at corners
   let stitch = opts.stitch;
   if (!stitch) {
     const tally = new Map<string, number>();

@@ -14,7 +14,7 @@ import { simConfig as defaultConfig, type ParamSet, type SimConfig } from '../pa
 import { hyp, sq } from './lbfgs';
 import { dsin, npMean } from './detmath';
 import { armBases, findPointedLoops, findSpines, type PointedLoop, type Spine } from './spine';
-import { buildOutline, pointAt, type Outline } from './outline';
+import { buildOutline, type Outline } from './outline';
 
 export const COURSE = 0, WALE = 1, SHEAR = 2, BEND_COURSE = 3, BEND_WALE = 4;
 export type SpringKind = 0 | 1 | 2 | 3 | 4;
@@ -445,7 +445,7 @@ export function buildNetwork(input: Pattern | Graph, params: ParamSet, config: S
   // layout (outline.ts): wale, shear and wale-bend rest lengths are layout distances; course
   // springs keep the stitch widths, bent by the chord/arc ratio of the reference curve; the
   // foundation span takes the first row's length
-  const outline = buildOutline(g, wEff, w, h, cfg.flatness?.chain_nominal ?? 0.85);
+  const outline = buildOutline(g, wEff, w, h, cfg.flatness?.chain_nominal ?? 0.85, cfg.flatness?.tol ?? 0.1);
   if (outline) applyOutline(outline, g.nodes.map((nd) => nd.round), counting, chspChain, Lc, gi, gj, gL, gt);
 
   // N5: every spring between two nodes of one spine takes its rest length from the spine's flat
@@ -529,15 +529,21 @@ function applyOutline(o: Outline, round: number[], counting: boolean[], chsp: Ui
   const has = (p: number) => p < n && o.has[p] === 1;
   const dist = (a: number, b: number) => hyp(o.qx[a] - o.qx[b], o.qy[a] - o.qy[b]);
   const span = new Set(o.span);
-  const ocourse = (i: number) => o.roundKind[round[i]] === 'border' || o.roundKind[round[i]] === 'polygon';
+  const ocourse = (i: number) => o.roundKind[round[i]] === 'border' || o.roundKind[round[i]] === 'polygon' || o.roundKind[round[i]] === 'polybase';
   for (let idx = 0; idx < gi.length; idx++) {
     const a = gi[idx], b = gj[idx], t = gt[idx];
     if (t === WALE || t === SHEAR || t === BEND_WALE) {
-      if (counting[a] && has(a) && has(b)) gL[idx] = dist(a, b);
+      if (counting[a] && has(a) && has(b) && !(o.colScale[b] > 0)) gL[idx] = dist(a, b);
+      // the base round of a polygon worked into a magic ring: spokes to the n-gon's centre
+      else if (t === WALE && b >= n && counting[a] && has(a) && o.roundKind[round[a]] === 'polybase') gL[idx] = hyp(o.qx[a], o.qy[a]);
       continue;
     }
     // course and course bend: a < b, b − a ∈ {1, 2}
     const lo = Math.min(a, b), hi = Math.max(a, b);
+    if (t === COURSE && (o.colScale[lo] > 0 || o.colScale[hi] > 0)) {
+      gL[idx] = Lc(lo, hi) * (o.colScale[lo] > 0 ? o.colScale[lo] : o.colScale[hi]);
+      continue;
+    }
     if (!has(lo) || !has(hi)) continue;
     if (span.has(lo) && span.has(hi) && (hi - lo === 1 || span.has(lo + 1))) {
       let L = 0.5 * (o.c[lo] + o.c[hi]);
@@ -548,18 +554,19 @@ function applyOutline(o: Outline, round: number[], counting: boolean[], chsp: Ui
     } else if (ocourse(lo)) {
       let slackish = false;
       for (let q = lo; q <= hi; q++) if (chsp[q]) slackish = true;
-      if (slackish || !o.courses.has(round[lo])) continue;
-      const poly = o.courses.get(round[lo])!.poly;
+      const poly = o.courses.get(round[lo])?.poly ?? (o.roundKind[round[lo]] === 'polybase' ? o.base : undefined);
+      if (slackish || !poly) continue;
       const Sa = o.S[lo], Sb = o.S[hi];
       if (!Number.isFinite(Sa) || !Number.isFinite(Sb)) continue;
       let path = Sb - Sa;
       path -= poly.P * Math.floor(path / poly.P + 0.5);
       path = Math.abs(path);
       if (path < 1e-9) continue;
-      const pa = pointAt(poly, Sa), pb = pointAt(poly, Sb);
       let arc = 0;
-      for (let q = lo; q < hi; q++) arc += Lc(q, q + 1);
-      gL[idx] = (arc * hyp(pa[0] - pb[0], pa[1] - pb[1])) / path;
+      for (let q = lo; q < hi; q++) arc += 0.5 * (Lc(q, q) * o.lam[q] + Lc(q + 1, q + 1) * o.lam[q + 1]);
+      // the reference chord (corner bend and height steps included), scaled from the reference
+      // path to the stitches' own (compliant) length
+      gL[idx] = (dist(lo, hi) * arc) / path;
     }
   }
 }

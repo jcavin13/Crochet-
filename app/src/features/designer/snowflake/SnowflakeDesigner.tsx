@@ -20,6 +20,8 @@ import {
 import { RoundGlyph } from '../Thumbs';
 import { Stat, copyText, useSaveOpen } from '../DoilyDesigner';
 import { TemplateCard } from '../TemplateCard';
+import { YarnPanel } from '@/features/yarn/YarnPanel';
+import { useDesignYarn } from '../yarn';
 import type { SnowState } from '../state';
 import { SnowPreview } from './SnowPreview';
 import './snowflake.css';
@@ -83,6 +85,7 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
   const deferred = useDeferredValue(state);
   const params = useMemo(() => paramsOf(deferred.paramsId), [deferred.paramsId]);
   const res = useMemo(() => generateSnowflake(deferred.spec, params), [deferred.spec, params]);
+  const thread = useDesignYarn(res.pattern, params);
   const stale = deferred !== state;
   const { actions } = useSaveOpen(res.text);
   const constraints = { bold: state.bold, spiky: state.spiky, ornate: state.ornate, sizeCm: [Math.max(3, state.sizeCm - 1), state.sizeCm + 1] as [number, number], points: spec.points };
@@ -308,7 +311,7 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
         <Stat k="Rounds" v={String(res.stats.rounds)} />
         <Stat k="Stitches" v={res.stats.stitches.toLocaleString()} />
         <Stat k="Across" v={cm(res.stats.diameterMm)} hint={`point to point, blocked · ${params.label}`} />
-        <Stat k="Thread" v={`≈ ${res.stats.threadM.toFixed(1)} m`} hint="rough: summed stitch sizes" />
+        <Stat k="Thread" v={thread.value} hint={thread.hint} />
       </div>
       {resultTabs}
       {view === 'preview' && (
@@ -375,6 +378,7 @@ export default function SnowflakeDesigner({ state, setState, kindSwitch }: { sta
         </Card>
       )}
       {checkCard}
+      {res.pattern && <Card className="dz-card dz-yarn"><YarnPanel pattern={res.pattern} params={params} compact title="Thread" /></Card>}
       {res.pattern && <Card className="dz-card"><SymmetryPanel pattern={res.pattern} compact /></Card>}
       <Card className="dz-card">
         <div className="dz-card__head">

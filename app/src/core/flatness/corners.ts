@@ -22,6 +22,8 @@ export interface PolygonInfo {
   from: number;
   /** Corner groups (node ids, working order) per round, for the rounds that have n of them. */
   groups: Map<number, number[][]>;
+  /** a rectangle worked round a foundation chain (`detectStadiumRectangle`), not a regular n-gon */
+  stadium?: boolean;
 }
 
 /** One anchor shared by every leg of a node (a cluster in one place counts), or null. */
@@ -162,4 +164,33 @@ export function borderCornerGroups(g: Graph): Map<number, number[][]> {
     out.set(r, [...by.values()]);
   }
   return out;
+}
+
+/**
+ * A rectangle worked in the round both sides of a foundation chain (a stadium, `detectStadium`)
+ * whose rounds have four corner groups with sides between them — in the last round and in most
+ * rounds from the first cornered one on. Its corners need not be evenly spaced (the long sides are
+ * longer). An oval (increases spread round the ends) is not one. Used by the flatness check only:
+ * the chart draws stadiums from the chain.
+ */
+export function detectStadiumRectangle(g: Graph): PolygonInfo | null {
+  if (!detectStadium(g)) return null;
+  const rounds = g.rounds;
+  const four = (k: number): number[][] | null => {
+    const R = rounds[k];
+    if (k < 1 || !R || R.first < 0 || R.kind !== 'round') return null;
+    const cg = cornerGroups(g, k);
+    if (cg.length !== 4) return null;
+    let total = 0;
+    for (let id = R.first; id <= R.last; id++) { const m = g.nodes[id]; if (nodeCounts(m) && m.type !== 'slst' && m.type !== 'ch') total++; }
+    return total - new Set(cg.flat()).size >= 4 ? cg : null;
+  };
+  const per = rounds.map((_R, k) => four(k));
+  const last = rounds.length - 1;
+  if (!per[last]) return null;
+  const ks = per.map((c, k) => (c ? k : -1)).filter((k) => k >= 0);
+  if (ks.length < 2 || ks.length < 0.6 * (last - ks[0] + 1)) return null;
+  const groups = new Map<number, number[][]>();
+  for (const k of ks) groups.set(k, per[k]!);
+  return { n: 4, from: ks[0], groups, stadium: true };
 }

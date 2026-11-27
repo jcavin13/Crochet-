@@ -18,8 +18,8 @@ export { chartToSvg, DEFAULT_COLORS, BORDER_NOTE, POINTED_NOTE, POINTED_KEY, wed
 export { wedgeView, cornerView } from './wedge';
 export { offsetFrame, frameOf, framePath, frameHeight, regularCore } from './frames';
 export type { FrameSpec, OffsetFrame } from './frames';
-export { cornerGroups, detectPolygon, detectStadium, borderCornerGroups } from './corners';
-export type { PolygonInfo } from './corners';
+export { cornerGroups, detectPolygon, detectStadium, borderCornerGroups } from '../flatness/corners';
+export type { PolygonInfo } from '../flatness/corners';
 export type { WedgeView, WedgeLabel, WedgeOptions } from './wedge';
 export type { ChartColors, SvgOptions } from './svg';
 export { buildHitIndex, hitTest, roundAt } from './hit';

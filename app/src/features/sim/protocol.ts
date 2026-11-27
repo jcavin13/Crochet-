@@ -2,7 +2,7 @@
 // on the main thread when Workers are unavailable (client.ts).
 import type { Graph } from '@/core/graph';
 import type { ParamSet, SimConfig } from '@/core/params';
-import type { BlockPin, BlockSummary, StepResult } from '@/core/sim';
+import type { BlockPin, BlockSummary, RegionReport, StepResult } from '@/core/sim';
 
 export interface MetricSummary {
   class: 'flat' | 'cup' | 'ruffle';
@@ -26,6 +26,8 @@ export interface SimFrame {
   step: StepResult;
   metric?: MetricSummary;
   block?: BlockSummary;
+  /** Per-region shape of a piece with rows / a border / polygon rounds (relaxed, full piece). */
+  regions?: RegionReport;
   /** ms spent in step() for this frame. */
   ms: number;
   /** Did the shown state settle to the solver tolerance (sent when solved)? */

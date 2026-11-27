@@ -177,8 +177,10 @@ export interface SnowStats {
   stitches: number;
   /** Across the points when blocked, mm. */
   diameterMm: number;
-  /** Rough thread length, m. */
+  /** Thread length, m: core/yarn nominal estimate, net (generate.ts `yarnOf`). */
   threadM: number;
+  /** Thread, grams (core/yarn nominal estimate, net; with threadM). */
+  threadG: number;
 }
 
 export interface SnowflakeResult {

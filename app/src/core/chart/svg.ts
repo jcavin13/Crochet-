@@ -23,8 +23,8 @@ export function wedgeNote(w: Pick<WedgeView, 'kind' | 'order'>): string {
   return `${w.kind === 'arm' ? 'One arm' : 'One repeat'} of ${w.order} — work it ×${w.order}`;
 }
 
-/** What the chart says about border rounds (worked round a body in rows) instead of flat / cup / ruffle. */
-export const BORDER_NOTE = "border — see the blanket studio's edge and corner checks";
+/** What the chart says about border rounds (worked round a body in rows): the rules their band shows. */
+export const BORDER_NOTE = 'border rounds — judged by the edge fit (each side) and the corner rule (each corner)';
 
 export interface ChartColors {
   bg: string;
@@ -134,6 +134,8 @@ export function bandPath(layout: ChartLayout, k: number): string {
     for (let j = k - 1; j >= 0; j--) if (layout.rounds[j].first >= 0) { prev = layout.rounds[j]; break; }
     return outlinePath(r) + (prev && !prev.pointed ? ringPath(prev.r) : '');
   }
+  // a border round (round a body in rows): between its own and the round below's offset of the body's rectangle
+  if (r.border && r.frame) return framePath(r.frame, r.r) + framePath(r.frame, Math.max(0, r.r0));
   let prev: ChartRound | undefined;
   for (let j = k - 1; j >= 0; j--) if (layout.rounds[j].first >= 0) { prev = layout.rounds[j]; break; }
   if (r.frame || prev?.frame) {
@@ -171,7 +173,7 @@ export function chartToSvg(full: ChartLayout, o: SvgOptions = {}): string {
   const ghost = W8 ? (o.ghost ?? !o.mono) : false;
   const upto = o.uptoRound ?? layout.rounds.length - 1;
   const scale = o.scale ?? 28;
-  const showFlat = (o.showFlatness ?? true) && !o.mono && layout.mode === 'radial';
+  const showFlat = (o.showFlatness ?? true) && !o.mono && (layout.mode === 'radial' || layout.rounds.some((r) => r.border && r.flat && r.flat.class !== 'n/a'));
   const showLabels = o.showLabels ?? true;
   const terms = o.terms ?? 'US';
   const b = W8 ? { ...W8.bounds } : boundsUpto(layout, upto, 0.8);
@@ -217,6 +219,18 @@ export function chartToSvg(full: ChartLayout, o: SvgOptions = {}): string {
   const anyLoose = looseKey;
   if (anyLoose) {
     out.push(`<defs><pattern id="loose" patternUnits="userSpaceOnUse" width="0.32" height="0.32" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="0.32" stroke="${C.flat}" stroke-width="0.07" stroke-opacity="0.55"/></pattern></defs>`);
+  }
+  if (layout.mode === 'rows' && showFlat) {
+    // a body in rows with a border: the border rounds' bands, round the body's rectangle
+    for (const r of layout.rounds) {
+      if (!r.border || !r.frame || r.first < 0 || r.index > upto) continue;
+      const cls = r.flat?.class;
+      if (!cls || cls === 'n/a') continue;
+      const fill = cls === 'flat' ? C.flatSoft : cls === 'cup' ? C.cupSoft : C.ruffleSoft;
+      const edge = cls === 'flat' ? C.flat : cls === 'cup' ? C.cup : C.ruffle;
+      out.push(`<path data-band="${r.index}" d="${bandPath(layout, r.index)}" fill="${fill}" fill-rule="evenodd" fill-opacity="${r.index % 2 ? 0.55 : 0.9}"><title>${esc(r.flat!.message)}</title></path>`);
+      if (cls !== 'flat') out.push(`<path d="${framePath(r.frame, r.r)}" fill="none" stroke="${edge}" stroke-width="0.06" stroke-dasharray="${cls === 'cup' ? '0.45 0.3' : '0.1 0.2'}" stroke-linecap="round"/>`);
+    }
   }
   if (layout.mode === 'radial') {
     for (const r of layout.rounds) {
