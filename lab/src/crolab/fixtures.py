@@ -15,7 +15,7 @@ import time
 
 from . import FIXTURES_DIR
 from . import graph as G
-from .compare import json_diff
+from .compare import lab_diff
 from .builders import builder_for_fixture
 from .metrics import classify_result, public
 from .sim import simulate
@@ -76,7 +76,7 @@ def main(argv=None) -> int:
         note = "" if ok else "   <-- MISMATCH"
         if a.check:
             path = FIXTURES_DIR / f"{name}.lab.json"
-            diff = json_diff(rec, json.loads(path.read_text(encoding="utf-8"))) if path.exists() else ["missing"]
+            diff = lab_diff(rec, json.loads(path.read_text(encoding="utf-8"))) if path.exists() else ["missing"]
             if diff:
                 bad += 1
                 note += "   <-- STALE " + "; ".join(diff[:3])

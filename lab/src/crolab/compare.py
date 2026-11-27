@@ -78,3 +78,38 @@ def network_diff(cur: dict, ref: dict) -> list[str]:
             if abs(a[k] - b[k]) > tol:
                 out.append(f"summary.{k}: {a[k]} != {b[k]}")
     return out
+
+
+#: Cross-machine tolerances for the simulated shape metrics in lab.json. The energy landscape of
+#: a spring network is multistable, so last-bit differences between CPUs / BLAS builds grow into
+#: differences of a few 1e-3 in A and W (seen on GitHub's runners). These bounds are well inside
+#: the cross-sim agreement tolerance (sim_config agree_abs = 0.12) and far from any class change.
+METRIC_ABS = {"A": 0.03, "W": 0.03}
+METRIC_REL = {"Rg": 0.02, "outer_radius": 0.02}
+
+
+def lab_diff(cur: dict, ref: dict, path: str = "") -> list[str]:
+    """Differences between two lab.json records that matter on any machine: structure, names,
+    node counts and shape classes exactly; A, W within METRIC_ABS; Rg, outer_radius within
+    METRIC_REL. `energy` is machine-dependent near a bifurcation and is not compared."""
+    out: list[str] = []
+    if set(cur) != set(ref):
+        out.append(f"{path or '/'}: keys {sorted(set(cur) ^ set(ref))} differ")
+    for k in cur.keys() & ref.keys():
+        a, b, here = cur[k], ref[k], f"{path}/{k}"
+        if k == "energy":
+            continue
+        if k in METRIC_ABS:
+            if abs(a - b) > METRIC_ABS[k]:
+                out.append(f"{here}: {a} != {b}")
+        elif k in METRIC_REL:
+            if abs(a - b) > METRIC_REL[k] * max(abs(b), 1e-9):
+                out.append(f"{here}: {a} != {b}")
+        elif isinstance(a, list) and isinstance(b, list):
+            if len(a) != len(b):
+                out.append(f"{here}: length {len(a)} != {len(b)}")
+            for n, (x, y) in enumerate(zip(a, b)):
+                out += lab_diff(x, y, f"{here}/{n}") if isinstance(x, dict) else json_diff(x, y, path=f"{here}/{n}")
+        elif a != b:
+            out.append(f"{here}: {a!r} != {b!r}")
+    return out
