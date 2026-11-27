@@ -14,7 +14,9 @@ export {
   glyph, symbolOf, hatchesOf, legendEntries, legendName, sampleGlyph, magicRingGlyph, SYM,
 } from './symbols';
 export type { SymbolOptions, SymbolSet, ScGlyph, Glyph, LegendEntry } from './symbols';
-export { chartToSvg, DEFAULT_COLORS, POINTED_NOTE, roundBandPath, bandPath, edgePath, outlinePath, roundEdge } from './svg';
+export { chartToSvg, DEFAULT_COLORS, POINTED_NOTE, POINTED_KEY, wedgeNote, roundBandPath, bandPath, edgePath, outlinePath, hullPath, roundEdge } from './svg';
+export { wedgeView } from './wedge';
+export type { WedgeView, WedgeLabel, WedgeOptions } from './wedge';
 export type { ChartColors, SvgOptions } from './svg';
 export { buildHitIndex, hitTest, roundAt } from './hit';
 export type { HitIndex } from './hit';

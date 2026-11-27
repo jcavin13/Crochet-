@@ -7,11 +7,19 @@ import type { Terms } from '../graph';
 import { boundsUpto } from './layout';
 import { glyph, legendEntries, magicRingGlyph, sampleGlyph, type SymbolOptions } from './symbols';
 import type { ChartLayout, ChartRound } from './types';
+import type { WedgeView } from './wedge';
 
 const TAU = Math.PI * 2;
 
 /** What the chart says about a pointed round instead of flat / cup / ruffle. */
 export const POINTED_NOTE = 'pointed round — judged by blocking';
+/** Legend text of a pointed round's dashed outline. */
+export const POINTED_KEY = 'pointed round: pin the tips and valleys out to the dashed star — judged by blocking, not by the flatness rule';
+
+/** "One repeat of 6 — work it 6 times" (one-arm / one-repeat view). */
+export function wedgeNote(w: Pick<WedgeView, 'kind' | 'order'>): string {
+  return `${w.kind === 'arm' ? 'One arm' : 'One repeat'} of ${w.order} — work it ×${w.order}`;
+}
 
 export interface ChartColors {
   bg: string;
@@ -45,6 +53,10 @@ export interface SvgOptions {
   terms?: Terms;
   /** Black-on-white, no tints (print). */
   mono?: boolean;
+  /** Draw one repeat wedge enlarged (`wedgeView`) instead of the whole piece. */
+  wedge?: WedgeView | null;
+  /** In the wedge view: draw the rest faintly (default) or leave it out (default in mono). */
+  ghost?: boolean;
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -86,6 +98,13 @@ function poly(r: ChartRound, angles: number[], reverse: boolean, close: boolean)
   return `M${pts.join('L')}${close ? 'Z' : ''}`;
 }
 
+/** Blocking outline of a pointed round (through the arm tips and the valley pins), closed; '' if none. */
+export function hullPath(r: ChartRound): string {
+  const h = r.hull ?? [];
+  if (h.length < 3) return '';
+  return `M${h.map((p) => `${f(p.x)} ${f(p.y)}`).join('L')}Z`;
+}
+
 /** Outline of a pointed round (its arms' star hull), closed. */
 export function outlinePath(r: ChartRound): string {
   const o = r.outline ?? [];
@@ -117,14 +136,17 @@ export function edgePath(r: ChartRound): string {
   return poly(r, turnAngles(r.s0 + 2e-4 * r.dir, r.dir, []).slice(0, -1), false, false);
 }
 
-export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
-  const C = o.mono ? { ...DEFAULT_COLORS, bg: '#ffffff', ink: '#000000', ink2: '#333333', alt: '#000000' } : (o.colors ?? DEFAULT_COLORS);
+export function chartToSvg(full: ChartLayout, o: SvgOptions = {}): string {
+  const C = o.mono ? { ...DEFAULT_COLORS, bg: '#ffffff', ink: '#000000', ink2: '#333333', ink3: '#777777', alt: '#000000' } : (o.colors ?? DEFAULT_COLORS);
+  const W8 = o.wedge ?? null;
+  const layout = W8 ? W8.layout : full;
+  const ghost = W8 ? (o.ghost ?? !o.mono) : false;
   const upto = o.uptoRound ?? layout.rounds.length - 1;
   const scale = o.scale ?? 28;
   const showFlat = (o.showFlatness ?? true) && !o.mono && layout.mode === 'radial';
   const showLabels = o.showLabels ?? true;
   const terms = o.terms ?? 'US';
-  const b = boundsUpto(layout, upto, 0.8);
+  const b = W8 ? { ...W8.bounds } : boundsUpto(layout, upto, 0.8);
   const chartW = b.maxX - b.minX, chartH = b.maxY - b.minY;
   const entries = o.legend === false ? [] : legendEntries(layout, terms, upto);
   // legend columns sized to the longest entry (≈0.23 units per character at 0.42 font size)
@@ -132,10 +154,11 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
   const cols = Math.max(1, Math.floor(chartW / entryW));
   const rowsN = Math.ceil(entries.length / cols);
   const looseKey = showFlat && layout.rounds.some((r) => r.flat?.slackOnly && !r.pointed && r.index <= upto);
-  const anyPointed = showFlat && layout.rounds.some((r) => r.pointed && r.first >= 0 && r.index <= upto);
-  const flatRows = showFlat ? (chartW >= 15 ? 1 : 2.4 + (looseKey ? 0.6 : 0) + (anyPointed ? 0.6 : 0)) : 0;
-  const titleH = o.title ? 1.4 : 0;
-  const legendH = entries.length ? 1.0 + rowsN * 1.5 + flatRows * 1.2 : 0;
+  const anyPointed = layout.mode === 'radial' && layout.rounds.some((r) => r.pointed && r.first >= 0 && r.index <= upto);
+  const flatRows = showFlat ? (chartW >= 15 ? 1 : 2.4 + (looseKey ? 0.6 : 0)) : 0;
+  const pointedRows = anyPointed && entries.length ? Math.ceil((POINTED_KEY.length * 0.22 + 1.4) / Math.max(4, chartW)) + 0.2 : 0;
+  const titleH = (o.title ? 1.4 : 0) + (W8 ? 0.9 : 0);
+  const legendH = entries.length ? 1.0 + rowsN * 1.5 + flatRows * 1.2 + pointedRows * 0.7 : 0;
   const W = chartW, Hh = chartH + titleH + legendH;
   const x0 = b.minX, y0 = b.minY - titleH;
   const out: string[] = [];
@@ -151,6 +174,7 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
 </style>`);
   out.push(`<rect x="${f(x0)}" y="${f(y0)}" width="${f(W)}" height="${f(Hh)}" fill="${C.bg}"/>`);
   if (o.title) out.push(`<text class="ttl" x="${f(x0 + 0.6)}" y="${f(y0 + 0.95)}">${esc(o.title)}</text>`);
+  if (W8) out.push(`<text class="lg" data-wedge="${W8.order}" x="${f(x0 + 0.6)}" y="${f(y0 + (o.title ? 1.4 : 0) + 0.6)}"><tspan font-weight="600">${esc(wedgeNote(W8))}</tspan></text>`);
 
   // bands ("flat (loose loops)" rounds get a hatch over the flat tint)
   const anyLoose = looseKey;
@@ -161,9 +185,10 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
     for (const r of layout.rounds) {
       if (r.first < 0 || r.index > upto) continue;
       if (r.pointed) {
-        // judged by blocking, not by the circle rule: a faint star hull, no flat / cup / ruffle tint
-        if (!o.mono) out.push(`<path d="${bandPath(layout, r.index)}" fill="${C.band}" fill-rule="evenodd" fill-opacity="0.45"><title>${esc(`${r.label}: ${POINTED_NOTE}`)}</title></path>`);
-        if (showFlat) out.push(`<path d="${outlinePath(r)}" fill="none" stroke="${C.ink3}" stroke-width="0.04" stroke-dasharray="0.3 0.22" stroke-linecap="round"/>`);
+        // judged by blocking, not by the circle rule: no tint (a filled star reads as a flower), only
+        // the faint dashed outline it is pinned out to — through the arm tips and the valley pins
+        const d = hullPath(r);
+        if (d) out.push(`<path data-hull="${r.index}" d="${d}" fill="none" stroke="${C.ink3}" stroke-opacity="0.55" stroke-width="0.035" stroke-dasharray="0.26 0.2" stroke-linecap="round" stroke-linejoin="round"><title>${esc(`${r.label}: ${POINTED_NOTE}`)}</title></path>`);
         continue;
       }
       if (r.r <= r.r0) continue;
@@ -185,14 +210,20 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
   }
   for (const n of layout.nodes) {
     if (n.round > upto) continue;
+    const out1 = W8 && !W8.inside[n.id];
+    if (out1 && !ghost) continue;
     const g = glyph(n, o.symbols);
     const alt = !o.mono && n.round % 2 === 1 ? ' alt' : '';
-    out.push(`<g class="sym${alt}" data-sym="${esc(n.symbol.key)}" data-node="${n.id}">${g.stroke ? `<path d="${g.stroke}"/>` : ''}${g.fill ? `<path class="f" d="${g.fill}"/>` : ''}</g>`);
+    out.push(`<g class="sym${alt}" data-sym="${esc(n.symbol.key)}" data-node="${n.id}"${out1 ? ' opacity="0.14"' : ''}>${g.stroke ? `<path d="${g.stroke}"/>` : ''}${g.fill ? `<path class="f" d="${g.fill}"/>` : ''}</g>`);
   }
   if (showLabels) {
-    for (const r of layout.rounds) {
-      if (r.first < 0 || r.index > upto) continue;
-      out.push(`<text class="lbl" x="${f(r.labelAt.x)}" y="${f(r.labelAt.y)}">${esc(r.short)}</text>`);
+    if (W8) {
+      for (const l of W8.labels) out.push(`<text class="lbl" x="${f(l.x)}" y="${f(l.y)}">${esc(l.text)}</text>`);
+    } else {
+      for (const r of layout.rounds) {
+        if (r.first < 0 || r.index > upto) continue;
+        out.push(`<text class="lbl" x="${f(r.labelAt.x)}" y="${f(r.labelAt.y)}">${esc(r.short)}</text>`);
+      }
     }
   }
   // legend
@@ -211,14 +242,26 @@ export function chartToSvg(layout: ChartLayout, o: SvgOptions = {}): string {
     if (showFlat) {
       const keys: [string, string, string][] = [['flat', C.flatSoft, 'lies flat'], ['cup', C.cupSoft, 'cups (too few stitches)'], ['ruffle', C.ruffleSoft, 'ruffles (too many)']];
       if (anyLoose) keys.splice(1, 0, ['loose', C.flatSoft, 'flat (loose loops)']);
-      if (anyPointed) keys.push(['pointed', C.band, POINTED_NOTE]);
       keys.forEach(([key, fill, label], i) => {
         const x = x0 + 0.6 + (W >= 15 ? i * (W / keys.length) : 0);
         if (W < 15 && i > 0) y += 0.7;
-        out.push(`<rect x="${f(x)}" y="${f(y)}" width="0.6" height="0.45" fill="${fill}" stroke="${C.ink3}" stroke-width="0.03"${key === 'pointed' ? ' stroke-dasharray="0.12 0.08"' : ''}/>`);
+        out.push(`<rect x="${f(x)}" y="${f(y)}" width="0.6" height="0.45" fill="${fill}" stroke="${C.ink3}" stroke-width="0.03"/>`);
         if (key === 'loose') out.push(`<rect x="${f(x)}" y="${f(y)}" width="0.6" height="0.45" fill="url(#loose)"/>`);
         out.push(`<text class="lg" x="${f(x + 0.8)}" y="${f(y + 0.35)}">${esc(label)}</text>`);
       });
+      y += 0.7;
+    }
+    if (anyPointed) {
+      // the dashed outline of a pointed round, wrapped to the chart's width
+      const words = POINTED_KEY.split(' ');
+      const perLine = Math.max(20, Math.floor((W - 2) / 0.22));
+      const lines: string[] = [];
+      let cur = '';
+      for (const w of words) { if ((cur + ' ' + w).trim().length > perLine) { lines.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); }
+      if (cur) lines.push(cur);
+      const x = x0 + 0.6;
+      out.push(`<path d="M${f(x)} ${f(y + 0.22)}h0.6" stroke="${C.ink3}" stroke-width="0.05" stroke-dasharray="0.16 0.1"/>`);
+      lines.forEach((l, i) => out.push(`<text class="lg" x="${f(x + 0.8)}" y="${f(y + 0.35 + i * 0.6)}">${esc(l)}</text>`));
     }
   }
   out.push('</svg>');

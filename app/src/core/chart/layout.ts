@@ -38,6 +38,7 @@
 import { analyzeFlatness, type RoundFlatness } from '../flatness';
 import { childrenOf, type Graph, type Node } from '../graph';
 import { heightOf, stitchParam, type ParamSet } from '../params';
+import { analyzeSymmetry } from '../symmetry';
 import { solveOrdered } from './solve';
 import { symbolOf } from './symbols';
 import type { Bounds, ChartArm, ChartLayout, ChartNode, ChartNodeKind, ChartRound, ChartSpace, LayoutOptions, Pt } from './types';
@@ -100,6 +101,16 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
   const hOf = (n: Node) => heightOf(params, n) / unit;
   const wRel = (n: Node) => stitchParam(params, n.type).width / unit;
   const flat = radial ? analyzeFlatness(graph, params) : undefined;
+  // Rotational order of the piece up to each round (core/symmetry): a closed round of an n-fold
+  // piece is laid out exactly n-fold (its seam — turning chain, join — tucked in without
+  // displacing its neighbours).
+  const symOrder = new Map<number, number>();
+  if (radial && opts.symmetric !== false) {
+    try {
+      const rep = analyzeSymmetry(graph);
+      if (rep.applicable) for (const r of rep.rounds) symOrder.set(r.round, r.cumulative ?? 1);
+    } catch { /* no symmetry: lay out as solved */ }
+  }
 
   // per-node state
   const X = new Float64Array(N), Y = new Float64Array(N); // reference point
@@ -190,10 +201,13 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     if (!nCh) return null;
     const m = (n.type === 'slst' ? spaceSl : spaceSt)[sp.id].length;
     const j = fanJ.get(n.id * 0x10000 + sp.id) ?? posInSpace[sp.id].get(n.id) ?? 1;
-    const q = Math.min(nCh, Math.max(1, Math.floor((j * (nCh + 1)) / (m + 1) + 0.5)));
-    const c = sp.chains[q - 1];
-    if (!placed[c]) return null;
-    return { x: X[c], y: Y[c], ramp: ramp[c], resolved: true };
+    // physics.md §3 attachment c_q, drawn at its continuous position: one stitch in a ch-2 space sits
+    // at the middle of the arch, not on its second chain (which would skew an n-fold round)
+    const qf = Math.min(nCh, Math.max(1, (j * (nCh + 1)) / (m + 1)));
+    const q0 = Math.floor(qf), q1 = Math.min(nCh, q0 + 1), f = qf - q0;
+    const c0 = sp.chains[q0 - 1], c1 = sp.chains[q1 - 1];
+    if (!placed[c0] || !placed[c1]) return null;
+    return { x: X[c0] + (X[c1] - X[c0]) * f, y: Y[c0] + (Y[c1] - Y[c0]) * f, ramp: ramp[c0] + (ramp[c1] - ramp[c0]) * f, resolved: true };
   };
 
   const spacesOut: ChartSpace[] = [];
@@ -303,9 +317,12 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     const flushRun = (counting: boolean) => {
       if (!run) return;
       const rep = run[run.length - 1];
+      const ca = graph.nodes[rep].countsAs;
+      // a counting turning chain stands in for its stitch: it takes that stitch's room
+      const cHalf = ca ? DIM.stHalf * Math.max(1, stitchParam(params, ca).width / unit) : DIM.tchHalf;
       items.push({
         ids: run, rep, kind: counting ? 'tch' : 'tchLoose',
-        half: counting ? DIM.tchHalf : DIM.tchLooseHalf, w: counting ? 1 : 0.05, t: NaN,
+        half: counting ? cHalf : DIM.tchLooseHalf, w: counting ? 1 : 0.05, t: NaN,
       });
       for (const id of run) itemOf[id - first] = items.length - 1;
       run = null;
@@ -500,7 +517,8 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     }
 
     // --- solve the course (joins take no room: they sit between the last and the first stitch)
-    const solveItems = items.filter((it) => it.kind !== 'join');
+    // (radial: a loose turning chain takes no room either; it is tucked into the seam afterwards)
+    const solveItems = items.filter((it) => it.kind !== 'join' && !(radial && it.kind === 'tchLoose'));
     const n = solveItems.length;
     const target = new Float64Array(n), weight = new Float64Array(n), gap = new Float64Array(Math.max(0, n - 1));
     for (let i = 0; i < n; i++) { target[i] = dir * solveItems[i].t; weight[i] = solveItems[i].w; }
@@ -547,7 +565,29 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       target, weight, gap,
       maxSpan: radial && n > 1 ? TAU - wrapGap : undefined,
     });
+    // exactly n-fold: average each position over its n copies (constraints are preserved: every
+    // gap becomes the mean of n gaps that each met it)
+    const nSym = radial && !(R.kind === 'round' && !R.joined) ? symOrder.get(k) ?? 1 : 1;
+    if (nSym > 1 && n >= nSym && n % nSym === 0) symmetrize(solveItems, sol, nSym);
     for (let i = 0; i < n; i++) for (const id of solveItems[i].ids) { S[id] = dir * sol[i]; course[id] = 1; }
+    // loose turning chains: in the seam, just before the stitch they stand beside
+    if (radial) {
+      items.forEach((it, i) => {
+        if (it.kind !== 'tchLoose') return;
+        let a = -1, b = -1;
+        for (let j = 1; j <= items.length && (a < 0 || b < 0); j++) {
+          const pa = items[(i - j + items.length) % items.length], pb = items[(i + j) % items.length];
+          if (a < 0 && pa.kind !== 'join' && pa.kind !== 'tchLoose') a = (i - j + items.length) % items.length;
+          if (b < 0 && pb.kind !== 'join' && pb.kind !== 'tchLoose') b = (i + j) % items.length;
+        }
+        if (a < 0 || b < 0) { for (const id of it.ids) { S[id] = dir * (n ? sol[0] : 0); course[id] = 1; } return; }
+        const sb = dir * S[items[b].rep] + (b < i ? TAU : 0);
+        const sa = dir * S[items[a].rep] - (a > i ? TAU : 0);
+        const gapC = Math.max(0, sb - sa);
+        const v = sb - Math.min(0.5 * gapC, 0.34 / Math.max(rho, 0.5));
+        for (const id of it.ids) { S[id] = dir * v; course[id] = 1; }
+      });
+    }
     items.forEach((it, i) => {
       if (it.kind !== 'join') return;
       let a = -1, b = -1;
@@ -557,7 +597,14 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       const a0 = graph.nodes[it.rep].into[0];
       const tgt = a0 && 'node' in a0 && graph.nodes[a0.node]?.round === k ? S[a0.node] : NaN;
       const sb = b >= 0 ? S[items[b].rep] : Number.isFinite(tgt) ? tgt + (radial ? dir * TAU : 0) : solveItems.length ? S[solveItems[0].rep] + (radial ? dir * TAU : dir * 0.6) : NaN;
-      const v = Number.isFinite(sa) && Number.isFinite(sb) ? (sa + sb) / 2 : Number.isFinite(sa) ? sa + dir * 0.3 : Number.isFinite(sb) ? sb - dir * 0.3 : it.t;
+      let v = Number.isFinite(sa) && Number.isFinite(sb) ? (sa + sb) / 2 : Number.isFinite(sa) ? sa + dir * 0.3 : Number.isFinite(sb) ? sb - dir * 0.3 : it.t;
+      // radial: the join's dot sits just before the top of the stitch it joins into (the seam), not
+      // half-way across the gap
+      if (radial && b < 0 && Number.isFinite(tgt) && Number.isFinite(sa)) {
+        const end = tgt + dir * TAU;
+        const gapC = Math.max(0, dir * (end - sa));
+        v = end - dir * Math.min(0.24 / Math.max(rho, 0.5), 0.45 * gapC);
+      }
       for (const id of it.ids) { S[id] = v; course[id] = 1; }
     });
 
@@ -644,21 +691,72 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
           loopChains(tip, E, u, v, s, 'tip');
           tipLoop = true;
         } else {
-          // a tall stitch (cluster, bobble) at the hook end: its stem stands on, the skipped chains beside it
-          const h = Math.max(0.9, hOf(b0));
-          const T = addV(E, u, h);
-          legs[b0.id] = b0.into.map(() => ({ x: E.x, y: E.y }));
+          // a tall stitch (cluster, bobble) at the hook end, charted as a cluster with its turning
+          // chain: it stands on the spine's last chain pointing out along the arm, the skipped chains
+          // stacked beside it in line with the spine, base to top
+          const h = Math.max(1.1, hOf(b0));
+          const off = 0.24;
+          const B = addV(E, v, off * 0.9), T = addV(B, u, h);
+          legs[b0.id] = b0.into.map(() => ({ x: B.x, y: B.y }));
           place(b0.id, T.x, T.y, angOf(u)); kind[b0.id] = 'stitch'; S[b0.id] = s; armRole[b0.id] = 'tip';
-          const st = Math.min(pitch, h / Math.max(1, tip.length));
+          const st = (h - 0.1) / Math.max(1, tip.length);
           tip.forEach((c, i) => {
-            const p = addV(addV(E, u, (i + 0.5) * st + 0.1), v, -0.55);
-            place(c, p.x, p.y, angOf(u)); kind[c] = 'chain'; S[c] = s; armRole[c] = 'tip';
+            const p = addV(addV(E, u, 0.08 + (i + 0.5) * st), v, -off);
+            place(c, p.x, p.y, angOf(u) + Math.PI / 2); kind[c] = 'chain'; S[c] = s; armRole[c] = 'tip';
           });
           id = from + 1;
         }
       } else if (tip.length) {
         loopChains(tip, E, u, v, s, 'tip');
       }
+      // Pre-pass: where each frond (picot made on the way down) roots and on which side, so the
+      // returning sl sts can keep to the other side. Single fronds alternate sides; a pair made
+      // together ("picot, picot") is one frond each side, symmetric about the spine.
+      const frond = new Map<number, { j: number; sg: number; pair: boolean }>();
+      const frondSides: Set<number>[] = chains.map(() => new Set());
+      {
+        let jj = jCur, sd = side, x = id;
+        while (x <= to) {
+          const nd = graph.nodes[x];
+          if (nd.type === 'ch' && nd.role !== 'tch') {
+            let e = x;
+            while (e + 1 <= to && graph.nodes[e + 1].type === 'ch' && graph.nodes[e + 1].role !== 'tch') e++;
+            sd++;
+            const a0 = e + 1 <= to ? graph.nodes[e + 1].into[0] : undefined;
+            x = a0 && 'node' in a0 && a0.node >= x && a0.node <= e ? armEnd(graph, kids.nodes, k, x, e, to) + 1 : e + 1;
+            continue;
+          }
+          if (nd.type === 'picot') {
+            let e = x;
+            while (e + 1 <= to && graph.nodes[e + 1].type === 'picot') e++;
+            if (e > x) {
+              // pairs (and larger groups): spread symmetrically, −side first
+              const m = e - x + 1;
+              for (let q = 0; q < m; q++) {
+                const sg = m === 2 ? (q === 0 ? -1 : 1) : q - (m - 1) / 2;
+                frond.set(x + q, { j: jj, sg, pair: true });
+                if (jj >= 0) frondSides[jj].add(Math.sign(sg));
+              }
+            } else {
+              const sg = sd++ % 2 === 0 ? -1 : 1;
+              frond.set(x, { j: jj, sg, pair: false });
+              if (jj >= 0) frondSides[jj].add(sg);
+            }
+            x = e + 1;
+            continue;
+          }
+          const a = nd.into[0];
+          const j = a && 'node' in a ? jOf.get(a.node) : undefined;
+          if (j !== undefined) jj = j;
+          x++;
+        }
+      }
+      /** Side of the spine for a returning sl st at chain j: away from a single frond rooted there or just below. */
+      const slSide = (j: number): number => {
+        const near = new Set<number>([...(frondSides[j] ?? []), ...(frondSides[j - 1] ?? [])]);
+        if (near.size === 1) return -[...near][0];
+        return 1;
+      };
       const nextSide = () => (side++ % 2 === 0 ? -1 : 1);
       while (id <= to) {
         const nd = graph.nodes[id];
@@ -675,20 +773,27 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
             // a chain branch worked back along: a spine of its own at the branch angle
             const end = armEnd(graph, kids.nodes, k, id, e, to);
             const jm = workedMax(graph, id, e, e + 1, end);
-            placeSpine(run.slice(0, jm + 1), run.slice(jm + 1), e + 1, end, base, w, wv, s, 0.12);
+            placeSpine(run.slice(0, jm + 1), run.slice(jm + 1), e + 1, end, addV(base, v, sg * 0.12), w, wv, s, 0.12);
             for (let c = id; c <= end; c++) if (armRole[c] === 'spine') armRole[c] = 'branch';
             id = end + 1;
           } else {
-            loopChains(run, addV(base, w, 0.1), w, wv, s, 'branch');
+            loopChains(run, addV(addV(base, v, sg * 0.14), w, 0.1), w, wv, s, 'branch');
             id = e + 1;
           }
           continue;
         }
         if (nd.type === 'picot') {
-          const atTip = tipLoop && jCur === chains.length - 1;
-          const w = rotV(u, nextSide() * sv * (atTip ? TIP_BRANCH : BRANCH));
-          // from the gap below the chain (beside its sl st), clear of the chain ovals; at the tip, beside the tip loop
-          const b = atTip ? addV(addV(E, u, -0.12), w, 0.3) : addV(addV(base, u, -pitch / 2), w, 0.1);
+          const fr = frond.get(id) ?? { j: jCur, sg: nextSide(), pair: false };
+          const atTip = tipLoop && fr.j === chains.length - 1;
+          const ang = fr.pair && Math.abs(fr.sg) !== 1 ? Math.sign(fr.sg) * Math.min(1, Math.abs(fr.sg)) : Math.sign(fr.sg) || 1;
+          const w = rotV(u, ang * sv * (atTip ? TIP_BRANCH : BRANCH));
+          const side1 = Math.sign(fr.sg) || 1;
+          const Pj = fr.j >= 0 ? P[fr.j] : O;
+          // root beside the spine at the returning stitch's place (a pair: both from one point
+          // just below it, mirror images); at the tip, beside the tip loop
+          const b = atTip
+            ? addV(addV(E, u, -0.1), v, side1 * 0.2)
+            : fr.pair ? addV(addV(Pj, u, -0.2), v, side1 * 0.11) : addV(addV(Pj, u, -0.06), v, side1 * 0.15);
           place(id, b.x, b.y, angOf(w)); kind[id] = 'picot'; S[id] = s; armRole[id] = 'branch'; gScale[id] = ARM_PICOT;
           id++;
           continue;
@@ -698,7 +803,10 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         if (j !== undefined) jCur = j;
         const Pj = jCur >= 0 ? P[jCur] : O;
         if (nd.type === 'slst') {
-          const q = addV(addV(Pj, v, 0.21), u, -0.1);
+          // beside its chain, on the side away from the frond at that place
+          const sd = jCur >= 0 ? slSide(jCur) : 1;
+          const pairHere = jCur >= 0 && frondSides[jCur].size > 1;
+          const q = addV(addV(Pj, v, sd * 0.22), u, pairHere ? 0.1 : -0.02);
           place(id, q.x, q.y, angOf(u)); kind[id] = 'slst';
         } else {
           const L = Math.min(1.3, Math.max(0.62, 0.62 + 0.4 * (hOf(nd) - 1)));
@@ -780,7 +888,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
         const t = a && 'node' in a ? a.node : -1;
         const h = t >= 0 && placed[t] ? H[t] : rho;
         const s = S[it.rep];
-        const [x, y] = F.pos(s, h - 0.1);
+        const [x, y] = F.pos(s, h - (radial ? 0.04 : 0.1));
         place(it.rep, x, y, tangentRot(F, x, y, s, radial));
         ramp[it.rep] = rampOf(s);
       }
@@ -829,6 +937,15 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     }
 
     // --- chains: arcs between their neighbours
+    /** Item `i` (searching in direction `step` past seam items) is a stitch next to an arm. */
+    const isArmBase = (i: number, step: 1 | -1): boolean => {
+      const at = (j: number) => items[((j % items.length) + items.length) % items.length];
+      let j = i;
+      while (at(j).kind === 'tchLoose' || at(j).kind === 'join') j += step;
+      if (at(j).kind !== 'st') return at(j).kind === 'arm';
+      return at(j + step).kind === 'arm' || at(j - step).kind === 'arm';
+    };
+    const bridges: { ids: number[]; anchored: boolean; pin: Pt }[] = [];
     const pureChain = !items.some((it) => it.kind === 'st' || it.kind === 'tch' || it.kind === 'tchLoose');
     let i = 0;
     while (i < items.length) {
@@ -845,8 +962,17 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
       } else {
         const P = endpoint(runIds[0] - 1, first, last, true);
         const Q = endpoint(runIds[runIds.length - 1] + 1, first, last, false);
-        const arc = chainArc(F, radial, P, Q, runIds.length, S[runIds[0]], dir);
-        runIds.forEach((id, q) => { const c = arc.pts[q]; place(id, c.x, c.y, c.rot); ramp[id] = rampOf(S[id]); });
+        // a pointed round's chains between the arms are valley bridges: drawn pinned out (a V to a pin), not a scallop
+        let arc: { pts: { x: number; y: number; rot: number }[]; d: string; apex: number; step?: number };
+        if (arms.length && radial) {
+          // from arm base to arm base: a V to its pin; to / from a valley anchor stitch: a shallow arc
+          const anchored = !isArmBase(i - 1, -1) || !isArmBase(j + 1, 1);
+          arc = bridgeArc(P, Q, runIds.length, anchored ? 0.34 : 0.4);
+          bridges.push({ ids: runIds, anchored, pin: (arc as ReturnType<typeof bridgeArc>).pin });
+        } else arc = chainArc(F, radial, P, Q, runIds.length, S[runIds[0]], dir);
+        // chains closer than their length: smaller ovals, so they do not overlap
+        const shrink = arc.step !== undefined ? Math.max(0.6, Math.min(1, arc.step / (2 * SYM_CH_RX + 0.06))) : 1;
+        runIds.forEach((id, q) => { const c = arc.pts[q]; place(id, c.x, c.y, c.rot); ramp[id] = rampOf(S[id]); if (shrink < 1) gScale[id] = shrink; });
         if (sp0 >= 0) spacesOut.push({ id: sp0, round: k, kind: 'chsp', d: arc.d, apex: arc.apex });
       }
       i = j + 1;
@@ -895,7 +1021,7 @@ export function layoutChart(graph: Graph, params: ParamSet, opts: LayoutOptions 
     roundsOut.push({
       index: k, label: R.label, short: shortLabel(R.label), kind: R.kind, r: rMean, r0: r0band, rOuter: Math.max(rOuter, rMean),
       dir, joined: !!R.joined, labelAt, first, last, bounds: b, flat: fl, spiral: gK, s0,
-      ...(armsOut.length ? { pointed: true, outline: outlineOf(ids, rMean), arms: armsOut } : {}),
+      ...(armsOut.length ? { pointed: true, outline: outlineOf(ids, rMean), arms: armsOut, hull: hullOf(armsOut, bridges, dir) } : {}),
     });
     prevTop = rMean;
     prevDir = dir;
@@ -949,6 +1075,27 @@ function tangentRot(F: Frame, x: number, y: number, s: number, radial: boolean):
   if (!radial) return 0;
   const [ox, oy] = F.out(x, y, s);
   return Math.atan2(oy, ox) + Math.PI / 2;
+}
+
+/** Make solved course positions exactly n-fold: each position becomes the mean of its n copies (one turn / n apart). */
+function symmetrize(items: Item[], sol: Float64Array, n: number) {
+  const m = items.length, P = m / n;
+  const sig = (it: Item) => (it.kind === 'tch' ? 'st' : it.kind);
+  for (let i = 0; i < m - P; i++) if (sig(items[i]) !== sig(items[i + P])) return;
+  const step = TAU / n;
+  // only when the round already is nearly n-fold (a pure seam effect)
+  for (let j = 0; j < P; j++) {
+    let mean = 0;
+    for (let q = 0; q < n; q++) mean += sol[j + q * P] - q * step;
+    mean /= n;
+    for (let q = 0; q < n; q++) if (Math.abs(sol[j + q * P] - q * step - mean) > step / 2) return;
+  }
+  for (let j = 0; j < P; j++) {
+    let mean = 0;
+    for (let q = 0; q < n; q++) mean += sol[j + q * P] - q * step;
+    mean /= n;
+    for (let q = 0; q < n; q++) sol[j + q * P] = mean + q * step;
+  }
 }
 
 function circMean(a: number[]): number {
@@ -1036,6 +1183,51 @@ function chainArc(F: Frame, radial: boolean, P: Pt, Q: Pt, n: number, sHint: num
   return { pts, d, apex };
 }
 
+/**
+ * A valley bridge of a pointed round from P to Q holding `n` chains, drawn the way it blocks (the
+ * designer's Preview): pinned out into a V — from P out to a pin on the bisector and back to Q,
+ * the pin as far out as the chains reach (rise = ½·√(L² − d²)), the V's apex softened (a quadratic
+ * through the pin). Chains evenly spaced along it, clear of the stitches at both ends.
+ */
+function bridgeArc(P: Pt, Q: Pt, n: number, maxRise: number) {
+  const pad = 0.36;
+  const L = n * DIM.chainPitch + 2 * pad;
+  const mx = (P.x + Q.x) / 2, my = (P.y + Q.y) / 2;
+  const rm = Math.hypot(mx, my);
+  const ox = rm > 1e-9 ? mx / rm : 0, oy = rm > 1e-9 ? my / rm : -1; // outward
+  const c = Math.hypot(Q.x - P.x, Q.y - P.y);
+  // the pin: the apex of a V of total length L over the chord (a taut bridge still bows a little)
+  // (capped: a long bridge is drawn as a compact V with its chains closer together — the chart
+  // shows the count, the Preview and the template the length)
+  const rise = Math.min(maxRise * c, Math.max(0.1 * c, 0.5 * Math.sqrt(Math.max(0, L * L - c * c))));
+  const pin = { x: mx + ox * rise, y: my + oy * rise };
+  const C = { x: 2 * pin.x - mx, y: 2 * pin.y - my };
+  const at = (t: number): Pt => {
+    const u = 1 - t;
+    return { x: u * u * P.x + 2 * u * t * C.x + t * t * Q.x, y: u * u * P.y + 2 * u * t * C.y + t * t * Q.y };
+  };
+  const M = 48;
+  const pts: Pt[] = [], cum = [0];
+  for (let i = 0; i <= M; i++) pts.push(at(i / M));
+  for (let i = 1; i <= M; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  const total = cum[M];
+  const pd = Math.min(pad, total * 0.2);
+  const step = (total - 2 * pd) / n;
+  const out: { x: number; y: number; rot: number }[] = [];
+  let j = 1;
+  for (let q = 0; q < n; q++) {
+    const target = pd + (q + 0.5) * step;
+    while (j < M && cum[j] < target) j++;
+    const a = pts[j - 1], b = pts[j];
+    const f = (target - cum[j - 1]) / (cum[j] - cum[j - 1] || 1);
+    out.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, rot: Math.atan2(b.y - a.y, b.x - a.x) });
+  }
+  let apex = 0;
+  for (const p of pts) apex = Math.max(apex, Math.hypot(p.x, p.y));
+  const d = `M${r3(P.x)} ${r3(P.y)}Q${r3(C.x)} ${r3(C.y)} ${r3(Q.x)} ${r3(Q.y)}`;
+  return { pts: out, d, apex, pin: { x: pin.x, y: pin.y }, step };
+}
+
 function circlePath(cx: number, cy: number, r: number): string {
   const f = (v: number) => (Math.round(v * 1000) / 1000).toString();
   return `M${f(cx - r)} ${f(cy)}a${f(r)} ${f(r)} 0 1 0 ${f(2 * r)} 0a${f(r)} ${f(r)} 0 1 0 ${f(-2 * r)} 0Z`;
@@ -1077,6 +1269,8 @@ const OUTLINE_N = 240;
 /** How fast the outline of a pointed round falls off sideways from a symbol (per unit of arc). */
 const OUTLINE_SLOPE = 0.9;
 const r3 = (v: number) => String(Math.round(v * 1000) / 1000);
+/** Half-length of a chain oval (symbols.ts SYM.chRx). */
+const SYM_CH_RX = 0.25;
 
 interface ArmInfo {
   kind: 'spine' | 'loop';
@@ -1160,6 +1354,25 @@ function detectArms(g: Graph, k: number, first: number, last: number, kids: numb
     id = e + 1;
   }
   return out;
+}
+
+/**
+ * Blocking outline of a pointed round: a polygon through the arm tips and, between neighbouring
+ * arms, the pins of the valley bridges (where they are pinned out), in working order.
+ */
+function hullOf(arms: ChartArm[], bridges: { ids: number[]; pin: Pt }[], dir: number): Pt[] {
+  if (arms.length < 2) return [];
+  const ang = (p: Pt) => Math.atan2(-p.y, p.x);
+  const s0 = arms[0].s;
+  const rel = (a: number) => mod(dir * (a - s0), TAU);
+  const items: { t: number; p: Pt }[] = [];
+  for (const a of arms) {
+    const r = a.r1 + 0.2;
+    items.push({ t: rel(a.s), p: { x: r * Math.cos(a.s), y: -r * Math.sin(a.s) } });
+  }
+  for (const b of bridges) items.push({ t: rel(ang(b.pin)), p: b.pin });
+  items.sort((a, b) => a.t - b.t);
+  return items.map((q) => ({ x: Math.round(q.p.x * 1000) / 1000, y: Math.round(q.p.y * 1000) / 1000 }));
 }
 
 /** Outline radius of a pointed round at angle θ (radians, counter-clockwise from 3 o'clock). */

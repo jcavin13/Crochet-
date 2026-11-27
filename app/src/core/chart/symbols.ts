@@ -120,8 +120,11 @@ export function glyph(n: ChartNode, o: SymbolOptions = {}): Glyph {
   switch (n.kind) {
     case 'chain':
     case 'tch':
-    case 'ringch':
-      return { stroke: ellipse(T, SYM.chRx, SYM.chRy, n.rot), fill: '' };
+    case 'ringch': {
+      // (chains packed closer than their length — a long valley bridge — are drawn smaller)
+      const k = Math.min(1, n.scale ?? 1);
+      return { stroke: ellipse(T, SYM.chRx * k, SYM.chRy * Math.max(0.8, k), n.rot), fill: '' };
+    }
     case 'slst':
       return set === 'jis'
         ? { stroke: '', fill: ellipse(T, 0.13, 0.072, n.rot) }

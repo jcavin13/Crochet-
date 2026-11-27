@@ -118,6 +118,11 @@ export interface ChartRound {
   outline?: number[];
   /** Pointed rounds: the arms (base angle, base radius and tip radius) in working order. */
   arms?: ChartArm[];
+  /**
+   * Pointed rounds: the blocking outline — a closed polygon through the arm tips and the pins of
+   * the valley bridges between them (drawn as a faint dashed line, like the designer's Preview).
+   */
+  hull?: Pt[];
 }
 
 export interface ChartArm {
@@ -158,4 +163,6 @@ export interface LayoutOptions {
   startAngle?: number;
   /** Force a layout mode. Default: 'rows' if any round is a Row, else 'radial'. */
   mode?: 'radial' | 'rows';
+  /** Lay closed rounds of an n-fold piece out exactly n-fold (core/symmetry). Default true. */
+  symmetric?: boolean;
 }
